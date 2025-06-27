@@ -6,7 +6,7 @@ const connectDB = require('./src/config/database');
 connectDB();
 
 // Démarrage du serveur
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 6000; // ← Changé de 5000 à 6000
 
 const server = app.listen(PORT, () => {
   console.log(`🚀 Serveur démarré sur le port ${PORT}`);

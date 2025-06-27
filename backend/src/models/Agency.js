@@ -199,6 +199,10 @@ agencySchema.methods.isOpenAt = function(time) {
 
 // Obtenir la durée de travail en minutes
 agencySchema.methods.getWorkingDuration = function() {
+  if (!this.workingHours?.start || !this.workingHours?.end) {
+    return 480; // 8 heures par défaut
+  }
+  
   const startMinutes = parseInt(this.workingHours.start.split(':')[0]) * 60 + parseInt(this.workingHours.start.split(':')[1]);
   const endMinutes = parseInt(this.workingHours.end.split(':')[0]) * 60 + parseInt(this.workingHours.end.split(':')[1]);
   

@@ -51,3 +51,4 @@ build/
 .railway/
 
 /seed-admin.js
+/seed-preparateur.js
