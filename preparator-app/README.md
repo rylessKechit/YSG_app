@@ -107,7 +107,6 @@ vehicle-prep-mobile/
 
 - **Header fixe** : Véhicule, chrono 30min, progression
 - **6 Étapes obligatoires** :
-
   1. 🚗 Préparation extérieure
   2. 🪑 Préparation intérieure
   3. ⛽ Mise à niveau essence
@@ -116,7 +115,6 @@ vehicle-prep-mobile/
   6. 🅿️ Stationnement
 
 - **Interface étape** :
-
   - Photo obligatoire (caméra native)
   - Preview et validation photo
   - Notes optionnelles
@@ -359,7 +357,7 @@ cp .env.example .env.local
 
 ```bash
 # Backend API
-NEXT_PUBLIC_API_URL=http://localhost:6000
+NEXT_PUBLIC_API_URL=http://localhost:4000
 NEXT_PUBLIC_APP_NAME="Vehicle Prep"
 
 # PWA

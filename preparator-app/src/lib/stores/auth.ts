@@ -10,6 +10,7 @@ interface AuthStore extends AuthState {
   checkAuth: () => Promise<void>;
   clearError: () => void;
   setLoading: (loading: boolean) => void;
+  initializeAuth: () => void;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -18,7 +19,7 @@ export const useAuthStore = create<AuthStore>()(
       user: null,
       token: null,
       isAuthenticated: false,
-      isLoading: false,
+      isLoading: true, // ← Important : commencer par true
       error: null,
 
       login: async (credentials: LoginFormData) => {
@@ -28,8 +29,10 @@ export const useAuthStore = create<AuthStore>()(
           const response = await authApi.login(credentials);
           const { token, user } = response;
 
+          // Sauvegarder dans localStorage ET dans le store
           if (typeof window !== 'undefined') {
             localStorage.setItem('auth-token', token);
+            localStorage.setItem('auth-user', JSON.stringify(user));
           }
 
           set({
@@ -92,28 +95,66 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
+      initializeAuth: () => {
+        if (typeof window === 'undefined') return;
+
+        const token = localStorage.getItem('auth-token');
+        const userStr = localStorage.getItem('auth-user');
+
+        if (token && userStr) {
+          try {
+            const user = JSON.parse(userStr);
+            set({
+              user,
+              token,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null
+            });
+            console.log('🔄 Authentification restaurée depuis localStorage');
+            
+            // Vérifier en arrière-plan que le token est toujours valide
+            get().checkAuth();
+          } catch (error) {
+            console.error('❌ Erreur parsing user localStorage');
+            get().logout();
+          }
+        } else {
+          set({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null
+          });
+        }
+      },
+
       checkAuth: async () => {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('auth-token') : null;
+        const currentState = get();
         
-        if (!token) {
+        // Si pas de token, ne pas faire d'appel API
+        if (!currentState.token) {
           set({ isAuthenticated: false, isLoading: false });
           return;
         }
 
-        set({ isLoading: true, token });
-
         try {
           const user = await authApi.getProfile();
           
+          // Mettre à jour localStorage avec les nouvelles données
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('auth-user', JSON.stringify(user));
+          }
+
           set({
             user,
-            token,
             isAuthenticated: true,
             isLoading: false,
             error: null
           });
 
-          console.log('✅ Authentification vérifiée:', user.firstName);
+          console.log('✅ Token vérifié et profil mis à jour');
         } catch (error) {
           console.error('❌ Token invalide, déconnexion');
           get().logout();
@@ -130,15 +171,23 @@ export const useAuthStore = create<AuthStore>()(
     }),
     {
       name: 'auth-storage',
+      // Persister seulement les données essentielles
       partialize: (state) => ({
         user: state.user,
         token: state.token,
         isAuthenticated: state.isAuthenticated
       }),
+      // Callback après restauration du store
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          console.log('🔄 Store auth rechargé:', state.user?.firstName);
+        console.log('🔄 Store Zustand restauré');
+        if (state?.user?.firstName) {
+          console.log('👤 Utilisateur trouvé:', state.user.firstName);
         }
+        
+        // Initialiser l'authentification après la restauration
+        setTimeout(() => {
+          useAuthStore.getState().initializeAuth();
+        }, 100);
       }
     }
   )

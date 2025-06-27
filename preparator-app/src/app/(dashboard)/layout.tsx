@@ -2,99 +2,62 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { BottomNavigation } from '@/components/layout/BottomNavigation';
+import { useAuthStore } from '@/lib/stores/auth';
 import { Header } from '@/components/layout/Header';
-import { useAuthStore, useAppStore } from '@/lib/stores';
-import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
+import { BottomNavigation } from '@/components/layout/BottomNavigation';
 
-interface DashboardLayoutProps {
+export default function DashboardLayout({
+  children,
+}: {
   children: React.ReactNode;
-}
-
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+}) {
   const router = useRouter();
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
-  const { setOnline, setIsPWA } = useAppStore();
+  const { isAuthenticated, isLoading, initializeAuth } = useAuthStore();
 
-  // Vérifier l'authentification
+  // Initialiser l'authentification au montage du composant
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    initializeAuth();
+  }, []); // Une seule fois au montage
 
-  // Redirection si non authentifié
+  // Rediriger vers login si pas authentifié ET pas en cours de chargement
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
+      console.log('🔄 Redirection vers login - non authentifié');
       router.replace('/login');
     }
   }, [isAuthenticated, isLoading, router]);
 
-  // Détection de l'état en ligne/hors ligne
-  useEffect(() => {
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [setOnline]);
-
-  // Détection PWA
-  useEffect(() => {
-    const isPWAMode = window.matchMedia('(display-mode: standalone)').matches;
-    setIsPWA(isPWAMode);
-  }, [setIsPWA]);
-
-  // Afficher le spinner pendant la vérification auth
+  // Afficher un loader pendant l'initialisation/vérification
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <LoadingSpinner size="lg" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-600">Vérification de l'authentification...</p>
+        </div>
       </div>
     );
   }
 
-  // Ne rien afficher si non authentifié (redirection en cours)
+  // Ne pas afficher le contenu si pas authentifié
   if (!isAuthenticated) {
     return null;
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header fixe */}
+    <div className="min-h-screen bg-gray-50">
+      {/* Header avec menu hamburger */}
       <Header />
       
       {/* Contenu principal avec padding pour header et navigation */}
-      <main className="flex-1 pt-16 pb-20 overflow-auto">
-        <div className="container mx-auto px-4 py-6">
+      <main className="pt-16 pb-20 px-4">
+        <div className="max-w-md mx-auto">
           {children}
         </div>
       </main>
       
-      {/* Navigation en bas fixe */}
+      {/* Navigation en bas */}
       <BottomNavigation />
-      
-      {/* Overlay pour les notifications/toasts */}
-      <div id="notification-portal" />
-      
-      {/* Indicateur hors ligne */}
-      <OfflineIndicator />
-    </div>
-  );
-}
-
-// Composant indicateur hors ligne
-function OfflineIndicator() {
-  const { isOnline } = useAppStore();
-
-  if (isOnline) return null;
-
-  return (
-    <div className="fixed top-16 left-0 right-0 bg-orange-500 text-white text-center py-2 text-sm z-40">
-      📡 Mode hors ligne - Les données seront synchronisées à la reconnexion
     </div>
   );
 }

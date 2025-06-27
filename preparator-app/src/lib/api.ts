@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { ApiResponse, LoginFormData, VehicleFormData, StepCompletionData, IssueReportData } from './types';
 
 // Configuration de base
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:6000';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 // Création de l'instance Axios
 const apiClient: AxiosInstance = axios.create({
@@ -102,34 +102,55 @@ export const authApi = {
   }
 };
 
-// === POINTAGES ===
+// === PROFIL & DASHBOARD (UTILISÉ AU LIEU DE SCHEDULE API SÉPARÉ) ===
 
-export const timesheetApi = {
-  // Statut du jour
-  getTodayStatus: async (agencyId: string) => {
-    const response = await apiClient.get<ApiResponse>(`/api/timesheets/today-status?agencyId=${agencyId}`);
+export const profileApi = {
+  // Dashboard personnel - CONTIENT planning + status
+  getDashboard: async () => {
+    const response = await apiClient.get<ApiResponse>('/api/profile/dashboard');
     return response.data.data;
   },
 
-  // Pointer l'arrivée
+  // Planning de la semaine
+  getWeekSchedule: async (date?: string) => {
+    const queryParams = date ? `?date=${date}` : '';
+    const response = await apiClient.get<ApiResponse>(`/api/profile/schedule/week${queryParams}`);
+    return response.data.data;
+  },
+
+  // Statistiques de performance
+  getPerformance: async (params: {
+    startDate?: string;
+    endDate?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams(params as any).toString();
+    const response = await apiClient.get<ApiResponse>(`/api/profile/performance?${queryParams}`);
+    return response.data.data;
+  }
+};
+
+// === POINTAGES ===
+
+export const timesheetApi = {
+  // Pointer l'arrivée (agencyId requis)
   clockIn: async (agencyId: string) => {
     const response = await apiClient.post<ApiResponse>('/api/timesheets/clock-in', { agencyId });
     return response.data.data;
   },
 
-  // Pointer le départ
+  // Pointer le départ (agencyId requis)
   clockOut: async (agencyId: string, notes?: string) => {
     const response = await apiClient.post<ApiResponse>('/api/timesheets/clock-out', { agencyId, notes });
     return response.data.data;
   },
 
-  // Début de pause
+  // Commencer la pause (agencyId requis)
   startBreak: async (agencyId: string) => {
     const response = await apiClient.post<ApiResponse>('/api/timesheets/break-start', { agencyId });
     return response.data.data;
   },
 
-  // Fin de pause
+  // Terminer la pause (agencyId requis)
   endBreak: async (agencyId: string) => {
     const response = await apiClient.post<ApiResponse>('/api/timesheets/break-end', { agencyId });
     return response.data.data;
@@ -245,33 +266,6 @@ export const preparationApi = {
   }
 };
 
-// === PROFIL ===
-
-export const profileApi = {
-  // Dashboard personnel
-  getDashboard: async () => {
-    const response = await apiClient.get<ApiResponse>('/api/profile/dashboard');
-    return response.data.data;
-  },
-
-  // Planning de la semaine
-  getWeekSchedule: async (date?: string) => {
-    const queryParams = date ? `?date=${date}` : '';
-    const response = await apiClient.get<ApiResponse>(`/api/profile/schedule/week${queryParams}`);
-    return response.data.data;
-  },
-
-  // Statistiques de performance
-  getPerformance: async (params: {
-    startDate?: string;
-    endDate?: string;
-  } = {}) => {
-    const queryParams = new URLSearchParams(params as any).toString();
-    const response = await apiClient.get<ApiResponse>(`/api/profile/performance?${queryParams}`);
-    return response.data.data;
-  }
-};
-
 // === UTILITAIRES ===
 
 // Fonction pour vérifier la connexion au serveur
@@ -301,5 +295,5 @@ export const handleApiError = (error: any): string => {
   return 'Une erreur inattendue s\'est produite';
 };
 
-// Export par défaut
-export default apiClient;
+// Export du client Axios
+export { apiClient };

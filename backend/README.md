@@ -305,7 +305,7 @@ CLOUDINARY_API_SECRET=your_api_secret
 MAX_FILE_SIZE=5242880
 
 # Serveur
-PORT=5000
+PORT=4000
 NODE_ENV=development
 ```
 

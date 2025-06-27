@@ -36,12 +36,11 @@ export function formatWorkTime(minutes: number): string {
 /**
  * Formater une heure (HH:mm)
  */
-export function formatTime(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(d)
+export function formatTime(minutes: number): string {
+  if (!minutes || minutes === 0) return '0min';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return hours > 0 ? `${hours}h${mins.toString().padStart(2, '0')}` : `${mins}min`;
 }
 
 /**
