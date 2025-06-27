@@ -1,12 +1,12 @@
 const express = require('express');
-const Schedule = require('../../models/Schedule');
-const User = require('../../models/User');
-const Agency = require('../../models/Agency');
-const { auth } = require('../../middleware/auth');
-const { adminAuth } = require('../../middleware/adminAuth');
-const { validateBody, validateObjectId, validateQuery } = require('../../middleware/validation');
-const { scheduleSchemas, querySchemas } = require('../../middleware/validation');
-const { SUCCESS_MESSAGES, ERROR_MESSAGES } = require('../../utils/constants');
+const Schedule = require('../../../models/Schedule');
+const User = require('../../../models/User');
+const Agency = require('../../../models/Agency');
+const { auth } = require('../../../middleware/auth');
+const { adminAuth } = require('../../../middleware/adminAuth');
+const { validateBody, validateObjectId, validateQuery } = require('../../../middleware/validation');
+const { scheduleSchemas, querySchemas } = require('../../../middleware/validation');
+const { SUCCESS_MESSAGES, ERROR_MESSAGES } = require('../../../utils/constants');
 
 const router = express.Router();
 
@@ -387,7 +387,7 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
     }
 
     // Vérifier s'il y a des pointages associés
-    const Timesheet = require('../../models/Timesheet');
+    const Timesheet = require('../../../models/Timesheet');
     const timesheet = await Timesheet.findOne({ schedule: schedule._id });
 
     if (timesheet) {

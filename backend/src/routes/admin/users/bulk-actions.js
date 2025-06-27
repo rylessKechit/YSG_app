@@ -1,13 +1,13 @@
 // ===== backend/src/routes/admin/users-bulk.js =====
 const express = require('express');
 const Joi = require('joi');
-const User = require('../../models/User');
-const Agency = require('../../models/Agency');
-const { auth } = require('../../middleware/auth');
-const { adminAuth } = require('../../middleware/adminAuth');
-const { validateBody } = require('../../middleware/validation');
-const { objectId } = require('../../middleware/validation');
-const { ERROR_MESSAGES, USER_ROLES } = require('../../utils/constants');
+const User = require('../../../models/User');
+const Agency = require('../../../models/Agency');
+const { auth } = require('../../../middleware/auth');
+const { adminAuth } = require('../../../middleware/adminAuth');
+const { validateBody } = require('../../../middleware/validation');
+const { objectId } = require('../../../middleware/validation');
+const { ERROR_MESSAGES, USER_ROLES } = require('../../../utils/constants');
 
 const router = express.Router();
 

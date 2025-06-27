@@ -1,14 +1,14 @@
 // ===== backend/src/routes/admin/dashboard-alerts.js =====
 const express = require('express');
 const Joi = require('joi');
-const User = require('../../models/User');
-const Timesheet = require('../../models/Timesheet');
-const Preparation = require('../../models/Preparation');
-const Schedule = require('../../models/Schedule');
-const { auth } = require('../../middleware/auth');
-const { adminAuth } = require('../../middleware/adminAuth');
-const { validateQuery } = require('../../middleware/validation');
-const { ERROR_MESSAGES, TIME_LIMITS } = require('../../utils/constants');
+const User = require('../../../models/User');
+const Timesheet = require('../../../models/Timesheet');
+const Preparation = require('../../../models/Preparation');
+const Schedule = require('../../../models/Schedule');
+const { auth } = require('../../../middleware/auth');
+const { adminAuth } = require('../../../middleware/adminAuth');
+const { validateQuery } = require('../../../middleware/validation');
+const { ERROR_MESSAGES, TIME_LIMITS } = require('../../../utils/constants');
 
 const router = express.Router();
 

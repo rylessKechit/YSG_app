@@ -1,10 +1,10 @@
 const express = require('express');
-const User = require('../../models/User');
-const { auth } = require('../../middleware/auth');
-const { adminAuth } = require('../../middleware/adminAuth');
-const { validateBody, validateObjectId, validateQuery } = require('../../middleware/validation');
-const { userSchemas, querySchemas } = require('../../middleware/validation');
-const { SUCCESS_MESSAGES, ERROR_MESSAGES, USER_ROLES } = require('../../utils/constants');
+const User = require('../../../models/User');
+const { auth } = require('../../../middleware/auth');
+const { adminAuth } = require('../../../middleware/adminAuth');
+const { validateBody, validateObjectId, validateQuery } = require('../../../middleware/validation');
+const { userSchemas, querySchemas } = require('../../../middleware/validation');
+const { SUCCESS_MESSAGES, ERROR_MESSAGES, USER_ROLES } = require('../../../utils/constants');
 
 const router = express.Router();
 
