@@ -1,7 +1,58 @@
 const mongoose = require('mongoose');
 const { PREPARATION_STATUS, PREPARATION_STEPS, TIME_LIMITS } = require('../utils/constants');
 
-// Schéma pour une étape de préparation
+// Schéma pour les informations véhicule (intégré)
+const vehicleInfoSchema = new mongoose.Schema({
+  licensePlate: {
+    type: String,
+    required: [true, 'La plaque d\'immatriculation est requise'],
+    uppercase: true,
+    trim: true,
+    maxlength: [15, 'La plaque ne peut pas dépasser 15 caractères'],
+    match: [
+      /^[A-Z0-9\-]{2,15}$/,
+      'Format de plaque invalide'
+    ]
+  },
+  brand: {
+    type: String,
+    required: [true, 'La marque est requise'],
+    trim: true,
+    maxlength: [50, 'La marque ne peut pas dépasser 50 caractères']
+  },
+  model: {
+    type: String,
+    required: [true, 'Le modèle est requis'],
+    trim: true,
+    maxlength: [50, 'Le modèle ne peut pas dépasser 50 caractères']
+  },
+  color: {
+    type: String,
+    trim: true,
+    maxlength: [30, 'La couleur ne peut pas dépasser 30 caractères']
+  },
+  year: {
+    type: Number,
+    min: [1990, 'L\'année ne peut pas être antérieure à 1990'],
+    max: [new Date().getFullYear() + 1, 'L\'année ne peut pas être dans le futur']
+  },
+  fuelType: {
+    type: String,
+    enum: ['essence', 'diesel', 'electrique', 'hybride', 'autre'],
+    default: 'essence'
+  },
+  condition: {
+    type: String,
+    enum: ['excellent', 'bon', 'moyen', 'mauvais'],
+    default: 'bon'
+  },
+  notes: {
+    type: String,
+    maxlength: [500, 'Les notes véhicule ne peuvent pas dépasser 500 caractères']
+  }
+}, { _id: false });
+
+// Schéma pour une étape de préparation (inchangé)
 const stepSchema = new mongoose.Schema({
   type: {
     type: String,
@@ -11,60 +62,50 @@ const stepSchema = new mongoose.Schema({
     },
     required: [true, 'Le type d\'étape est requis']
   },
-
   completed: {
     type: Boolean,
     default: false
   },
-
   photoUrl: {
     type: String,
     validate: {
       validator: function(value) {
-        // Si l'étape est complétée, une photo est requise
         return !this.completed || (value && value.length > 0);
       },
       message: 'Une photo est requise pour valider une étape'
     }
   },
-
   photoPublicId: {
-    type: String // ID Cloudinary pour pouvoir supprimer l'image si besoin
+    type: String
   },
-
   completedAt: {
     type: Date,
     validate: {
       validator: function(value) {
-        // Si l'étape est complétée, la date de completion est requise
         return !this.completed || value;
       },
       message: 'La date de completion est requise pour une étape terminée'
     }
   },
-
   notes: {
     type: String,
     maxlength: [200, 'Les notes d\'étape ne peuvent pas dépasser 200 caractères']
   },
-
-  // Temps passé sur cette étape (en minutes)
   duration: {
     type: Number,
     min: 0
   }
-
 }, {
   _id: true,
   timestamps: true
 });
 
-// Schéma principal de préparation
+// Schéma principal de préparation (simplifié)
 const preparationSchema = new mongoose.Schema({
+  // ✅ Informations véhicule directement intégrées
   vehicle: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Vehicle',
-    required: [true, 'Le véhicule est requis']
+    type: vehicleInfoSchema,
+    required: [true, 'Les informations véhicule sont requises']
   },
 
   user: {
@@ -89,20 +130,18 @@ const preparationSchema = new mongoose.Schema({
     type: Date,
     validate: {
       validator: function(value) {
-        if (!value) return true; // Optionnel si pas encore terminé
+        if (!value) return true;
         return value > this.startTime;
       },
       message: 'L\'heure de fin doit être après l\'heure de début'
     }
   },
 
-  // Temps total en minutes (calculé automatiquement)
   totalMinutes: {
     type: Number,
     min: 0
   },
 
-  // Les 6 étapes de préparation
   steps: [stepSchema],
 
   status: {
@@ -114,19 +153,16 @@ const preparationSchema = new mongoose.Schema({
     default: PREPARATION_STATUS.IN_PROGRESS
   },
 
-  // Notes générales ou incidents
   notes: {
     type: String,
     maxlength: [1000, 'Les notes ne peuvent pas dépasser 1000 caractères']
   },
 
-  // Respect du délai de 30min
   isOnTime: {
     type: Boolean,
-    default: null // Calculé automatiquement à la fin
+    default: null
   },
 
-  // Problèmes rencontrés
   issues: [{
     type: {
       type: String,
@@ -146,7 +182,6 @@ const preparationSchema = new mongoose.Schema({
     }
   }],
 
-  // Évaluation de qualité (optionnelle)
   qualityRating: {
     score: {
       type: Number,
@@ -164,7 +199,6 @@ const preparationSchema = new mongoose.Schema({
     ratedAt: Date
   },
 
-  // Métadonnées
   createdAt: {
     type: Date,
     default: Date.now
@@ -186,25 +220,20 @@ const preparationSchema = new mongoose.Schema({
 });
 
 // ===== INDEX =====
-
-// Index pour les recherches fréquentes
-preparationSchema.index({ vehicle: 1, status: 1 });
+preparationSchema.index({ 'vehicle.licensePlate': 1, createdAt: -1 });
 preparationSchema.index({ user: 1, createdAt: -1 });
 preparationSchema.index({ agency: 1, createdAt: -1 });
 preparationSchema.index({ status: 1, createdAt: -1 });
-preparationSchema.index({ startTime: 1, agency: 1 });
 
 // ===== MIDDLEWARE PRE-SAVE =====
-
-// Calculer automatiquement les durées et statuts
 preparationSchema.pre('save', function(next) {
-  // Calculer le temps total si la préparation est terminée
+  // Calculer le temps total si terminé
   if (this.endTime && this.startTime) {
     this.totalMinutes = Math.round((this.endTime - this.startTime) / (1000 * 60));
     this.isOnTime = this.totalMinutes <= TIME_LIMITS.PREPARATION_MAX_MINUTES;
   }
 
-  // Initialiser les étapes si elles n'existent pas
+  // Initialiser les étapes si nouvelles
   if (this.isNew && this.steps.length === 0) {
     this.steps = Object.values(PREPARATION_STEPS).map(stepType => ({
       type: stepType,
@@ -212,7 +241,7 @@ preparationSchema.pre('save', function(next) {
     }));
   }
 
-  // Mettre à jour le statut selon l'état des étapes
+  // Mettre à jour le statut
   if (this.status === PREPARATION_STATUS.IN_PROGRESS) {
     const completedSteps = this.steps.filter(step => step.completed);
     if (completedSteps.length > 0 && this.endTime) {
@@ -220,18 +249,21 @@ preparationSchema.pre('save', function(next) {
     }
   }
 
-  next();
-});
-
-// Mettre à jour le timestamp
-preparationSchema.pre('save', function(next) {
-  if (this.isModified() && !this.isNew) {
-    this.updatedAt = Date.now();
+  // Formater la plaque en majuscules
+  if (this.vehicle && this.vehicle.licensePlate) {
+    this.vehicle.licensePlate = this.vehicle.licensePlate.toUpperCase();
   }
+
   next();
 });
 
 // ===== MÉTHODES D'INSTANCE =====
+
+// Obtenir le nom complet du véhicule
+preparationSchema.methods.getVehicleFullName = function() {
+  const parts = [this.vehicle.brand, this.vehicle.model].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : 'Véhicule';
+};
 
 // Obtenir le pourcentage d'avancement
 preparationSchema.methods.getProgress = function() {
@@ -263,7 +295,6 @@ preparationSchema.methods.completeStep = function(stepType, photoUrl, photoPubli
 
 // Terminer la préparation
 preparationSchema.methods.complete = function(notes = '') {
-  // Vérifier qu'au moins une étape est complétée
   const completedSteps = this.steps.filter(step => step.completed);
   
   if (completedSteps.length === 0) {
@@ -273,15 +304,6 @@ preparationSchema.methods.complete = function(notes = '') {
   this.endTime = new Date();
   this.status = PREPARATION_STATUS.COMPLETED;
   if (notes) this.notes = notes;
-
-  return this;
-};
-
-// Annuler la préparation
-preparationSchema.methods.cancel = function(reason = '') {
-  this.status = PREPARATION_STATUS.CANCELLED;
-  this.endTime = new Date();
-  if (reason) this.notes = reason;
 
   return this;
 };
@@ -299,50 +321,21 @@ preparationSchema.methods.addIssue = function(type, description, photoUrl = null
   return this;
 };
 
-// Obtenir un résumé de la préparation
-preparationSchema.methods.getSummary = function() {
-  const formatTime = (date) => {
-    if (!date) return null;
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const formatDuration = (minutes) => {
-    if (!minutes) return null;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return hours > 0 ? `${hours}h${mins.toString().padStart(2, '0')}` : `${mins}min`;
-  };
-
-  return {
-    id: this._id,
-    startTime: formatTime(this.startTime),
-    endTime: formatTime(this.endTime),
-    duration: formatDuration(this.totalMinutes),
-    progress: this.getProgress(),
-    isOnTime: this.isOnTime,
-    status: this.status,
-    completedSteps: this.steps.filter(step => step.completed).length,
-    totalSteps: this.steps.length,
-    hasIssues: this.issues.length > 0
-  };
-};
-
 // ===== MÉTHODES STATIQUES =====
 
-// Trouver les préparations en cours
-preparationSchema.statics.findInProgress = function(agencyId = null) {
-  const query = { status: PREPARATION_STATUS.IN_PROGRESS };
-  if (agencyId) query.agency = agencyId;
-
-  return this.find(query)
-    .populate('vehicle', 'licensePlate brand model')
-    .populate('user', 'firstName lastName')
-    .populate('agency', 'name code')
-    .sort({ startTime: 1 });
+// Trouver par plaque d'immatriculation
+preparationSchema.statics.findByLicensePlate = function(licensePlate, limit = 10) {
+  return this.find({
+    'vehicle.licensePlate': licensePlate.toUpperCase()
+  })
+  .populate('user', 'firstName lastName')
+  .populate('agency', 'name code client')
+  .sort({ createdAt: -1 })
+  .limit(limit);
 };
 
-// Obtenir les statistiques de préparation
-preparationSchema.statics.getStats = function(filters = {}) {
+// Statistiques véhicules les plus préparés
+preparationSchema.statics.getVehicleStats = function(filters = {}) {
   const matchQuery = { status: PREPARATION_STATUS.COMPLETED };
   
   if (filters.startDate && filters.endDate) {
@@ -355,76 +348,47 @@ preparationSchema.statics.getStats = function(filters = {}) {
     { $match: matchQuery },
     {
       $group: {
-        _id: null,
+        _id: {
+          licensePlate: '$vehicle.licensePlate',
+          brand: '$vehicle.brand',
+          model: '$vehicle.model'
+        },
         totalPreparations: { $sum: 1 },
         averageTime: { $avg: '$totalMinutes' },
-        onTimeCount: {
-          $sum: { $cond: [{ $eq: ['$isOnTime', true] }, 1, 0] }
-        },
-        minTime: { $min: '$totalMinutes' },
-        maxTime: { $max: '$totalMinutes' },
-        totalIssues: { $sum: { $size: '$issues' } }
+        lastPreparation: { $max: '$createdAt' }
       }
     },
     {
       $project: {
+        licensePlate: '$_id.licensePlate',
+        brand: '$_id.brand',
+        model: '$_id.model',
+        fullName: { $concat: ['$_id.brand', ' ', '$_id.model'] },
         totalPreparations: 1,
         averageTime: { $round: ['$averageTime', 1] },
-        onTimeRate: {
-          $round: [
-            { $multiply: [{ $divide: ['$onTimeCount', '$totalPreparations'] }, 100] },
-            2
-          ]
-        },
-        minTime: 1,
-        maxTime: 1,
-        totalIssues: 1,
-        issueRate: {
-          $round: [
-            { $multiply: [{ $divide: ['$totalIssues', '$totalPreparations'] }, 100] },
-            2
-          ]
-        }
+        lastPreparation: 1
       }
-    }
+    },
+    { $sort: { totalPreparations: -1 } },
+    { $limit: 20 }
   ]);
 };
 
-// Trouver les préparations qui dépassent le temps limite
-preparationSchema.statics.findOvertime = function() {
-  const cutoffTime = new Date(Date.now() - TIME_LIMITS.PREPARATION_MAX_MINUTES * 60 * 1000);
-  
-  return this.find({
-    status: PREPARATION_STATUS.IN_PROGRESS,
-    startTime: { $lt: cutoffTime }
-  })
-  .populate('vehicle', 'licensePlate')
-  .populate('user', 'firstName lastName email')
-  .populate('agency', 'name code')
-  .sort({ startTime: 1 });
-};
-
 // ===== VIRTUAL FIELDS =====
+preparationSchema.virtual('vehicleFullName').get(function() {
+  return this.getVehicleFullName();
+});
 
-// Progression virtuelle
 preparationSchema.virtual('progress').get(function() {
   return this.getProgress();
 });
 
-// Résumé virtuel
-preparationSchema.virtual('summary').get(function() {
-  return this.getSummary();
-});
-
-// Durée actuelle virtuelle (pour les préparations en cours)
 preparationSchema.virtual('currentDuration').get(function() {
   if (this.endTime) return this.totalMinutes;
-  
   const now = new Date();
   return Math.round((now - this.startTime) / (1000 * 60));
 });
 
-// Assurer que les champs virtuels sont inclus dans JSON
 preparationSchema.set('toJSON', { virtuals: true });
 
 module.exports = mongoose.model('Preparation', preparationSchema);

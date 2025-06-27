@@ -49,3 +49,5 @@ build/
 
 # Railway
 .railway/
+
+/seed-admin.js

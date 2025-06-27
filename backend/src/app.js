@@ -95,10 +95,10 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/agencies', require('./routes/common/agencies'));
 
 // Routes administrateur
-app.use('/api/admin', require('./routes/admin/users'));
-app.use('/api/admin', require('./routes/admin/agencies'));
-app.use('/api/admin', require('./routes/admin/schedules'));
-app.use('/api/admin', require('./routes/admin/dashboard'));
+app.use('/api/admin/users', require('./routes/admin/users'));
+app.use('/api/admin/agencies', require('./routes/admin/agencies')); // ✅ Route agencies admin
+app.use('/api/admin/schedules', require('./routes/admin/schedules'));
+app.use('/api/admin/dashboard', require('./routes/admin/dashboard'));
 
 // Routes préparateur
 app.use('/api/timesheets', require('./routes/preparateur/timesheets'));

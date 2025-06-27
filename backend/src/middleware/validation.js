@@ -175,7 +175,7 @@ const timesheetSchemas = {
 };
 
 /**
- * Validation pour les véhicules
+ * Validation pour les véhicules (maintenu pour compatibilité)
  */
 const vehicleSchemas = {
   create: Joi.object({
@@ -213,9 +213,39 @@ const vehicleSchemas = {
 };
 
 /**
- * Validation pour les préparations
+ * Validation pour les préparations (nouvelle version avec véhicule intégré)
  */
 const preparationSchemas = {
+  // ✅ Nouveau schéma principal pour démarrer avec informations véhicule
+  startWithVehicle: Joi.object({
+    // Agence de facturation (peut être différente du planning)
+    agencyId: objectId.required(),
+    
+    // Informations véhicule (saisies manuellement par le préparateur)
+    vehicle: Joi.object({
+      licensePlate: licensePlate.required(),
+      brand: Joi.string().min(2).max(50).required().messages({
+        'string.min': 'La marque doit contenir au moins 2 caractères',
+        'string.max': 'La marque ne peut pas dépasser 50 caractères',
+        'any.required': 'La marque est requise'
+      }),
+      model: Joi.string().min(1).max(50).required().messages({
+        'string.min': 'Le modèle est requis',
+        'string.max': 'Le modèle ne peut pas dépasser 50 caractères',
+        'any.required': 'Le modèle est requis'
+      }),
+      color: Joi.string().max(30).optional().allow(''),
+      year: Joi.number().integer().min(1990).max(new Date().getFullYear() + 1).optional(),
+      fuelType: Joi.string().valid('essence', 'diesel', 'electrique', 'hybride', 'autre').optional(),
+      condition: Joi.string().valid('excellent', 'bon', 'moyen', 'mauvais').default('bon'),
+      notes: Joi.string().max(500).optional().allow('')
+    }).required(),
+    
+    // Notes générales de préparation
+    notes: Joi.string().max(1000).optional().allow('')
+  }),
+
+  // ✅ Ancien schéma maintenu pour compatibilité (si besoin)
   start: Joi.object({
     vehicleId: objectId.required(),
     agencyId: objectId.required(),
@@ -223,17 +253,27 @@ const preparationSchemas = {
   }),
 
   completeStep: Joi.object({
-    stepType: Joi.string().valid(...Object.values(PREPARATION_STEPS)).required(),
-    notes: Joi.string().max(200).optional()
+    stepType: Joi.string().valid(...Object.values(PREPARATION_STEPS)).required().messages({
+      'any.only': 'Type d\'étape invalide. Types autorisés: ' + Object.values(PREPARATION_STEPS).join(', '),
+      'any.required': 'Le type d\'étape est requis'
+    }),
+    notes: Joi.string().max(200).optional().allow('')
   }),
 
   complete: Joi.object({
-    notes: Joi.string().max(1000).optional()
+    notes: Joi.string().max(1000).optional().allow('')
   }),
 
   addIssue: Joi.object({
-    type: Joi.string().valid('damage', 'missing_key', 'fuel_problem', 'cleanliness', 'mechanical', 'other').required(),
-    description: Joi.string().min(5).max(300).required()
+    type: Joi.string().valid('damage', 'missing_key', 'fuel_problem', 'cleanliness', 'mechanical', 'other').required().messages({
+      'any.only': 'Type d\'incident invalide',
+      'any.required': 'Le type d\'incident est requis'
+    }),
+    description: Joi.string().min(5).max(300).required().messages({
+      'string.min': 'La description doit contenir au moins 5 caractères',
+      'string.max': 'La description ne peut pas dépasser 300 caractères',
+      'any.required': 'La description est requise'
+    })
   })
 };
 
@@ -257,6 +297,7 @@ const querySchemas = {
 
   search: Joi.object({
     q: Joi.string().min(2).max(100).optional(),
+    search: Joi.string().min(2).max(100).optional(), // Alternative pour recherche
     status: Joi.string().optional(),
     role: Joi.string().valid(...Object.values(USER_ROLES)).optional()
   })
@@ -327,6 +368,61 @@ const validateDate = (paramName, required = false) => {
   };
 };
 
+/**
+ * Middleware spécialisé pour valider les données de plaque d'immatriculation
+ */
+const validateLicensePlate = (req, res, next) => {
+  const { licensePlate } = req.params;
+  
+  if (!licensePlate) {
+    return res.status(400).json({
+      success: false,
+      message: 'Plaque d\'immatriculation requise'
+    });
+  }
+
+  const plateRegex = /^[A-Z0-9\-]{2,15}$/;
+  if (!plateRegex.test(licensePlate.toUpperCase())) {
+    return res.status(400).json({
+      success: false,
+      message: 'Format de plaque d\'immatriculation invalide'
+    });
+  }
+
+  // Normaliser la plaque en majuscules
+  req.params.licensePlate = licensePlate.toUpperCase();
+  next();
+};
+
+/**
+ * Middleware pour valider les paramètres de recherche dans l'historique
+ */
+const validateHistoryQuery = (req, res, next) => {
+  const schema = Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
+    startDate: Joi.date().optional(),
+    endDate: Joi.date().min(Joi.ref('startDate')).optional(),
+    agencyId: objectId.optional(),
+    search: Joi.string().min(1).max(50).optional(), // Recherche par plaque
+    sort: Joi.string().valid('createdAt', 'startTime', 'totalMinutes', 'licensePlate').default('createdAt'),
+    order: Joi.string().valid('asc', 'desc').default('desc')
+  });
+
+  const { error, value } = schema.validate(req.query);
+  
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: 'Paramètres de requête invalides',
+      errors: error.details.map(detail => detail.message)
+    });
+  }
+
+  req.query = value;
+  next();
+};
+
 module.exports = {
   validate,
   validateParams,
@@ -334,6 +430,8 @@ module.exports = {
   validateBody,
   validateObjectId,
   validateDate,
+  validateLicensePlate,
+  validateHistoryQuery,
   
   // Schémas de validation
   authSchemas,

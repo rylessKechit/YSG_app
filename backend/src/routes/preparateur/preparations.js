@@ -1,7 +1,6 @@
 const express = require('express');
 const Preparation = require('../../models/Preparation');
-const Vehicle = require('../../models/Vehicle');
-const { auth, checkAgencyAccess } = require('../../middleware/auth');
+const { auth } = require('../../middleware/auth');
 const { preparateurAuth } = require('../../middleware/adminAuth');
 const { validateBody, validateObjectId, validateQuery } = require('../../middleware/validation');
 const { uploadPreparationPhoto, uploadIncidentPhoto, requirePhoto, validatePreparationUpload } = require('../../middleware/upload');
@@ -14,22 +13,16 @@ const router = express.Router();
 router.use(auth, preparateurAuth);
 
 /**
- * @route   GET /api/preparations/available-vehicles
- * @desc    Obtenir les véhicules disponibles pour préparation
+ * @route   POST /api/preparations/start
+ * @desc    Démarrer une préparation avec informations véhicule
  * @access  Preparateur
  */
-router.get('/available-vehicles', async (req, res) => {
+router.post('/start', validateBody(preparationSchemas.startWithVehicle), async (req, res) => {
   try {
-    const { agencyId } = req.query;
-    
-    if (!agencyId) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID d\'agence requis'
-      });
-    }
+    const { agencyId, vehicle: vehicleData, notes } = req.body;
+    const userId = req.user.userId;
 
-    // Vérifier l'accès à l'agence
+    // Vérifier l'accès à l'agence (flexibilité pour changer d'agence)
     const hasAccess = req.user.agencies.some(
       agency => agency._id.toString() === agencyId.toString()
     );
@@ -37,78 +30,11 @@ router.get('/available-vehicles', async (req, res) => {
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
-        message: ERROR_MESSAGES.ACCESS_DENIED
+        message: 'Vous n\'avez pas accès à cette agence'
       });
     }
 
-    // Récupérer les véhicules disponibles
-    const vehicles = await Vehicle.findAvailable(agencyId);
-
-    res.json({
-      success: true,
-      data: {
-        vehicles: vehicles.map(vehicle => ({
-          id: vehicle._id,
-          licensePlate: vehicle.licensePlate,
-          brand: vehicle.brand,
-          model: vehicle.model,
-          color: vehicle.color,
-          year: vehicle.year,
-          fullName: vehicle.fullName,
-          specifications: vehicle.specifications,
-          condition: vehicle.condition,
-          requiresSpecialCare: vehicle.requiresSpecialCare,
-          stats: vehicle.stats
-        })),
-        count: vehicles.length
-      }
-    });
-
-  } catch (error) {
-    console.error('Erreur récupération véhicules:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
-    });
-  }
-});
-
-/**
- * @route   POST /api/preparations/start
- * @desc    Démarrer une nouvelle préparation
- * @access  Preparateur
- */
-router.post('/start', validateBody(preparationSchemas.start), checkAgencyAccess, async (req, res) => {
-  try {
-    const { vehicleId, agencyId, notes } = req.body;
-    const userId = req.user.userId;
-
-    // Vérifier que le véhicule existe et est disponible
-    const vehicle = await Vehicle.findById(vehicleId);
-    
-    if (!vehicle) {
-      return res.status(404).json({
-        success: false,
-        message: ERROR_MESSAGES.VEHICLE_NOT_FOUND
-      });
-    }
-
-    if (!vehicle.isAvailableForPreparation()) {
-      return res.status(400).json({
-        success: false,
-        message: ERROR_MESSAGES.VEHICLE_NOT_AVAILABLE
-      });
-    }
-
-    // Vérifier que le véhicule appartient à la bonne agence
-    if (vehicle.agency.toString() !== agencyId.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Ce véhicule n\'appartient pas à cette agence'
-      });
-    }
-
-    // Vérifier qu'il n'y a pas déjà une préparation en cours pour cet utilisateur
+    // Vérifier qu'il n'y a pas déjà une préparation en cours
     const existingPreparation = await Preparation.findOne({
       user: userId,
       status: 'in_progress'
@@ -121,9 +47,18 @@ router.post('/start', validateBody(preparationSchemas.start), checkAgencyAccess,
       });
     }
 
-    // Créer la nouvelle préparation
+    // Créer la préparation avec les informations véhicule
     const preparation = new Preparation({
-      vehicle: vehicleId,
+      vehicle: {
+        licensePlate: vehicleData.licensePlate.toUpperCase(),
+        brand: vehicleData.brand,
+        model: vehicleData.model,
+        color: vehicleData.color,
+        year: vehicleData.year,
+        fuelType: vehicleData.fuelType || 'essence',
+        condition: vehicleData.condition || 'bon',
+        notes: vehicleData.notes
+      },
       user: userId,
       agency: agencyId,
       notes,
@@ -132,14 +67,8 @@ router.post('/start', validateBody(preparationSchemas.start), checkAgencyAccess,
 
     await preparation.save();
 
-    // Mettre à jour le statut du véhicule
-    await vehicle.startPreparation(preparation._id);
-
     // Charger les relations pour la réponse
-    await preparation.populate([
-      { path: 'vehicle', select: 'licensePlate brand model fullName' },
-      { path: 'agency', select: 'name code client' }
-    ]);
+    await preparation.populate('agency', 'name code client');
 
     res.status(201).json({
       success: true,
@@ -147,7 +76,16 @@ router.post('/start', validateBody(preparationSchemas.start), checkAgencyAccess,
       data: {
         preparation: {
           id: preparation._id,
-          vehicle: preparation.vehicle,
+          vehicle: {
+            licensePlate: preparation.vehicle.licensePlate,
+            brand: preparation.vehicle.brand,
+            model: preparation.vehicle.model,
+            fullName: preparation.vehicleFullName,
+            condition: preparation.vehicle.condition,
+            color: preparation.vehicle.color,
+            year: preparation.vehicle.year,
+            fuelType: preparation.vehicle.fuelType
+          },
           agency: preparation.agency,
           startTime: preparation.startTime,
           status: preparation.status,
@@ -194,7 +132,6 @@ router.put('/:id/step',
 
       // Récupérer la préparation
       const preparation = await Preparation.findById(preparationId)
-        .populate('vehicle', 'licensePlate brand model')
         .populate('agency', 'name code');
 
       if (!preparation) {
@@ -286,7 +223,6 @@ router.post('/:id/complete',
 
       // Récupérer la préparation
       const preparation = await Preparation.findById(preparationId)
-        .populate('vehicle', 'licensePlate brand model')
         .populate('agency', 'name code');
 
       if (!preparation) {
@@ -316,14 +252,6 @@ router.post('/:id/complete',
       preparation.complete(notes);
       await preparation.save();
 
-      // Mettre à jour le statut du véhicule
-      const vehicle = await Vehicle.findById(preparation.vehicle._id);
-      await vehicle.completePreparation({
-        user: userId,
-        duration: preparation.totalMinutes,
-        issues: preparation.issues.map(issue => issue.description)
-      });
-
       // Mettre à jour les statistiques de l'utilisateur
       const user = await require('../../models/User').findById(userId);
       await user.updateStats();
@@ -334,7 +262,12 @@ router.post('/:id/complete',
         data: {
           preparation: {
             id: preparation._id,
-            vehicle: preparation.vehicle,
+            vehicle: {
+              licensePlate: preparation.vehicle.licensePlate,
+              brand: preparation.vehicle.brand,
+              model: preparation.vehicle.model,
+              fullName: preparation.vehicleFullName
+            },
             agency: preparation.agency,
             startTime: preparation.startTime,
             endTime: preparation.endTime,
@@ -439,7 +372,6 @@ router.get('/current', async (req, res) => {
       user: userId,
       status: 'in_progress'
     })
-    .populate('vehicle', 'licensePlate brand model fullName condition requiresSpecialCare')
     .populate('agency', 'name code client');
 
     if (!preparation) {
@@ -456,7 +388,17 @@ router.get('/current', async (req, res) => {
       data: {
         preparation: {
           id: preparation._id,
-          vehicle: preparation.vehicle,
+          vehicle: {
+            licensePlate: preparation.vehicle.licensePlate,
+            brand: preparation.vehicle.brand,
+            model: preparation.vehicle.model,
+            fullName: preparation.vehicleFullName,
+            condition: preparation.vehicle.condition,
+            color: preparation.vehicle.color,
+            year: preparation.vehicle.year,
+            fuelType: preparation.vehicle.fuelType,
+            notes: preparation.vehicle.notes
+          },
           agency: preparation.agency,
           startTime: preparation.startTime,
           status: preparation.status,
@@ -492,7 +434,7 @@ router.get('/current', async (req, res) => {
  */
 router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas.dateRange)), async (req, res) => {
   try {
-    const { page, limit, startDate, endDate, agencyId } = req.query;
+    const { page, limit, startDate, endDate, agencyId, search } = req.query;
     const userId = req.user.userId;
 
     // Dates par défaut (30 derniers jours)
@@ -523,12 +465,16 @@ router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas
       query.agency = agencyId;
     }
 
+    // Recherche par plaque d'immatriculation
+    if (search) {
+      query['vehicle.licensePlate'] = { $regex: search.toUpperCase(), $options: 'i' };
+    }
+
     // Exécuter la requête avec pagination
     const skip = (page - 1) * limit;
     
     const [preparations, totalCount] = await Promise.all([
       Preparation.find(query)
-        .populate('vehicle', 'licensePlate brand model')
         .populate('agency', 'name code client')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -545,7 +491,13 @@ router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas
       data: {
         preparations: preparations.map(prep => ({
           id: prep._id,
-          vehicle: prep.vehicle,
+          vehicle: {
+            licensePlate: prep.vehicle.licensePlate,
+            brand: prep.vehicle.brand,
+            model: prep.vehicle.model,
+            fullName: prep.vehicleFullName,
+            condition: prep.vehicle.condition
+          },
           agency: prep.agency,
           startTime: prep.startTime,
           endTime: prep.endTime,
@@ -562,7 +514,8 @@ router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas
         filters: {
           startDate: defaultStartDate,
           endDate: defaultEndDate,
-          agencyId
+          agencyId,
+          search
         },
         pagination: {
           page,
@@ -577,6 +530,64 @@ router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas
 
   } catch (error) {
     console.error('Erreur historique préparations:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR
+    });
+  }
+});
+
+/**
+ * @route   GET /api/preparations/vehicle-history/:licensePlate
+ * @desc    Historique des préparations d'un véhicule par plaque
+ * @access  Preparateur
+ */
+router.get('/vehicle-history/:licensePlate', async (req, res) => {
+  try {
+    const { licensePlate } = req.params;
+    const userId = req.user.userId;
+
+    // Récupérer l'historique des préparations pour cette plaque
+    const preparations = await Preparation.findByLicensePlate(licensePlate)
+      .populate('user', 'firstName lastName')
+      .populate('agency', 'name code');
+
+    // Filtrer par agences accessibles au préparateur (sécurité)
+    const accessibleAgencies = req.user.agencies.map(a => a._id.toString());
+    const filteredPreparations = preparations.filter(prep => 
+      accessibleAgencies.includes(prep.agency._id.toString())
+    );
+
+    res.json({
+      success: true,
+      data: {
+        licensePlate: licensePlate.toUpperCase(),
+        preparations: filteredPreparations.map(prep => ({
+          id: prep._id,
+          vehicle: prep.vehicle,
+          user: prep.user,
+          agency: prep.agency,
+          startTime: prep.startTime,
+          endTime: prep.endTime,
+          totalMinutes: prep.totalMinutes,
+          isOnTime: prep.isOnTime,
+          status: prep.status,
+          progress: prep.progress,
+          issuesCount: prep.issues.length,
+          createdAt: prep.createdAt
+        })),
+        summary: {
+          totalPreparations: filteredPreparations.length,
+          lastPreparation: filteredPreparations[0]?.createdAt,
+          averageTime: filteredPreparations.length > 0 ? 
+            Math.round(filteredPreparations.reduce((sum, p) => sum + (p.totalMinutes || 0), 0) / filteredPreparations.length) : 0,
+          lastVehicleInfo: filteredPreparations[0]?.vehicle
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur historique véhicule:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR
@@ -606,6 +617,13 @@ router.get('/my-stats', validateQuery(querySchemas.dateRange), async (req, res) 
       userId
     });
 
+    // Statistiques par type de véhicule
+    const vehicleStats = await Preparation.getVehicleStats({
+      startDate: defaultStartDate,
+      endDate: defaultEndDate,
+      userId
+    });
+
     // Obtenir les stats utilisateur actuelles
     const user = await require('../../models/User').findById(userId);
 
@@ -625,12 +643,68 @@ router.get('/my-stats', validateQuery(querySchemas.dateRange), async (req, res) 
           totalIssues: 0,
           issueRate: 0
         },
-        overallStats: user.stats
+        overallStats: user.stats,
+        topVehicles: vehicleStats.slice(0, 5) // Top 5 véhicules les plus préparés
       }
     });
 
   } catch (error) {
     console.error('Erreur statistiques utilisateur:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR
+    });
+  }
+});
+
+/**
+ * @route   GET /api/preparations/user-agencies
+ * @desc    Obtenir les agences accessibles avec planning du jour
+ * @access  Preparateur
+ */
+router.get('/user-agencies', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Récupérer le planning du jour pour déterminer l'agence par défaut
+    const Schedule = require('../../models/Schedule');
+    const todaySchedule = await Schedule.findOne({
+      user: userId,
+      date: today,
+      status: 'active'
+    }).populate('agency', 'name code client');
+
+    // Récupérer toutes les agences accessibles
+    const Agency = require('../../models/Agency');
+    const accessibleAgencies = await Agency.find({
+      _id: { $in: req.user.agencies.map(a => a._id) },
+      isActive: true
+    }).sort({ name: 1 });
+
+    res.json({
+      success: true,
+      data: {
+        agencies: accessibleAgencies.map(agency => ({
+          id: agency._id,
+          name: agency.name,
+          code: agency.code,
+          client: agency.client,
+          isDefault: todaySchedule?.agency?._id?.toString() === agency._id.toString()
+        })),
+        defaultAgency: todaySchedule ? {
+          id: todaySchedule.agency._id,
+          name: todaySchedule.agency.name,
+          code: todaySchedule.agency.code,
+          client: todaySchedule.agency.client
+        } : null,
+        hasScheduleToday: !!todaySchedule
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération agences utilisateur:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR

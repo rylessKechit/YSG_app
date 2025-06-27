@@ -8,13 +8,14 @@ const connectDB = async () => {
       throw new Error('MONGODB_URI non défini dans les variables d\'environnement');
     }
 
+    // ✅ Options de connexion minimales et compatibles
     const options = {
-      // Options de connexion optimisées
       maxPoolSize: 10, // Maximum 10 connexions dans le pool
       serverSelectionTimeoutMS: 5000, // Timeout après 5s si pas de serveur
-      socketTimeoutMS: 45000, // Fermer les sockets après 45s d'inactivité
-      bufferMaxEntries: 0, // Désactiver mongoose buffering
-      bufferCommands: false // Désactiver mongoose buffering
+      socketTimeoutMS: 45000 // Fermer les sockets après 45s d'inactivité
+      
+      // ❌ SUPPRIMÉ: toutes les options de buffering obsolètes
+      // Les versions récentes de Mongoose gèrent ça automatiquement
     };
 
     const conn = await mongoose.connect(mongoURI, options);
@@ -28,6 +29,7 @@ const connectDB = async () => {
 
     mongoose.connection.on('error', (err) => {
       console.error('❌ Erreur MongoDB:', err);
+      // ✅ Ne pas crash le serveur, juste logger
     });
 
     mongoose.connection.on('disconnected', () => {
@@ -36,21 +38,27 @@ const connectDB = async () => {
 
     // Fermeture propre en cas d'arrêt de l'application
     process.on('SIGINT', async () => {
-      await mongoose.connection.close();
-      console.log('🔒 Connexion MongoDB fermée');
-      process.exit(0);
+      try {
+        await mongoose.connection.close();
+        console.log('🔒 Connexion MongoDB fermée');
+        process.exit(0);
+      } catch (error) {
+        console.error('❌ Erreur fermeture MongoDB:', error);
+        process.exit(1);
+      }
     });
 
   } catch (error) {
     console.error('❌ Erreur de connexion MongoDB:', error.message);
     
-    // En développement, on peut continuer sans DB pour tester
+    // ✅ En développement, permettre de continuer sans DB pour les tests
     if (process.env.NODE_ENV === 'development') {
       console.log('⚠️  Continuation en mode développement sans DB');
       return;
     }
     
     // En production, on arrête tout
+    console.error('🛑 Arrêt du serveur en production sans DB');
     process.exit(1);
   }
 };
