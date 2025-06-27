@@ -4,7 +4,6 @@ import { authApi, handleApiError } from '../api';
 import { User, LoginFormData, AuthState } from '../types';
 
 interface AuthStore extends AuthState {
-  // Actions
   login: (credentials: LoginFormData) => Promise<void>;
   logout: () => void;
   refreshToken: () => Promise<void>;
@@ -16,14 +15,12 @@ interface AuthStore extends AuthState {
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
-      // État initial
       user: null,
       token: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
 
-      // Connexion
       login: async (credentials: LoginFormData) => {
         set({ isLoading: true, error: null });
         
@@ -31,7 +28,6 @@ export const useAuthStore = create<AuthStore>()(
           const response = await authApi.login(credentials);
           const { token, user } = response;
 
-          // Stocker le token dans localStorage
           if (typeof window !== 'undefined') {
             localStorage.setItem('auth-token', token);
           }
@@ -60,15 +56,12 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      // Déconnexion
       logout: () => {
-        // Nettoyer le localStorage
         if (typeof window !== 'undefined') {
           localStorage.removeItem('auth-token');
           localStorage.removeItem('auth-user');
         }
 
-        // Appeler l'API de déconnexion (sans attendre)
         authApi.logout().catch(console.error);
 
         set({
@@ -82,7 +75,6 @@ export const useAuthStore = create<AuthStore>()(
         console.log('👋 Déconnexion réussie');
       },
 
-      // Rafraîchir le token
       refreshToken: async () => {
         try {
           const response = await authApi.refreshToken();
@@ -96,12 +88,10 @@ export const useAuthStore = create<AuthStore>()(
           console.log('🔄 Token rafraîchi');
         } catch (error) {
           console.error('❌ Erreur rafraîchissement token:', error);
-          // En cas d'erreur, déconnecter l'utilisateur
           get().logout();
         }
       },
 
-      // Vérifier l'authentification au démarrage
       checkAuth: async () => {
         const token = typeof window !== 'undefined' ? localStorage.getItem('auth-token') : null;
         
@@ -130,12 +120,10 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      // Nettoyer les erreurs
       clearError: () => {
         set({ error: null });
       },
 
-      // Définir l'état de chargement
       setLoading: (loading: boolean) => {
         set({ isLoading: loading });
       }
@@ -156,7 +144,6 @@ export const useAuthStore = create<AuthStore>()(
   )
 );
 
-// Hook personnalisé pour les sélecteurs fréquents
 export const useAuth = () => {
   const { user, isAuthenticated, isLoading, error } = useAuthStore();
   return { user, isAuthenticated, isLoading, error };
