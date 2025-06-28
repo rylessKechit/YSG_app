@@ -360,4 +360,64 @@ router.get('/stats/overview', async (req, res) => {
   }
 });
 
+/**
+ * @route   POST /api/admin/users/check-email
+ * @desc    Vérifier la disponibilité d'une adresse email
+ * @access  Admin
+ */
+router.post('/check-email', validateBody(Joi.object({
+  email: Joi.string().email().required(),
+  excludeUserId: objectId.optional() // Pour ignorer un utilisateur lors d'une modification
+})), async (req, res) => {
+  try {
+    const { email, excludeUserId } = req.body;
+    
+    // Construire la requête de recherche
+    const query = { 
+      email: email.toLowerCase(),
+      isActive: true // Seulement les utilisateurs actifs
+    };
+    
+    // Exclure un utilisateur spécifique (utile lors de modifications)
+    if (excludeUserId) {
+      query._id = { $ne: excludeUserId };
+    }
+    
+    // Chercher un utilisateur avec cet email
+    const existingUser = await User.findOne(query).select('firstName lastName email role');
+    
+    if (existingUser) {
+      return res.json({
+        success: true,
+        data: {
+          available: false,
+          message: `Email déjà utilisé par ${existingUser.firstName} ${existingUser.lastName}`,
+          conflictUser: {
+            id: existingUser._id,
+            name: `${existingUser.firstName} ${existingUser.lastName}`,
+            email: existingUser.email,
+            role: existingUser.role
+          }
+        }
+      });
+    }
+    
+    // Email disponible
+    res.json({
+      success: true,
+      data: {
+        available: true,
+        message: 'Email disponible'
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur vérification email:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR
+    });
+  }
+});
+
 module.exports = router;

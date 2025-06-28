@@ -473,4 +473,427 @@ router.get('/week/:userId', validateObjectId('userId'), async (req, res) => {
   }
 });
 
+/**
+ * @route   POST /api/admin/schedules/bulk-create
+ * @desc    Création en masse de plannings
+ * @access  Admin
+ */
+router.post('/bulk-create', validateBody(Joi.object({
+  template: Joi.object({
+    startTime: timeFormat.required(),
+    endTime: timeFormat.required(),
+    breakStart: timeFormat.allow(null, ''),
+    breakEnd: timeFormat.allow(null, '')
+  }).required(),
+  assignments: Joi.array().items(Joi.object({
+    userId: objectId.required(),
+    agencyId: objectId.required(),
+    dates: Joi.array().items(Joi.date()).min(1).required()
+  })).min(1).required(),
+  options: Joi.object({
+    skipConflicts: Joi.boolean().default(true),
+    notifyUsers: Joi.boolean().default(false),
+    overwrite: Joi.boolean().default(false)
+  }).default({})
+})), async (req, res) => {
+  try {
+    const { template, assignments, options } = req.body;
+    
+    // Valider les horaires du template
+    const startMinutes = timeToMinutes(template.startTime);
+    const endMinutes = timeToMinutes(template.endTime);
+    
+    if (endMinutes <= startMinutes) {
+      return res.status(400).json({
+        success: false,
+        message: 'L\'heure de fin doit être après l\'heure de début'
+      });
+    }
+    
+    // Valider la pause si elle existe
+    if (template.breakStart && template.breakEnd) {
+      const breakStartMinutes = timeToMinutes(template.breakStart);
+      const breakEndMinutes = timeToMinutes(template.breakEnd);
+      
+      if (breakEndMinutes <= breakStartMinutes) {
+        return res.status(400).json({
+          success: false,
+          message: 'L\'heure de fin de pause doit être après l\'heure de début'
+        });
+      }
+      
+      if (breakStartMinutes < startMinutes || breakEndMinutes > endMinutes) {
+        return res.status(400).json({
+          success: false,
+          message: 'La pause doit être comprise dans les horaires de travail'
+        });
+      }
+    }
+    
+    // Récupérer tous les utilisateurs et agences concernés
+    const userIds = [...new Set(assignments.map(a => a.userId))];
+    const agencyIds = [...new Set(assignments.map(a => a.agencyId))];
+    
+    const [users, agencies] = await Promise.all([
+      User.find({ 
+        _id: { $in: userIds }, 
+        role: 'preparateur', 
+        isActive: true 
+      }),
+      Agency.find({ 
+        _id: { $in: agencyIds }, 
+        isActive: true 
+      })
+    ]);
+    
+    // Vérifier que tous les utilisateurs et agences existent
+    if (users.length !== userIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Certains utilisateurs sont introuvables ou inactifs'
+      });
+    }
+    
+    if (agencies.length !== agencyIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Certaines agences sont introuvables ou inactives'
+      });
+    }
+    
+    const results = {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      conflicts: []
+    };
+    
+    // Traiter chaque assignation
+    for (const assignment of assignments) {
+      const { userId, agencyId, dates } = assignment;
+      
+      for (const date of dates) {
+        try {
+          const scheduleDate = new Date(date);
+          
+          // Vérifier s'il existe déjà un planning
+          const existingSchedule = await Schedule.findOne({
+            user: userId,
+            agency: agencyId,
+            date: scheduleDate
+          });
+          
+          if (existingSchedule && !options.overwrite) {
+            if (options.skipConflicts) {
+              results.skipped++;
+              continue;
+            } else {
+              const user = users.find(u => u._id.toString() === userId);
+              results.conflicts.push({
+                userId: userId,
+                userName: `${user.firstName} ${user.lastName}`,
+                date: scheduleDate.toISOString().split('T')[0],
+                reason: 'Planning existant'
+              });
+              results.skipped++;
+              continue;
+            }
+          }
+          
+          if (existingSchedule) {
+            // Mettre à jour planning existant
+            existingSchedule.startTime = template.startTime;
+            existingSchedule.endTime = template.endTime;
+            existingSchedule.breakStart = template.breakStart;
+            existingSchedule.breakEnd = template.breakEnd;
+            existingSchedule.updatedAt = new Date();
+            
+            await existingSchedule.save();
+            results.updated++;
+          } else {
+            // Créer nouveau planning
+            const newSchedule = new Schedule({
+              user: userId,
+              agency: agencyId,
+              date: scheduleDate,
+              startTime: template.startTime,
+              endTime: template.endTime,
+              breakStart: template.breakStart,
+              breakEnd: template.breakEnd,
+              notes: 'Créé via création en masse',
+              createdBy: req.user.userId
+            });
+            
+            await newSchedule.save();
+            results.created++;
+          }
+          
+        } catch (scheduleError) {
+          console.error('Erreur création planning individuel:', scheduleError);
+          const user = users.find(u => u._id.toString() === userId);
+          results.conflicts.push({
+            userId: userId,
+            userName: `${user.firstName} ${user.lastName}`,
+            date: new Date(date).toISOString().split('T')[0],
+            reason: 'Erreur de création'
+          });
+          results.skipped++;
+        }
+      }
+    }
+    
+    // TODO: Si options.notifyUsers = true, envoyer notifications
+    
+    res.status(201).json({
+      success: true,
+      message: `Création en masse terminée`,
+      data: {
+        results,
+        summary: {
+          totalProcessed: results.created + results.updated + results.skipped,
+          usersAffected: userIds.length,
+          agenciesInvolved: agencyIds.length
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur création en masse plannings:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR
+    });
+  }
+});
+
+/**
+ * @route   GET /api/admin/schedules/conflicts
+ * @desc    Détecter les conflits de plannings
+ * @access  Admin
+ */
+router.get('/conflicts', validateQuery(Joi.object({
+  startDate: Joi.date().optional(),
+  endDate: Joi.date().optional(),
+  userId: objectId.optional(),
+  agencyId: objectId.optional(),
+  includeResolutions: Joi.boolean().default(true)
+})), async (req, res) => {
+  try {
+    const { startDate, endDate, userId, agencyId, includeResolutions } = req.query;
+    
+    // Dates par défaut (semaine courante + suivante)
+    const defaultStartDate = startDate ? new Date(startDate) : (() => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      return date;
+    })();
+    
+    const defaultEndDate = endDate ? new Date(endDate) : (() => {
+      const date = new Date(defaultStartDate);
+      date.setDate(date.getDate() + 14); // 2 semaines
+      date.setHours(23, 59, 59, 999);
+      return date;
+    })();
+    
+    // Construire les filtres
+    const filters = {
+      date: { $gte: defaultStartDate, $lte: defaultEndDate },
+      status: 'active'
+    };
+    
+    if (userId) filters.user = userId;
+    if (agencyId) filters.agency = agencyId;
+    
+    // Récupérer tous les plannings de la période
+    const schedules = await Schedule.find(filters)
+      .populate('user', 'firstName lastName email')
+      .populate('agency', 'name code')
+      .sort({ date: 1, startTime: 1 });
+    
+    const conflicts = [];
+    const resolutions = [];
+    
+    // Détecter conflits utilisateur (double planification)
+    const userSchedules = {};
+    schedules.forEach(schedule => {
+      const userId = schedule.user._id.toString();
+      const dateKey = schedule.date.toISOString().split('T')[0];
+      
+      if (!userSchedules[userId]) userSchedules[userId] = {};
+      if (!userSchedules[userId][dateKey]) userSchedules[userId][dateKey] = [];
+      
+      userSchedules[userId][dateKey].push(schedule);
+    });
+    
+    // Analyser les conflits par utilisateur
+    Object.keys(userSchedules).forEach(userId => {
+      Object.keys(userSchedules[userId]).forEach(date => {
+        const daySchedules = userSchedules[userId][date];
+        
+        if (daySchedules.length > 1) {
+          // Utilisateur planifié plusieurs fois le même jour
+          conflicts.push({
+            type: 'user_double_booking',
+            severity: 'error',
+            userId: userId,
+            userName: `${daySchedules[0].user.firstName} ${daySchedules[0].user.lastName}`,
+            date: date,
+            description: `${daySchedules[0].user.firstName} ${daySchedules[0].user.lastName} planifié ${daySchedules.length} fois le ${new Date(date).toLocaleDateString('fr-FR')}`,
+            schedules: daySchedules.map(s => ({
+              id: s._id,
+              agency: s.agency.name,
+              startTime: s.startTime,
+              endTime: s.endTime
+            }))
+          });
+          
+          if (includeResolutions) {
+            resolutions.push({
+              conflictType: 'user_double_booking',
+              suggestions: [
+                {
+                  action: 'keep_first_schedule',
+                  description: `Garder uniquement le planning à ${daySchedules[0].agency.name}`,
+                  impact: 'Supprime les autres plannings'
+                },
+                {
+                  action: 'redistribute',
+                  description: 'Réassigner certains créneaux à d\'autres préparateurs',
+                  impact: 'Nécessite de trouver des remplaçants'
+                }
+              ]
+            });
+          }
+        }
+        
+        // Vérifier chevauchements horaires
+        for (let i = 0; i < daySchedules.length - 1; i++) {
+          for (let j = i + 1; j < daySchedules.length; j++) {
+            const schedule1 = daySchedules[i];
+            const schedule2 = daySchedules[j];
+            
+            const start1 = timeToMinutes(schedule1.startTime);
+            const end1 = timeToMinutes(schedule1.endTime);
+            const start2 = timeToMinutes(schedule2.startTime);
+            const end2 = timeToMinutes(schedule2.endTime);
+            
+            // Vérifier si les créneaux se chevauchent
+            if ((start1 < end2 && end1 > start2)) {
+              conflicts.push({
+                type: 'time_overlap',
+                severity: 'error',
+                userId: userId,
+                userName: `${schedule1.user.firstName} ${schedule1.user.lastName}`,
+                date: date,
+                description: `Chevauchement horaire entre ${schedule1.agency.name} (${schedule1.startTime}-${schedule1.endTime}) et ${schedule2.agency.name} (${schedule2.startTime}-${schedule2.endTime})`,
+                details: {
+                  schedule1: {
+                    id: schedule1._id,
+                    agency: schedule1.agency.name,
+                    time: `${schedule1.startTime}-${schedule1.endTime}`
+                  },
+                  schedule2: {
+                    id: schedule2._id,
+                    agency: schedule2.agency.name,
+                    time: `${schedule2.startTime}-${schedule2.endTime}`
+                  }
+                }
+              });
+            }
+          }
+        }
+      });
+    });
+    
+    // Détecter surcharge hebdomadaire (>35h)
+    const weeklyHours = {};
+    schedules.forEach(schedule => {
+      const userId = schedule.user._id.toString();
+      const weekStart = new Date(schedule.date);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      const weekKey = `${userId}_${weekStart.toISOString().split('T')[0]}`;
+      
+      if (!weeklyHours[weekKey]) {
+        weeklyHours[weekKey] = {
+          userId,
+          userName: `${schedule.user.firstName} ${schedule.user.lastName}`,
+          weekStart,
+          totalMinutes: 0,
+          schedules: []
+        };
+      }
+      
+      weeklyHours[weekKey].totalMinutes += schedule.workingDuration || 0;
+      weeklyHours[weekKey].schedules.push(schedule);
+    });
+    
+    Object.values(weeklyHours).forEach(week => {
+      const totalHours = week.totalMinutes / 60;
+      if (totalHours > 35) {
+        conflicts.push({
+          type: 'weekly_overwork',
+          severity: 'warning',
+          userId: week.userId,
+          userName: week.userName,
+          week: week.weekStart.toISOString().split('T')[0],
+          description: `${week.userName} programmé ${totalHours.toFixed(1)}h la semaine du ${week.weekStart.toLocaleDateString('fr-FR')} (limite: 35h)`,
+          details: {
+            totalHours: totalHours.toFixed(1),
+            excessHours: (totalHours - 35).toFixed(1),
+            schedulesCount: week.schedules.length
+          }
+        });
+      }
+    });
+    
+    // Statistiques
+    const stats = {
+      total: conflicts.length,
+      byType: {
+        user_double_booking: conflicts.filter(c => c.type === 'user_double_booking').length,
+        time_overlap: conflicts.filter(c => c.type === 'time_overlap').length,
+        weekly_overwork: conflicts.filter(c => c.type === 'weekly_overwork').length
+      },
+      bySeverity: {
+        error: conflicts.filter(c => c.severity === 'error').length,
+        warning: conflicts.filter(c => c.severity === 'warning').length
+      }
+    };
+
+    res.json({
+      success: true,
+      data: {
+        period: {
+          startDate: defaultStartDate,
+          endDate: defaultEndDate
+        },
+        conflicts: conflicts.sort((a, b) => {
+          // Trier par sévérité puis par date
+          if (a.severity !== b.severity) {
+            return a.severity === 'error' ? -1 : 1;
+          }
+          return new Date(a.date || a.week) - new Date(b.date || b.week);
+        }),
+        resolutions: includeResolutions ? resolutions : undefined,
+        statistics: stats,
+        totalSchedulesAnalyzed: schedules.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur détection conflits:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR
+    });
+  }
+});
+
+// Fonction utilitaire pour convertir heure en minutes
+function timeToMinutes(timeString) {
+  if (!timeString) return 0;
+  const [hours, minutes] = timeString.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
 module.exports = router;

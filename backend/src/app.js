@@ -1,116 +1,148 @@
-// ===== backend/src/app.js - VERSION COMPLÈTE =====
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const compression = require('compression');
 const cron = require('node-cron');
-
-// Import configuration
-const { verifyCloudinaryConfig } = require('./config/cloudinary');
+const path = require('path');
 
 const app = express();
 
-// Vérification de la configuration au démarrage
-verifyCloudinaryConfig();
+// ===== MIDDLEWARES GLOBAUX =====
 
-// ===== MIDDLEWARE DE SÉCURITÉ =====
+// Compression gzip
+app.use(compression());
 
-// Helmet pour la sécurité des headers HTTP
-app.use(helmet());
+// Sécurité
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" } // Pour Cloudinary
+}));
 
-// CORS - Configuration pour le frontend
-app.use(cors({
+// CORS - Configurer selon vos besoins
+const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com']
+    ? ['https://your-admin-domain.com', 'https://your-app-domain.com']
     : ['http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 
-// Rate limiting - Protection contre les attaques DDoS
+// Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // 100 requêtes par fenêtre
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
   message: {
-    error: 'Trop de requêtes depuis cette IP, réessayez plus tard.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
+    success: false,
+    message: 'Trop de requêtes, veuillez réessayer plus tard'
+  }
 });
-
 app.use('/api/', limiter);
 
-// ===== MIDDLEWARE DE PARSING =====
-
-// Parse JSON avec limite de taille
-app.use(express.json({ 
-  limit: '10mb',
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-
-// Parse URL-encoded data
+// Parsing JSON et URL
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ===== MIDDLEWARE DE LOGGING =====
-
-// Logger simple pour le développement
+// Logging des requêtes (dev only)
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    console.log(`📨 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+    console.log(`${req.method} ${req.path} - ${new Date().toISOString()}`);
     next();
   });
 }
 
-// ===== ROUTES DE SANTÉ =====
+// ===== ROUTES DE BASE =====
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
     environment: process.env.NODE_ENV,
-    version: process.env.npm_package_version || '1.0.0'
+    version: '1.0.0'
   });
 });
 
-// Test route
+// Route racine
 app.get('/', (req, res) => {
   res.json({
-    message: '🚗 API Vehicle Preparation - Serveur actif',
+    message: 'Vehicle Prep API',
     version: '1.0.0',
     documentation: '/api/docs',
     health: '/health'
   });
 });
 
-// ===== ROUTES API =====
+// ===== ROUTES AUTHENTIFICATION =====
 
-// Routes d'authentification
-app.use('/api/auth', require('./routes/auth'));
-
-// Routes communes (agences, etc.)
 try {
-  // Vérifier si les fichiers de routes existent avant de les charger
+  app.use('/api/auth', require('./routes/auth'));
+} catch (error) {
+  console.warn('⚠️  Route auth non trouvée, sera ajoutée plus tard');
+}
+
+// ===== ROUTES ADMIN =====
+
+try {
+  // Users
+  app.use('/api/admin/users', require('./routes/admin/users/users'));
+  app.use('/api/admin/users', require('./routes/admin/users/bulk-actions'));
+  app.use('/api/admin/users', require('./routes/admin/users/profile-complete'));
+} catch (error) {
+  console.warn('⚠️  Certaines routes admin/users non trouvées:', error.message);
+}
+
+try {
+  // Agencies
+  app.use('/api/admin/agencies', require('./routes/admin/agencies'));
+} catch (error) {
+  console.warn('⚠️  Route admin/agencies non trouvée');
+}
+
+try {
+  // Schedules
+  app.use('/api/admin/schedules', require('./routes/admin/schedules/schedules'));
+  app.use('/api/admin/schedules', require('./routes/admin/schedules/calendar'));
+  app.use('/api/admin/schedules/templates', require('./routes/admin/schedules/templates'));
+  app.use('/api/admin/schedules/conflicts', require('./routes/admin/schedules/conflicts'));
+} catch (error) {
+  console.warn('⚠️  Certaines routes admin/schedules non trouvées:', error.message);
+}
+
+try {
+  // Dashboard
+  app.use('/api/admin/dashboard', require('./routes/admin/dashboard/dashboard'));
+  app.use('/api/admin/dashboard/kpis', require('./routes/admin/dashboard/kpis'));
+  app.use('/api/admin/dashboard/charts', require('./routes/admin/dashboard/charts'));
+  app.use('/api/admin/dashboard/alerts', require('./routes/admin/dashboard/alerts'));
+} catch (error) {
+  console.warn('⚠️  Certaines routes admin/dashboard non trouvées:', error.message);
+}
+
+try {
+  // Reports
+  app.use('/api/admin/reports', require('./routes/admin/reports'));
+} catch (error) {
+  console.warn('⚠️  Route admin/reports non trouvée');
+}
+
+try {
+  // Settings
+  app.use('/api/admin/settings', require('./routes/admin/settings'));
+} catch (error) {
+  console.warn('⚠️  Route admin/settings non trouvée');
+}
+
+// ===== ROUTES AGENCIES (niveau racine) =====
+
+try {
   app.use('/api/agencies', require('./routes/agencies'));
 } catch (error) {
   console.warn('⚠️  Route agencies non trouvée, sera ajoutée plus tard');
 }
 
-// Routes admin
-try {
-  app.use('/api/admin/users', require('./routes/admin/users'));
-  app.use('/api/admin/agencies', require('./routes/admin/agencies'));
-  app.use('/api/admin/schedules', require('./routes/admin/schedules'));
-  app.use('/api/admin/dashboard', require('./routes/admin/dashboard'));
-} catch (error) {
-  console.warn('⚠️  Certaines routes admin non trouvées, seront ajoutées plus tard');
-}
+// ===== ROUTES PRÉPARATEUR =====
 
-// Routes préparateur
 try {
   app.use('/api/timesheets', require('./routes/preparateur/timesheets'));
   app.use('/api/preparations', require('./routes/preparateur/preparations'));
@@ -131,6 +163,15 @@ app.use('/api/*', (req, res) => {
         'POST /api/auth/login',
         'GET /api/auth/me',
         'POST /api/auth/refresh'
+      ],
+      admin: [
+        'GET /api/admin/users',
+        'POST /api/admin/users',
+        'GET /api/admin/agencies',
+        'GET /api/admin/schedules',
+        'GET /api/admin/dashboard',
+        'GET /api/admin/reports',
+        'GET /api/admin/settings'
       ],
       health: [
         'GET /health',
@@ -176,8 +217,10 @@ app.use((error, req, res, next) => {
 if (process.env.NODE_ENV === 'production') {
   cron.schedule('*/5 * * * *', async () => {
     try {
-      // Cette logique sera ajoutée plus tard
-      console.log('🕒 Vérification des retards...');
+      // Appeler le job de vérification des retards
+      const checkLateTimesheets = require('./jobs/checkLateTimesheets');
+      await checkLateTimesheets();
+      console.log('🕒 Vérification des retards terminée');
     } catch (error) {
       console.error('❌ Erreur vérification retards:', error);
     }
