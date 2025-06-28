@@ -1,9 +1,11 @@
+// src/app/(dashboard)/layout.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthGuard } from '@/components/auth/auth-guard';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
+import { useDashboardCache } from '@/hooks/api/useDashboard';
 
 export default function DashboardLayout({
   children,
@@ -11,6 +13,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { prefetchKPIs } = useDashboardCache();
+
+  // Précharger les données KPIs au montage du layout
+  useEffect(() => {
+    prefetchKPIs({ period: 'today' });
+  }, [prefetchKPIs]);
 
   return (
     <AuthGuard requireAdmin={true}>

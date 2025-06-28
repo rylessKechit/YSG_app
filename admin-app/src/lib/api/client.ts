@@ -1,111 +1,124 @@
 // src/lib/api/client.ts
-import axios, { AxiosError, AxiosResponse } from 'axios';
-// Import du toast 
-import { toast } from '@/hooks/use-toast';
+import axios, { AxiosResponse, AxiosError } from 'axios';
+import { toast } from 'sonner';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api';
-
-// Instance Axios principale
+// Configuration de base
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Intercepteur pour ajouter le token automatiquement
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth-token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Interface pour les réponses API standardisées
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data: T;
+  message?: string;
+  errors?: Array<{
+    field: string;
+    message: string;
+  }>;
+}
 
-// Intercepteur pour gérer les réponses et erreurs
+// Interface pour les options de requête
+interface RequestOptions {
+  showErrorToast?: boolean;
+  showSuccessToast?: boolean;
+  successMessage?: string;
+  retryCount?: number;
+}
+
+// Intercepteur de requête pour ajouter le token
+apiClient.interceptors.request.use(
+  (config) => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Intercepteur de réponse pour gérer les erreurs et refresh token
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as any;
 
-    // Si erreur 401 (token expiré)
-    if (error.response?.status === 401 && originalRequest) {
-      // Essayer de refresh le token
+    // Gestion du token expiré (401)
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
       try {
-        const refreshToken = localStorage.getItem('refresh-token');
+        const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refreshToken,
-          });
+          const { data } = await axios.post(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/refresh`,
+            { refreshToken }
+          );
           
-          const { token } = response.data.data;
-          localStorage.setItem('auth-token', token);
+          localStorage.setItem('token', data.data.token);
+          originalRequest.headers.Authorization = `Bearer ${data.data.token}`;
           
-          // Retry la requête originale
-          originalRequest.headers.Authorization = `Bearer ${token}`;
           return apiClient(originalRequest);
         }
       } catch (refreshError) {
-        // Refresh failed, redirect to login
-        localStorage.removeItem('auth-token');
-        localStorage.removeItem('refresh-token');
+        // Redirect to login
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
-    }
-
-    // Gestion des erreurs avec toasts Shadcn
-    const errorMessage = (error.response?.data as any)?.message || error.message || 'Une erreur est survenue';
-    
-    if (error.response?.status !== 401) {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: errorMessage,
-      });
     }
 
     return Promise.reject(error);
   }
 );
 
-// Types pour les requêtes
-export interface ApiRequestConfig {
-  showErrorToast?: boolean;
-  showSuccessToast?: boolean;
-  successMessage?: string;
-}
-
-// Wrapper pour les requêtes avec gestion d'erreurs
+// Fonction utilitaire pour faire des requêtes avec gestion d'erreur
 export async function apiRequest<T>(
-  requestFn: () => Promise<AxiosResponse<T>>,
-  config: ApiRequestConfig = {}
-): Promise<T> {
-  const { showErrorToast = true, showSuccessToast = false, successMessage } = config;
+  requestFn: () => Promise<AxiosResponse<ApiResponse<T>>>,
+  options: RequestOptions = {}
+): Promise<ApiResponse<T>> {
+  const {
+    showErrorToast = false,
+    showSuccessToast = false,
+    successMessage,
+    retryCount = 0
+  } = options;
 
   try {
     const response = await requestFn();
     
-    if (showSuccessToast && successMessage) {
-      toast({
-        title: "Succès",
-        description: successMessage,
-      });
+    if (showSuccessToast && response.data.success) {
+      toast.success(successMessage || response.data.message || 'Opération réussie');
     }
     
     return response.data;
   } catch (error) {
-    if (showErrorToast && error instanceof AxiosError) {
-      const message = (error.response?.data as any)?.message || error.message || 'Une erreur est survenue';
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: message,
-      });
+    const axiosError = error as AxiosError<ApiResponse>;
+    const errorData = axiosError.response?.data;
+    
+    if (showErrorToast) {
+      const errorMessage = errorData?.message || 
+                          axiosError.message || 
+                          'Une erreur est survenue';
+      toast.error(errorMessage);
     }
+    
+    // Retry logic for network errors
+    if (retryCount > 0 && !axiosError.response) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return apiRequest(requestFn, { ...options, retryCount: retryCount - 1 });
+    }
+    
     throw error;
   }
 }
-
-export default apiClient;
