@@ -1,46 +1,112 @@
+// ===== backend/src/routes/admin/users/users.js - VERSION CORRIGÉE =====
 const express = require('express');
+const Joi = require('joi'); // ✅ Import explicite de Joi
+const bcrypt = require('bcryptjs');
 const User = require('../../../models/User');
+const Agency = require('../../../models/Agency');
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
-const { validateBody, validateObjectId, validateQuery } = require('../../../middleware/validation');
-const { userSchemas, querySchemas } = require('../../../middleware/validation');
-const { SUCCESS_MESSAGES, ERROR_MESSAGES, USER_ROLES } = require('../../../utils/constants');
+const { validateBody, validateObjectId, validateQuery, objectId } = require('../../../middleware/validation');
+const { ERROR_MESSAGES, USER_ROLES } = require('../../../utils/constants');
 
 const router = express.Router();
 
-// Toutes les routes nécessitent une authentification admin
+// ===== SCHÉMAS DE VALIDATION LOCAUX =====
+const userCreateSchema = Joi.object({
+  email: Joi.string().email().required().messages({
+    'string.email': 'Format d\'email invalide',
+    'any.required': 'L\'email est requis'
+  }),
+  password: Joi.string().min(6).required().messages({
+    'string.min': 'Le mot de passe doit contenir au moins 6 caractères',
+    'any.required': 'Le mot de passe est requis'
+  }),
+  firstName: Joi.string().min(2).max(50).required(),
+  lastName: Joi.string().min(2).max(50).required(),
+  phone: Joi.string().pattern(/^[\+]?[1-9][\d]{0,15}$/).optional(),
+  agencies: Joi.array().items(objectId).optional(),
+  role: Joi.string().valid(...Object.values(USER_ROLES)).optional()
+});
+
+const userUpdateSchema = Joi.object({
+  firstName: Joi.string().min(2).max(50).optional(),
+  lastName: Joi.string().min(2).max(50).optional(),
+  phone: Joi.string().pattern(/^[\+]?[1-9][\d]{0,15}$/).optional().allow(''),
+  agencies: Joi.array().items(objectId).optional(),
+  isActive: Joi.boolean().optional(),
+  role: Joi.string().valid(...Object.values(USER_ROLES)).optional()
+});
+
+const userSearchSchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  search: Joi.string().min(2).max(100).optional(),
+  agence: objectId.optional(),
+  statut: Joi.string().valid('all', 'active', 'inactive').default('all'),
+  role: Joi.string().valid(...Object.values(USER_ROLES)).optional(),
+  sort: Joi.string().default('createdAt'),
+  order: Joi.string().valid('asc', 'desc').default('desc')
+});
+
+const emailCheckSchema = Joi.object({
+  email: Joi.string().email().required(),
+  excludeUserId: objectId.optional()
+});
+
+// Middleware auth pour toutes les routes
 router.use(auth, adminAuth);
 
 /**
  * @route   POST /api/admin/users
- * @desc    Créer un nouveau préparateur
+ * @desc    Créer un nouvel utilisateur
  * @access  Admin
  */
-router.post('/', validateBody(userSchemas.create), async (req, res) => {
+router.post('/', validateBody(userCreateSchema), async (req, res) => {
   try {
-    const { email, password, firstName, lastName, phone, agencies } = req.body;
+    const { email, password, firstName, lastName, phone, agencies = [], role = USER_ROLES.PREPARATEUR } = req.body;
 
-    // Vérifier que l'email n'existe pas déjà
+    // Vérifier si l'email existe déjà
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
-        message: ERROR_MESSAGES.USER_ALREADY_EXISTS
+        message: 'Un utilisateur avec cet email existe déjà'
       });
     }
 
-    // Créer le nouvel utilisateur
-    const userData = {
+    // Vérifier que les agences existent
+    if (agencies.length > 0) {
+      const validAgencies = await Agency.find({ _id: { $in: agencies }, isActive: true });
+      if (validAgencies.length !== agencies.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Une ou plusieurs agences sont invalides ou inactives'
+        });
+      }
+    }
+
+    // Hasher le mot de passe
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Créer l'utilisateur
+    const user = new User({
       email: email.toLowerCase(),
-      password,
+      password: hashedPassword,
       firstName,
       lastName,
       phone,
-      agencies: agencies || [],
-      role: USER_ROLES.PREPARATEUR // Toujours préparateur pour cette route
-    };
+      agencies,
+      role,
+      isActive: true,
+      createdBy: req.user.userId,
+      stats: {
+        totalPreparations: 0,
+        averageTime: 0,
+        onTimeRate: 0
+      }
+    });
 
-    const user = new User(userData);
     await user.save();
 
     // Charger les agences pour la réponse
@@ -48,18 +114,18 @@ router.post('/', validateBody(userSchemas.create), async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: SUCCESS_MESSAGES.USER_CREATED,
+      message: 'Utilisateur créé avec succès',
       data: {
         user: {
           id: user._id,
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          fullName: user.getFullName(),
-          role: user.role,
           phone: user.phone,
+          role: user.role,
           agencies: user.agencies,
           isActive: user.isActive,
+          stats: user.stats,
           createdAt: user.createdAt
         }
       }
@@ -69,55 +135,68 @@ router.post('/', validateBody(userSchemas.create), async (req, res) => {
     console.error('Erreur création utilisateur:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
     });
   }
 });
 
 /**
  * @route   GET /api/admin/users
- * @desc    Obtenir la liste des préparateurs
+ * @desc    Liste des utilisateurs avec filtres et recherche
  * @access  Admin
  */
-router.get('/', validateQuery(querySchemas.pagination.concat(querySchemas.search)), async (req, res) => {
+router.get('/', validateQuery(userSearchSchema), async (req, res) => {
   try {
-    const { page, limit, q: search, role, sort = 'createdAt', order = 'desc' } = req.query;
+    const { page, limit, search, agence, statut, role, sort, order } = req.query;
 
     // Construire les filtres
     const filters = {};
-    if (search) filters.search = search;
-    if (role) filters.role = role;
+    
+    if (search) {
+      filters.$or = [
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
 
-    // Rechercher les utilisateurs
-    let query = User.findWithFilters(filters);
+    if (agence) {
+      filters.agencies = agence;
+    }
 
-    // Appliquer le tri
-    const sortObject = {};
-    sortObject[sort] = order === 'asc' ? 1 : -1;
-    query = query.sort(sortObject);
+    if (statut !== 'all') {
+      filters.isActive = statut === 'active';
+    }
 
-    // Appliquer la pagination
-    const skip = (page - 1) * limit;
-    query = query.skip(skip).limit(parseInt(limit));
+    if (role) {
+      filters.role = role;
+    }
 
-    // Exécuter la requête
-    const [users, totalCount] = await Promise.all([
-      query.exec(),
-      User.countDocuments(filters.search ? {
-        isActive: true,
-        $or: [
-          { firstName: { $regex: filters.search, $options: 'i' } },
-          { lastName: { $regex: filters.search, $options: 'i' } },
-          { email: { $regex: filters.search, $options: 'i' } }
-        ]
-      } : { isActive: true })
+    // Compter le total
+    const total = await User.countDocuments(filters);
+
+    // Récupérer les utilisateurs avec pagination
+    const users = await User.find(filters)
+      .populate('agencies', 'name code client')
+      .select('-password')
+      .sort({ [sort]: order === 'desc' ? -1 : 1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    // Calculer les statistiques globales
+    const stats = await User.aggregate([
+      { $match: filters },
+      {
+        $group: {
+          _id: null,
+          totalUsers: { $sum: 1 },
+          activeUsers: { $sum: { $cond: ['$isActive', 1, 0] } },
+          inactiveUsers: { $sum: { $cond: ['$isActive', 0, 1] } },
+          preparateurs: { $sum: { $cond: [{ $eq: ['$role', USER_ROLES.PREPARATEUR] }, 1, 0] } },
+          admins: { $sum: { $cond: [{ $eq: ['$role', USER_ROLES.ADMIN] }, 1, 0] } }
+        }
+      }
     ]);
-
-    // Calculs de pagination
-    const totalPages = Math.ceil(totalCount / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
 
     res.json({
       success: true,
@@ -127,9 +206,8 @@ router.get('/', validateQuery(querySchemas.pagination.concat(querySchemas.search
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          fullName: user.getFullName(),
-          role: user.role,
           phone: user.phone,
+          role: user.role,
           agencies: user.agencies,
           isActive: user.isActive,
           stats: user.stats,
@@ -139,10 +217,21 @@ router.get('/', validateQuery(querySchemas.pagination.concat(querySchemas.search
         pagination: {
           page,
           limit,
-          totalCount,
-          totalPages,
-          hasNextPage,
-          hasPrevPage
+          total,
+          pages: Math.ceil(total / limit)
+        },
+        filters: {
+          search,
+          agence,
+          statut,
+          role
+        },
+        stats: stats[0] || {
+          totalUsers: 0,
+          activeUsers: 0,
+          inactiveUsers: 0,
+          preparateurs: 0,
+          admins: 0
         }
       }
     });
@@ -151,7 +240,7 @@ router.get('/', validateQuery(querySchemas.pagination.concat(querySchemas.search
     console.error('Erreur récupération utilisateurs:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
     });
   }
 });
@@ -164,13 +253,13 @@ router.get('/', validateQuery(querySchemas.pagination.concat(querySchemas.search
 router.get('/:id', validateObjectId('id'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .populate('agencies', 'name code client')
+      .populate('agencies', 'name code client address')
       .select('-password');
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: ERROR_MESSAGES.USER_NOT_FOUND
+        message: 'Utilisateur non trouvé'
       });
     }
 
@@ -182,9 +271,8 @@ router.get('/:id', validateObjectId('id'), async (req, res) => {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          fullName: user.getFullName(),
-          role: user.role,
           phone: user.phone,
+          role: user.role,
           agencies: user.agencies,
           isActive: user.isActive,
           stats: user.stats,
@@ -199,7 +287,7 @@ router.get('/:id', validateObjectId('id'), async (req, res) => {
     console.error('Erreur récupération utilisateur:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
     });
   }
 });
@@ -209,26 +297,54 @@ router.get('/:id', validateObjectId('id'), async (req, res) => {
  * @desc    Modifier un utilisateur
  * @access  Admin
  */
-router.put('/:id', validateObjectId('id'), validateBody(userSchemas.update), async (req, res) => {
+router.put('/:id', validateObjectId('id'), validateBody(userUpdateSchema), async (req, res) => {
   try {
-    const { firstName, lastName, phone, agencies, isActive } = req.body;
-
     const user = await User.findById(req.params.id);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: ERROR_MESSAGES.USER_NOT_FOUND
+        message: 'Utilisateur non trouvé'
       });
     }
 
-    // Mettre à jour les champs modifiés
-    if (firstName !== undefined) user.firstName = firstName;
-    if (lastName !== undefined) user.lastName = lastName;
-    if (phone !== undefined) user.phone = phone;
-    if (agencies !== undefined) user.agencies = agencies;
-    if (isActive !== undefined) user.isActive = isActive;
+    // Vérifier les agences si modifiées
+    if (req.body.agencies) {
+      const validAgencies = await Agency.find({ 
+        _id: { $in: req.body.agencies }, 
+        isActive: true 
+      });
+      
+      if (validAgencies.length !== req.body.agencies.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Une ou plusieurs agences sont invalides ou inactives'
+        });
+      }
+    }
 
+    // Empêcher la désactivation du dernier admin
+    if (req.body.isActive === false && user.role === USER_ROLES.ADMIN) {
+      const adminCount = await User.countDocuments({ 
+        role: USER_ROLES.ADMIN, 
+        isActive: true,
+        _id: { $ne: user._id }
+      });
+      
+      if (adminCount === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Impossible de désactiver le dernier administrateur'
+        });
+      }
+    }
+
+    // Mettre à jour les champs
+    Object.keys(req.body).forEach(key => {
+      user[key] = req.body[key];
+    });
+
+    user.updatedAt = new Date();
     await user.save();
 
     // Charger les agences pour la réponse
@@ -236,18 +352,18 @@ router.put('/:id', validateObjectId('id'), validateBody(userSchemas.update), asy
 
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.USER_UPDATED,
+      message: 'Utilisateur modifié avec succès',
       data: {
         user: {
           id: user._id,
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          fullName: user.getFullName(),
-          role: user.role,
           phone: user.phone,
+          role: user.role,
           agencies: user.agencies,
           isActive: user.isActive,
+          stats: user.stats,
           updatedAt: user.updatedAt
         }
       }
@@ -257,8 +373,7 @@ router.put('/:id', validateObjectId('id'), validateBody(userSchemas.update), asy
     console.error('Erreur modification utilisateur:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
     });
   }
 });
@@ -275,7 +390,7 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: ERROR_MESSAGES.USER_NOT_FOUND
+        message: 'Utilisateur non trouvé'
       });
     }
 
@@ -283,139 +398,78 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
     if (user.role === USER_ROLES.ADMIN) {
       const adminCount = await User.countDocuments({ 
         role: USER_ROLES.ADMIN, 
-        isActive: true 
+        isActive: true,
+        _id: { $ne: user._id }
       });
       
-      if (adminCount <= 1) {
+      if (adminCount === 0) {
         return res.status(400).json({
           success: false,
-          message: 'Impossible de désactiver le dernier administrateur'
+          message: 'Impossible de supprimer le dernier administrateur'
         });
       }
     }
 
-    // Soft delete - désactiver au lieu de supprimer
+    // Soft delete
     user.isActive = false;
+    user.updatedAt = new Date();
     await user.save();
 
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.USER_DELETED
+      message: 'Utilisateur désactivé avec succès'
     });
 
   } catch (error) {
     console.error('Erreur suppression utilisateur:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
-    });
-  }
-});
-
-/**
- * @route   GET /api/admin/users/stats/overview
- * @desc    Obtenir les statistiques des utilisateurs
- * @access  Admin
- */
-router.get('/stats/overview', async (req, res) => {
-  try {
-    const [
-      totalUsers,
-      activeUsers,
-      adminUsers,
-      preparateurUsers,
-      recentLogins
-    ] = await Promise.all([
-      User.countDocuments({}),
-      User.countDocuments({ isActive: true }),
-      User.countDocuments({ role: USER_ROLES.ADMIN, isActive: true }),
-      User.countDocuments({ role: USER_ROLES.PREPARATEUR, isActive: true }),
-      User.countDocuments({ 
-        lastLogin: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-        isActive: true
-      })
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        overview: {
-          total: totalUsers,
-          active: activeUsers,
-          inactive: totalUsers - activeUsers,
-          admins: adminUsers,
-          preparateurs: preparateurUsers,
-          recentLogins: recentLogins,
-          loginRate: totalUsers > 0 ? Math.round((recentLogins / activeUsers) * 100) : 0
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Erreur statistiques utilisateurs:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
     });
   }
 });
 
 /**
  * @route   POST /api/admin/users/check-email
- * @desc    Vérifier la disponibilité d'une adresse email
+ * @desc    Vérifier la disponibilité d'un email
  * @access  Admin
  */
-router.post('/check-email', validateBody(Joi.object({
-  email: Joi.string().email().required(),
-  excludeUserId: objectId.optional() // Pour ignorer un utilisateur lors d'une modification
-})), async (req, res) => {
+router.post('/check-email', validateBody(emailCheckSchema), async (req, res) => {
   try {
     const { email, excludeUserId } = req.body;
-    
-    // Construire la requête de recherche
-    const query = { 
-      email: email.toLowerCase(),
-      isActive: true // Seulement les utilisateurs actifs
-    };
-    
-    // Exclure un utilisateur spécifique (utile lors de modifications)
+
+    const query = { email: email.toLowerCase() };
     if (excludeUserId) {
       query._id = { $ne: excludeUserId };
     }
-    
-    // Chercher un utilisateur avec cet email
+
     const existingUser = await User.findOne(query).select('firstName lastName email role');
-    
+
     if (existingUser) {
       return res.json({
-        success: true,
-        data: {
-          available: false,
-          message: `Email déjà utilisé par ${existingUser.firstName} ${existingUser.lastName}`,
-          conflictUser: {
-            id: existingUser._id,
-            name: `${existingUser.firstName} ${existingUser.lastName}`,
-            email: existingUser.email,
-            role: existingUser.role
-          }
+        success: false,
+        available: false,
+        message: 'Cet email est déjà utilisé',
+        conflictUser: {
+          id: existingUser._id,
+          name: `${existingUser.firstName} ${existingUser.lastName}`,
+          email: existingUser.email,
+          role: existingUser.role
         }
       });
     }
-    
-    // Email disponible
+
     res.json({
       success: true,
-      data: {
-        available: true,
-        message: 'Email disponible'
-      }
+      available: true,
+      message: 'Email disponible'
     });
 
   } catch (error) {
     console.error('Erreur vérification email:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
     });
   }
 });

@@ -1,17 +1,26 @@
-// ===== backend/src/routes/admin/schedules-calendar.js =====
+// ===== backend/src/routes/admin/schedules/calendar.js - VERSION CORRIGÉE =====
 const express = require('express');
-const Joi = require('joi');
+const Joi = require('joi'); // ✅ Import explicite de Joi
 const Schedule = require('../../../models/Schedule');
 const User = require('../../../models/User');
 const Agency = require('../../../models/Agency');
 const Timesheet = require('../../../models/Timesheet');
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
-const { validateQuery, validateBody } = require('../../../middleware/validation');
-const { objectId } = require('../../../middleware/validation');
+const { validateQuery, validateBody, objectId } = require('../../../middleware/validation');
 const { ERROR_MESSAGES } = require('../../../utils/constants');
 
 const router = express.Router();
+
+// ===== SCHÉMAS DE VALIDATION LOCAUX =====
+const calendarQuerySchema = Joi.object({
+  month: Joi.string().pattern(/^\d{4}-\d{2}$/).required(), // Format: 2024-01
+  view: Joi.string().valid('month', 'week', 'day').default('month'),
+  agencies: Joi.array().items(objectId).optional(),
+  users: Joi.array().items(objectId).optional(),
+  includeMetadata: Joi.boolean().default(true),
+  includeConflicts: Joi.boolean().default(true)
+});
 
 // Middleware auth
 router.use(auth, adminAuth);
@@ -21,14 +30,7 @@ router.use(auth, adminAuth);
  * @desc    Vue calendaire des plannings avec métadonnées
  * @access  Admin
  */
-router.get('/', validateQuery(Joi.object({
-  month: Joi.string().pattern(/^\d{4}-\d{2}$/).required(), // Format: 2024-01
-  view: Joi.string().valid('month', 'week', 'day').default('month'),
-  agencies: Joi.array().items(objectId).optional(),
-  users: Joi.array().items(objectId).optional(),
-  includeMetadata: Joi.boolean().default(true),
-  includeConflicts: Joi.boolean().default(true)
-})), async (req, res) => {
+router.get('/', validateQuery(calendarQuerySchema), async (req, res) => {
   try {
     const { month, view, agencies = [], users = [], includeMetadata, includeConflicts } = req.query;
     
@@ -69,10 +71,10 @@ router.get('/', validateQuery(Joi.object({
       includeConflicts
     });
 
-    // Calculer métadonnées si demandé
+    // Calculer métadonnées si demandées
     let metadata = null;
     if (includeMetadata) {
-      metadata = await calculateCalendarMetadata(schedules, filters, startDate, endDate);
+      metadata = await calculateCalendarMetadata(schedules, startDate, endDate);
     }
 
     res.json({
@@ -81,16 +83,18 @@ router.get('/', validateQuery(Joi.object({
         calendar,
         metadata,
         period: {
-          month,
+          month: monthNum,
           year,
-          monthName: new Date(year, monthNum - 1).toLocaleDateString('fr-FR', { month: 'long' }),
           startDate: calendarStart,
           endDate: calendarEnd,
-          actualMonthStart: startDate,
-          actualMonthEnd: endDate
+          view
         },
-        filters: { agencies, users, view },
-        generatedAt: new Date()
+        filters: {
+          agencies,
+          users,
+          includeMetadata,
+          includeConflicts
+        }
       }
     });
 
@@ -98,707 +102,300 @@ router.get('/', validateQuery(Joi.object({
     console.error('Erreur vue calendaire:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
     });
   }
 });
 
 /**
- * @route   GET /api/admin/schedules/calendar/conflicts
- * @desc    Détecter et analyser les conflits de planning
- * @access  Admin
- */
-router.get('/conflicts', validateQuery(Joi.object({
-  startDate: Joi.date().optional(),
-  endDate: Joi.date().optional(),
-  userId: objectId.optional(),
-  agencyId: objectId.optional(),
-  severity: Joi.string().valid('all', 'critical', 'warning').default('all')
-})), async (req, res) => {
-  try {
-    const { startDate, endDate, userId, agencyId, severity } = req.query;
-    
-    // Dates par défaut (semaine courante + suivante)
-    const defaultStart = startDate ? new Date(startDate) : new Date();
-    const defaultEnd = endDate ? new Date(endDate) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-
-    // Construire les filtres
-    const filters = {
-      date: { $gte: defaultStart, $lte: defaultEnd },
-      status: 'active'
-    };
-    
-    if (userId) filters.user = userId;
-    if (agencyId) filters.agency = agencyId;
-
-    const conflicts = await detectScheduleConflicts(filters, severity);
-    const suggestions = await generateConflictSuggestions(conflicts);
-
-    res.json({
-      success: true,
-      data: {
-        conflicts,
-        suggestions,
-        summary: {
-          total: conflicts.length,
-          critical: conflicts.filter(c => c.severity === 'critical').length,
-          warning: conflicts.filter(c => c.severity === 'warning').length,
-          affectedUsers: [...new Set(conflicts.map(c => c.userId))].length
-        },
-        period: { startDate: defaultStart, endDate: defaultEnd },
-        generatedAt: new Date()
-      }
-    });
-
-  } catch (error) {
-    console.error('Erreur détection conflits:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
-    });
-  }
-});
-
-/**
- * @route   POST /api/admin/schedules/calendar/optimize
- * @desc    Suggestions d'optimisation planning
- * @access  Admin
- */
-router.post('/optimize', validateBody(Joi.object({
-  period: Joi.object({
-    start: Joi.date().required(),
-    end: Joi.date().required()
-  }).required(),
-  constraints: Joi.object({
-    minCoveragePerAgency: Joi.number().min(0).max(100).default(80),
-    maxHoursPerUser: Joi.number().min(20).max(60).default(35),
-    preferredShifts: Joi.array().items(Joi.string().valid('morning', 'afternoon', 'evening')).default(['morning', 'afternoon']),
-    avoidWeekends: Joi.boolean().default(false)
-  }).optional(),
-  agencies: Joi.array().items(objectId).optional(),
-  users: Joi.array().items(objectId).optional()
-})), async (req, res) => {
-  try {
-    const { period, constraints = {}, agencies = [], users = [] } = req.body;
-    
-    // Analyser la situation actuelle
-    const currentSchedules = await Schedule.find({
-      date: { $gte: period.start, $lte: period.end },
-      status: 'active',
-      ...(agencies.length > 0 && { agency: { $in: agencies } }),
-      ...(users.length > 0 && { user: { $in: users } })
-    })
-    .populate('user', 'firstName lastName')
-    .populate('agency', 'name code');
-
-    // Calculer métriques actuelles
-    const currentMetrics = await calculateOptimizationMetrics(currentSchedules, period, constraints);
-    
-    // Générer suggestions d'optimisation
-    const optimizations = await generateOptimizationSuggestions(currentSchedules, currentMetrics, constraints);
-    
-    // Simuler l'impact des changements
-    const projectedMetrics = await projectOptimizationImpact(optimizations, currentMetrics);
-
-    res.json({
-      success: true,
-      data: {
-        current: {
-          metrics: currentMetrics,
-          schedules: currentSchedules.length
-        },
-        optimizations,
-        projected: {
-          metrics: projectedMetrics,
-          improvements: calculateImprovements(currentMetrics, projectedMetrics)
-        },
-        implementation: {
-          estimatedTime: Math.ceil(optimizations.length * 0.5), // minutes
-          affectedUsers: [...new Set(optimizations.map(opt => opt.userId))].length,
-          requiresNotification: optimizations.some(opt => opt.requiresNotification)
-        },
-        period,
-        constraints
-      }
-    });
-
-  } catch (error) {
-    console.error('Erreur optimisation planning:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
-    });
-  }
-});
-
-// ===== FONCTIONS UTILITAIRES =====
-
-/**
- * Construire la structure calendaire
+ * Construire la structure calendaire par semaines et jours
  */
 async function buildCalendarStructure(startDate, endDate, schedules, options) {
-  const { month, year, includeConflicts } = options;
-  const calendar = {
-    month,
-    year,
-    weeks: []
-  };
-
-  // Grouper les plannings par date
-  const schedulesByDate = {};
-  schedules.forEach(schedule => {
-    const dateKey = schedule.date.toISOString().split('T')[0];
-    if (!schedulesByDate[dateKey]) schedulesByDate[dateKey] = [];
-    schedulesByDate[dateKey].push(schedule);
-  });
-
-  // Construire les semaines
-  const currentWeek = new Date(startDate);
-  let weekNumber = 1;
-
-  while (currentWeek <= endDate) {
-    const week = {
-      weekNumber,
-      startDate: new Date(currentWeek),
-      days: []
-    };
-
-    // Générer les 7 jours de la semaine
-    for (let i = 0; i < 7; i++) {
-      const currentDay = new Date(currentWeek);
-      currentDay.setDate(currentWeek.getDate() + i);
-      
-      const dateKey = currentDay.toISOString().split('T')[0];
-      const daySchedules = schedulesByDate[dateKey] || [];
-
-      // Détecter conflits pour ce jour si demandé
-      let conflicts = [];
-      if (includeConflicts && daySchedules.length > 0) {
-        conflicts = await detectDayConflicts(daySchedules);
-      }
-
-      const day = {
-        date: new Date(currentDay),
-        dateString: dateKey,
-        dayName: currentDay.toLocaleDateString('fr-FR', { weekday: 'long' }),
-        dayShort: currentDay.toLocaleDateString('fr-FR', { weekday: 'short' }),
-        dayNumber: currentDay.getDate(),
-        isCurrentMonth: currentDay.getMonth() === month - 1,
-        isToday: currentDay.toDateString() === new Date().toDateString(),
-        isWeekend: currentDay.getDay() === 0 || currentDay.getDay() === 6,
-        schedulesCount: daySchedules.length,
-        hasConflicts: conflicts.length > 0,
-        schedules: daySchedules.map(schedule => formatScheduleForCalendar(schedule)),
-        conflicts,
-        coverage: calculateDayCoverage(daySchedules),
-        workload: calculateDayWorkload(daySchedules)
-      };
-
-      week.days.push(day);
-    }
-
-    calendar.weeks.push(week);
-    currentWeek.setDate(currentWeek.getDate() + 7);
-    weekNumber++;
-
-    // Arrêter si on a dépassé la période
-    if (currentWeek > endDate) break;
-  }
-
-  return calendar;
-}
-
-/**
- * Calculer métadonnées du calendrier
- */
-async function calculateCalendarMetadata(schedules, filters, startDate, endDate) {
-  const totalSchedules = schedules.length;
-  const uniqueUsers = [...new Set(schedules.map(s => s.user._id.toString()))];
-  const uniqueAgencies = [...new Set(schedules.map(s => s.agency._id.toString()))];
-
-  // Calculer heures totales
-  const totalHours = schedules.reduce((sum, schedule) => {
-    return sum + (schedule.workingDuration || 0);
-  }, 0);
-
-  // Analyser la répartition par agence
-  const agencyDistribution = {};
-  schedules.forEach(schedule => {
-    const agencyName = schedule.agency.name;
-    if (!agencyDistribution[agencyName]) {
-      agencyDistribution[agencyName] = { count: 0, hours: 0 };
-    }
-    agencyDistribution[agencyName].count++;
-    agencyDistribution[agencyName].hours += schedule.workingDuration || 0;
-  });
-
-  // Calculer couverture par jour
-  const daysCovered = [...new Set(schedules.map(s => s.date.toISOString().split('T')[0]))].length;
-  const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-
-  return {
-    summary: {
-      totalSchedules,
-      uniqueUsers: uniqueUsers.length,
-      uniqueAgencies: uniqueAgencies.length,
-      totalHours: Math.round(totalHours / 60),
-      averageHoursPerDay: totalDays > 0 ? Math.round(totalHours / 60 / totalDays) : 0
-    },
-    coverage: {
-      daysCovered,
-      totalDays,
-      coverageRate: Math.round((daysCovered / totalDays) * 100)
-    },
-    distribution: {
-      byAgency: Object.entries(agencyDistribution).map(([name, data]) => ({
-        agency: name,
-        schedules: data.count,
-        hours: Math.round(data.hours / 60),
-        percentage: Math.round((data.count / totalSchedules) * 100)
-      })),
-      byDayOfWeek: calculateDayOfWeekDistribution(schedules)
-    }
-  };
-}
-
-/**
- * Détecter conflits dans les plannings
- */
-async function detectScheduleConflicts(filters, severity) {
-  const conflicts = [];
+  const weeks = [];
+  const current = new Date(startDate);
   
-  // Conflits d'utilisateur (même personne, même jour, heures qui se chevauchent)
-  const userConflicts = await Schedule.aggregate([
-    { $match: filters },
-    {
-      $group: {
-        _id: {
-          user: '$user',
-          date: '$date'
-        },
-        schedules: { $push: '$$ROOT' },
-        count: { $sum: 1 }
-      }
-    },
-    { $match: { count: { $gt: 1 } } }
-  ]);
-
-  for (const userConflict of userConflicts) {
-    const schedules = userConflict.schedules;
-    for (let i = 0; i < schedules.length; i++) {
-      for (let j = i + 1; j < schedules.length; j++) {
-        if (timesOverlap(schedules[i], schedules[j])) {
-          conflicts.push({
-            type: 'user_overlap',
-            severity: 'critical',
-            userId: schedules[i].user,
-            date: schedules[i].date,
-            message: 'Utilisateur programmé sur plusieurs créneaux simultanés',
-            schedules: [schedules[i]._id, schedules[j]._id],
-            details: {
-              schedule1: `${schedules[i].startTime}-${schedules[i].endTime}`,
-              schedule2: `${schedules[j].startTime}-${schedules[j].endTime}`
-            }
-          });
+  // Grouper les plannings par date
+  const schedulesByDate = groupSchedulesByDate(schedules);
+  
+  while (current <= endDate) {
+    const week = [];
+    
+    // Construire une semaine (7 jours)
+    for (let i = 0; i < 7; i++) {
+      const dayKey = current.toISOString().split('T')[0];
+      const daySchedules = schedulesByDate[dayKey] || [];
+      
+      const day = {
+        date: new Date(current),
+        dateKey: dayKey,
+        isCurrentMonth: current.getMonth() + 1 === options.month,
+        isToday: isToday(current),
+        schedules: daySchedules.map(schedule => ({
+          id: schedule._id,
+          user: {
+            id: schedule.user._id,
+            name: `${schedule.user.firstName} ${schedule.user.lastName}`,
+            email: schedule.user.email
+          },
+          agency: {
+            id: schedule.agency._id,
+            name: schedule.agency.name,
+            code: schedule.agency.code,
+            client: schedule.agency.client
+          },
+          startTime: schedule.startTime,
+          endTime: schedule.endTime,
+          breakStart: schedule.breakStart,
+          breakEnd: schedule.breakEnd,
+          notes: schedule.notes,
+          workingHours: calculateWorkingHours(schedule.startTime, schedule.endTime, schedule.breakStart, schedule.breakEnd),
+          status: schedule.status
+        })),
+        conflicts: options.includeConflicts ? await findDayConflicts(daySchedules) : [],
+        stats: {
+          totalSchedules: daySchedules.length,
+          totalHours: daySchedules.reduce((sum, s) => sum + calculateWorkingHours(s.startTime, s.endTime, s.breakStart, s.breakEnd), 0),
+          agencies: [...new Set(daySchedules.map(s => s.agency._id.toString()))].length
         }
-      }
+      };
+      
+      week.push(day);
+      current.setDate(current.getDate() + 1);
     }
-  }
-
-  // Conflits de surcharge (trop d'heures par semaine)
-  const weeklyHours = await Schedule.aggregate([
-    { $match: filters },
-    {
-      $group: {
-        _id: {
-          user: '$user',
-          week: { $week: '$date' },
-          year: { $year: '$date' }
-        },
-        totalMinutes: { $sum: '$workingDuration' },
-        user: { $first: '$user' },
-        schedules: { $push: '$_id' }
-      }
-    },
-    { $match: { totalMinutes: { $gt: 35 * 60 } } } // Plus de 35h
-  ]);
-
-  weeklyHours.forEach(weekData => {
-    conflicts.push({
-      type: 'overwork',
-      severity: 'warning',
-      userId: weekData.user,
-      week: weekData._id.week,
-      year: weekData._id.year,
-      message: `Dépassement horaire: ${Math.round(weekData.totalMinutes / 60)}h par semaine`,
-      schedules: weekData.schedules,
-      details: {
-        totalHours: Math.round(weekData.totalMinutes / 60),
-        limit: 35
+    
+    weeks.push({
+      weekStart: new Date(week[0].date),
+      weekEnd: new Date(week[6].date),
+      days: week,
+      stats: {
+        totalSchedules: week.reduce((sum, day) => sum + day.schedules.length, 0),
+        totalHours: week.reduce((sum, day) => sum + day.stats.totalHours, 0),
+        workingDays: week.filter(day => day.schedules.length > 0).length
       }
     });
-  });
-
-  // Filtrer par sévérité si demandé
-  return severity === 'all' ? conflicts : conflicts.filter(c => c.severity === severity);
-}
-
-/**
- * Formater planning pour calendrier
- */
-function formatScheduleForCalendar(schedule) {
-  return {
-    id: schedule._id,
-    userId: schedule.user._id,
-    userName: `${schedule.user.firstName} ${schedule.user.lastName}`,
-    userEmail: schedule.user.email,
-    agencyId: schedule.agency._id,
-    agencyName: schedule.agency.name,
-    agencyCode: schedule.agency.code,
-    agencyClient: schedule.agency.client,
-    startTime: schedule.startTime,
-    endTime: schedule.endTime,
-    breakStart: schedule.breakStart,
-    breakEnd: schedule.breakEnd,
-    workingDuration: schedule.workingDuration,
-    workingHours: Math.round((schedule.workingDuration || 0) / 60 * 10) / 10,
-    notes: schedule.notes,
-    status: schedule.status,
-    createdBy: schedule.createdBy,
-    createdAt: schedule.createdAt,
-    canEdit: true, // TODO: Basé sur permissions
-    tags: generateScheduleTags(schedule)
-  };
-}
-
-/**
- * Générer tags pour un planning
- */
-function generateScheduleTags(schedule) {
-  const tags = [];
-  
-  // Tag durée
-  const hours = Math.round((schedule.workingDuration || 0) / 60);
-  if (hours >= 8) tags.push({ type: 'duration', label: 'Temps plein', color: 'green' });
-  else if (hours >= 4) tags.push({ type: 'duration', label: 'Mi-temps', color: 'blue' });
-  else tags.push({ type: 'duration', label: 'Court', color: 'orange' });
-  
-  // Tag horaires
-  const startHour = parseInt(schedule.startTime.split(':')[0]);
-  if (startHour < 8) tags.push({ type: 'time', label: 'Tôt', color: 'purple' });
-  else if (startHour >= 18) tags.push({ type: 'time', label: 'Tard', color: 'red' });
-  
-  // Tag pause
-  if (schedule.breakStart && schedule.breakEnd) {
-    tags.push({ type: 'break', label: 'Avec pause', color: 'gray' });
   }
   
-  return tags;
+  return weeks;
 }
 
 /**
- * Calculer couverture d'un jour
+ * Grouper les plannings par date
  */
-function calculateDayCoverage(schedules) {
-  if (schedules.length === 0) return { rate: 0, hours: 0, gaps: [] };
-  
-  const totalHours = schedules.reduce((sum, s) => sum + (s.workingDuration || 0), 0) / 60;
-  const agencies = [...new Set(schedules.map(s => s.agency._id.toString()))];
-  
-  return {
-    rate: Math.min(100, Math.round((totalHours / (8 * agencies.length)) * 100)),
-    hours: Math.round(totalHours),
-    agencies: agencies.length,
-    gaps: [] // TODO: Détecter les créneaux non couverts
-  };
+function groupSchedulesByDate(schedules) {
+  return schedules.reduce((acc, schedule) => {
+    const dateKey = schedule.date.toISOString().split('T')[0];
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
+    }
+    acc[dateKey].push(schedule);
+    return acc;
+  }, {});
 }
 
 /**
- * Calculer charge de travail d'un jour
+ * Vérifier si une date est aujourd'hui
  */
-function calculateDayWorkload(schedules) {
-  const userHours = {};
-  
-  schedules.forEach(schedule => {
-    const userId = schedule.user._id.toString();
-    if (!userHours[userId]) userHours[userId] = 0;
-    userHours[userId] += (schedule.workingDuration || 0) / 60;
-  });
-  
-  const totalUsers = Object.keys(userHours).length;
-  const averageHours = totalUsers > 0 ? 
-    Object.values(userHours).reduce((sum, hours) => sum + hours, 0) / totalUsers : 0;
-  
-  return {
-    totalUsers,
-    averageHours: Math.round(averageHours * 10) / 10,
-    maxHours: totalUsers > 0 ? Math.max(...Object.values(userHours)) : 0,
-    overworked: Object.values(userHours).filter(hours => hours > 8).length
-  };
+function isToday(date) {
+  const today = new Date();
+  return date.toDateString() === today.toDateString();
 }
 
 /**
- * Détecter conflits d'un jour
+ * Calculer les heures de travail effectives
  */
-async function detectDayConflicts(schedules) {
+function calculateWorkingHours(startTime, endTime, breakStart, breakEnd) {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  
+  let workingMinutes = end - start;
+  
+  if (breakStart && breakEnd) {
+    const breakStartMinutes = timeToMinutes(breakStart);
+    const breakEndMinutes = timeToMinutes(breakEnd);
+    workingMinutes -= (breakEndMinutes - breakStartMinutes);
+  }
+  
+  return Math.max(0, workingMinutes / 60); // Convertir en heures
+}
+
+/**
+ * Convertir un horaire en minutes depuis minuit
+ */
+function timeToMinutes(timeString) {
+  if (!timeString) return 0;
+  const [hours, minutes] = timeString.split(':').map(Number);
+  return (hours * 60) + minutes;
+}
+
+/**
+ * Détecter les conflits pour une journée
+ */
+async function findDayConflicts(daySchedules) {
   const conflicts = [];
   
-  // Grouper par utilisateur
-  const userSchedules = {};
-  schedules.forEach(schedule => {
-    const userId = schedule.user._id.toString();
-    if (!userSchedules[userId]) userSchedules[userId] = [];
-    userSchedules[userId].push(schedule);
-  });
-  
-  // Détecter chevauchements par utilisateur
-  Object.entries(userSchedules).forEach(([userId, userSched]) => {
-    if (userSched.length > 1) {
-      for (let i = 0; i < userSched.length; i++) {
-        for (let j = i + 1; j < userSched.length; j++) {
-          if (timesOverlap(userSched[i], userSched[j])) {
-            conflicts.push({
-              type: 'time_overlap',
-              severity: 'critical',
-              userId,
-              userName: `${userSched[i].user.firstName} ${userSched[i].user.lastName}`,
-              schedules: [userSched[i]._id, userSched[j]._id],
-              message: 'Créneaux horaires en conflit'
-            });
+  for (let i = 0; i < daySchedules.length; i++) {
+    for (let j = i + 1; j < daySchedules.length; j++) {
+      const schedule1 = daySchedules[i];
+      const schedule2 = daySchedules[j];
+      
+      // Conflit utilisateur (même personne, même jour)
+      if (schedule1.user._id.toString() === schedule2.user._id.toString()) {
+        conflicts.push({
+          type: 'user_conflict',
+          severity: 'critical',
+          message: `${schedule1.user.firstName} ${schedule1.user.lastName} a plusieurs plannings le même jour`,
+          schedules: [schedule1._id, schedule2._id],
+          user: schedule1.user,
+          times: {
+            schedule1: `${schedule1.startTime}-${schedule1.endTime}`,
+            schedule2: `${schedule2.startTime}-${schedule2.endTime}`
           }
-        }
+        });
+      }
+      
+      // Conflit horaire (chevauchement)
+      const overlap = checkTimeOverlap(
+        schedule1.startTime, schedule1.endTime,
+        schedule2.startTime, schedule2.endTime
+      );
+      
+      if (overlap && schedule1.agency._id.toString() === schedule2.agency._id.toString()) {
+        conflicts.push({
+          type: 'time_overlap',
+          severity: 'warning',
+          message: `Chevauchement horaire dans l'agence ${schedule1.agency.name}`,
+          schedules: [schedule1._id, schedule2._id],
+          agency: schedule1.agency,
+          overlap: overlap
+        });
       }
     }
-  });
+  }
   
   return conflicts;
 }
 
 /**
- * Vérifier si deux plannings se chevauchent
+ * Vérifier si deux créneaux horaires se chevauchent
  */
-function timesOverlap(schedule1, schedule2) {
-  const start1 = timeToMinutes(schedule1.startTime);
-  const end1 = timeToMinutes(schedule1.endTime);
-  const start2 = timeToMinutes(schedule2.startTime);
-  const end2 = timeToMinutes(schedule2.endTime);
+function checkTimeOverlap(start1, end1, start2, end2) {
+  const start1Minutes = timeToMinutes(start1);
+  const end1Minutes = timeToMinutes(end1);
+  const start2Minutes = timeToMinutes(start2);
+  const end2Minutes = timeToMinutes(end2);
   
-  return start1 < end2 && start2 < end1;
-}
-
-/**
- * Convertir heure en minutes
- */
-function timeToMinutes(timeStr) {
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  return hours * 60 + minutes;
-}
-
-/**
- * Calculer distribution par jour de semaine
- */
-function calculateDayOfWeekDistribution(schedules) {
-  const distribution = {
-    1: { name: 'Lundi', count: 0 },
-    2: { name: 'Mardi', count: 0 },
-    3: { name: 'Mercredi', count: 0 },
-    4: { name: 'Jeudi', count: 0 },
-    5: { name: 'Vendredi', count: 0 },
-    6: { name: 'Samedi', count: 0 },
-    0: { name: 'Dimanche', count: 0 }
-  };
+  const overlapStart = Math.max(start1Minutes, start2Minutes);
+  const overlapEnd = Math.min(end1Minutes, end2Minutes);
   
-  schedules.forEach(schedule => {
-    const dayOfWeek = schedule.date.getDay();
-    distribution[dayOfWeek].count++;
-  });
-  
-  return Object.values(distribution);
-}
-
-/**
- * Générer suggestions pour résoudre conflits
- */
-async function generateConflictSuggestions(conflicts) {
-  const suggestions = [];
-  
-  for (const conflict of conflicts) {
-    switch (conflict.type) {
-      case 'user_overlap':
-        suggestions.push({
-          conflictId: `${conflict.userId}_${conflict.date}`,
-          type: 'reschedule',
-          priority: 'high',
-          title: 'Décaler un créneau',
-          description: 'Modifier l\'horaire d\'un des plannings en conflit',
-          actions: [
-            { type: 'move_earlier', label: 'Avancer premier créneau' },
-            { type: 'move_later', label: 'Retarder second créneau' },
-            { type: 'different_day', label: 'Déplacer sur autre jour' }
-          ]
-        });
-        break;
-        
-      case 'overwork':
-        suggestions.push({
-          conflictId: `overwork_${conflict.userId}_${conflict.week}`,
-          type: 'redistribute',
-          priority: 'medium',
-          title: 'Redistribuer la charge',
-          description: `Réduire les heures de ${conflict.details.totalHours}h à 35h max`,
-          actions: [
-            { type: 'reduce_hours', label: 'Réduire durée des créneaux' },
-            { type: 'remove_schedule', label: 'Supprimer un planning' },
-            { type: 'assign_other', label: 'Réassigner à quelqu\'un d\'autre' }
-          ]
-        });
-        break;
-    }
+  if (overlapStart < overlapEnd) {
+    return {
+      start: minutesToTime(overlapStart),
+      end: minutesToTime(overlapEnd),
+      duration: overlapEnd - overlapStart
+    };
   }
   
-  return suggestions;
+  return null;
 }
 
 /**
- * Calculer métriques d'optimisation
+ * Convertir des minutes en format HH:mm
  */
-async function calculateOptimizationMetrics(schedules, period, constraints) {
-  // Calculer couverture par agence
-  const agencyCoverage = {};
-  const userHours = {};
+function minutesToTime(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Calculer les métadonnées du calendrier
+ */
+async function calculateCalendarMetadata(schedules, startDate, endDate) {
+  const totalSchedules = schedules.length;
+  const totalHours = schedules.reduce((sum, s) => 
+    sum + calculateWorkingHours(s.startTime, s.endTime, s.breakStart, s.breakEnd), 0
+  );
   
-  schedules.forEach(schedule => {
+  // Statistiques par agence
+  const agencyStats = schedules.reduce((acc, schedule) => {
     const agencyId = schedule.agency._id.toString();
+    if (!acc[agencyId]) {
+      acc[agencyId] = {
+        agency: {
+          id: schedule.agency._id,
+          name: schedule.agency.name,
+          code: schedule.agency.code
+        },
+        schedules: 0,
+        hours: 0,
+        users: new Set()
+      };
+    }
+    
+    acc[agencyId].schedules++;
+    acc[agencyId].hours += calculateWorkingHours(
+      schedule.startTime, schedule.endTime, 
+      schedule.breakStart, schedule.breakEnd
+    );
+    acc[agencyId].users.add(schedule.user._id.toString());
+    
+    return acc;
+  }, {});
+  
+  // Convertir les Sets en nombres
+  Object.values(agencyStats).forEach(stat => {
+    stat.users = stat.users.size;
+  });
+  
+  // Statistiques par utilisateur
+  const userStats = schedules.reduce((acc, schedule) => {
     const userId = schedule.user._id.toString();
-    
-    if (!agencyCoverage[agencyId]) {
-      agencyCoverage[agencyId] = { 
-        name: schedule.agency.name, 
-        hours: 0, 
-        schedules: 0 
-      };
-    }
-    if (!userHours[userId]) {
-      userHours[userId] = { 
-        name: `${schedule.user.firstName} ${schedule.user.lastName}`, 
-        hours: 0 
+    if (!acc[userId]) {
+      acc[userId] = {
+        user: {
+          id: schedule.user._id,
+          name: `${schedule.user.firstName} ${schedule.user.lastName}`,
+          email: schedule.user.email
+        },
+        schedules: 0,
+        hours: 0,
+        agencies: new Set()
       };
     }
     
-    const hours = (schedule.workingDuration || 0) / 60;
-    agencyCoverage[agencyId].hours += hours;
-    agencyCoverage[agencyId].schedules++;
-    userHours[userId].hours += hours;
-  });
+    acc[userId].schedules++;
+    acc[userId].hours += calculateWorkingHours(
+      schedule.startTime, schedule.endTime,
+      schedule.breakStart, schedule.breakEnd
+    );
+    acc[userId].agencies.add(schedule.agency._id.toString());
+    
+    return acc;
+  }, {});
   
-  // Calculer scores
-  const totalDays = Math.ceil((period.end - period.start) / (1000 * 60 * 60 * 24));
-  const targetHoursPerAgency = totalDays * 8; // 8h par jour par agence
+  // Convertir les Sets en nombres
+  Object.values(userStats).forEach(stat => {
+    stat.agencies = stat.agencies.size;
+  });
   
   return {
-    agencyCoverage: Object.entries(agencyCoverage).map(([id, data]) => ({
-      agencyId: id,
-      name: data.name,
-      hours: Math.round(data.hours),
-      schedules: data.schedules,
-      coverage: Math.round((data.hours / targetHoursPerAgency) * 100),
-      target: constraints.minCoveragePerAgency || 80
-    })),
-    userWorkload: Object.entries(userHours).map(([id, data]) => ({
-      userId: id,
-      name: data.name,
-      hours: Math.round(data.hours),
-      weeklyAverage: Math.round((data.hours / Math.ceil(totalDays / 7)) * 10) / 10,
-      overLimit: data.hours > (constraints.maxHoursPerUser || 35)
-    })),
-    overall: {
-      totalSchedules: schedules.length,
-      totalHours: Math.round(schedules.reduce((sum, s) => sum + (s.workingDuration || 0), 0) / 60),
-      averageCoverage: Object.values(agencyCoverage).length > 0 ?
-        Math.round(Object.values(agencyCoverage).reduce((sum, a) => sum + (a.hours / targetHoursPerAgency), 0) / Object.values(agencyCoverage).length * 100) : 0,
-      overworkedUsers: Object.values(userHours).filter(u => u.hours > (constraints.maxHoursPerUser || 35)).length
+    summary: {
+      totalSchedules,
+      totalHours: Math.round(totalHours * 10) / 10,
+      averageHoursPerSchedule: totalSchedules > 0 ? Math.round((totalHours / totalSchedules) * 10) / 10 : 0,
+      uniqueUsers: Object.keys(userStats).length,
+      uniqueAgencies: Object.keys(agencyStats).length
+    },
+    agencyStats: Object.values(agencyStats),
+    userStats: Object.values(userStats),
+    coverage: {
+      daysWithSchedules: schedules.reduce((acc, schedule) => {
+        const dateKey = schedule.date.toISOString().split('T')[0];
+        acc.add(dateKey);
+        return acc;
+      }, new Set()).size,
+      totalDaysInPeriod: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
     }
-  };
-}
-
-/**
- * Générer suggestions d'optimisation
- */
-async function generateOptimizationSuggestions(schedules, metrics, constraints) {
-  const suggestions = [];
-  
-  // Suggestions pour agences sous-couvertes
-  metrics.agencyCoverage.forEach(agency => {
-    if (agency.coverage < agency.target) {
-      suggestions.push({
-        type: 'increase_coverage',
-        priority: 'high',
-        agencyId: agency.agencyId,
-        description: `Augmenter couverture ${agency.name} de ${agency.coverage}% à ${agency.target}%`,
-        action: 'add_schedules',
-        estimatedHours: Math.ceil((agency.target - agency.coverage) / 100 * 40), // Estimation
-        requiresNotification: true
-      });
-    }
-  });
-  
-  // Suggestions pour utilisateurs surchargés
-  metrics.userWorkload.forEach(user => {
-    if (user.overLimit) {
-      suggestions.push({
-        type: 'reduce_workload',
-        priority: 'medium',
-        userId: user.userId,
-        description: `Réduire charge ${user.name} de ${user.hours}h à ${constraints.maxHoursPerUser}h`,
-        action: 'redistribute_hours',
-        excessHours: user.hours - (constraints.maxHoursPerUser || 35),
-        requiresNotification: true
-      });
-    }
-  });
-  
-  return suggestions;
-}
-
-/**
- * Projeter impact des optimisations
- */
-async function projectOptimizationImpact(optimizations, currentMetrics) {
-  // Simulation simple - en production, calcul plus complexe
-  const projected = JSON.parse(JSON.stringify(currentMetrics));
-  
-  optimizations.forEach(opt => {
-    switch (opt.type) {
-      case 'increase_coverage':
-        const agency = projected.agencyCoverage.find(a => a.agencyId === opt.agencyId);
-        if (agency) {
-          agency.coverage = Math.min(100, agency.coverage + 10);
-          agency.hours += opt.estimatedHours || 10;
-        }
-        break;
-        
-      case 'reduce_workload':
-        const user = projected.userWorkload.find(u => u.userId === opt.userId);
-        if (user) {
-          user.hours -= opt.excessHours || 5;
-          user.overLimit = false;
-        }
-        projected.overall.overworkedUsers = Math.max(0, projected.overall.overworkedUsers - 1);
-        break;
-    }
-  });
-  
-  return projected;
-}
-
-/**
- * Calculer améliorations
- */
-function calculateImprovements(current, projected) {
-  return {
-    coverageImprovement: projected.overall.averageCoverage - current.overall.averageCoverage,
-    overworkReduction: current.overall.overworkedUsers - projected.overall.overworkedUsers,
-    totalHoursChange: projected.overall.totalHours - current.overall.totalHours
   };
 }
 

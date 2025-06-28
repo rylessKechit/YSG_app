@@ -89,14 +89,14 @@ try {
   app.use('/api/admin/users', require('./routes/admin/users/bulk-actions'));
   app.use('/api/admin/users', require('./routes/admin/users/profile-complete'));
 } catch (error) {
-  console.warn('⚠️  Certaines routes admin/users non trouvées:', error.message);
+  console.warn(error);
 }
 
 try {
   // Agencies
   app.use('/api/admin/agencies', require('./routes/admin/agencies'));
 } catch (error) {
-  console.warn('⚠️  Route admin/agencies non trouvée');
+  console.warn(error);
 }
 
 try {
@@ -106,7 +106,7 @@ try {
   app.use('/api/admin/schedules/templates', require('./routes/admin/schedules/templates'));
   app.use('/api/admin/schedules/conflicts', require('./routes/admin/schedules/conflicts'));
 } catch (error) {
-  console.warn('⚠️  Certaines routes admin/schedules non trouvées:', error.message);
+  console.warn(error);
 }
 
 try {
@@ -116,7 +116,7 @@ try {
   app.use('/api/admin/dashboard/charts', require('./routes/admin/dashboard/charts'));
   app.use('/api/admin/dashboard/alerts', require('./routes/admin/dashboard/alerts'));
 } catch (error) {
-  console.warn('⚠️  Certaines routes admin/dashboard non trouvées:', error.message);
+  console.warn(error);
 }
 
 try {
@@ -131,14 +131,6 @@ try {
   app.use('/api/admin/settings', require('./routes/admin/settings'));
 } catch (error) {
   console.warn('⚠️  Route admin/settings non trouvée');
-}
-
-// ===== ROUTES AGENCIES (niveau racine) =====
-
-try {
-  app.use('/api/agencies', require('./routes/agencies'));
-} catch (error) {
-  console.warn('⚠️  Route agencies non trouvée, sera ajoutée plus tard');
 }
 
 // ===== ROUTES PRÉPARATEUR =====
