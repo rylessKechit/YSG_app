@@ -203,7 +203,7 @@ const validateHistoryQuery = (req, res, next) => {
       startDate: Joi.date().optional(),
       endDate: Joi.date().min(Joi.ref('startDate')).optional(),
       agencyId: objectId.optional(),
-      search: Joi.string().min(1).max(50).optional(),
+      search: Joi.string().min(1).max(100).optional().allow(''),
       sort: Joi.string().valid('createdAt', 'startTime', 'totalMinutes', 'licensePlate').default('createdAt'),
       order: Joi.string().valid('asc', 'desc').default('desc')
     });

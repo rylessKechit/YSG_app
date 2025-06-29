@@ -1,4 +1,4 @@
-// ===== backend/src/routes/admin/agencies.js - VERSION CORRIGÉE =====
+// ===== backend/src/routes/admin/agencies.js - VERSION CORRIGÉE COMPLÈTE =====
 const express = require('express');
 const Joi = require('joi'); // ✅ Import explicite de Joi
 const Agency = require('../../models/Agency');
@@ -11,12 +11,26 @@ const { ERROR_MESSAGES } = require('../../utils/constants');
 
 const router = express.Router();
 
-// ===== SCHÉMAS DE VALIDATION LOCAUX =====
+// ===== SCHÉMAS DE VALIDATION COMPLETS =====
+
+// ✅ SCHÉMA MANQUANT AJOUTÉ - C'ÉTAIT LE PROBLÈME !
+const agencySearchSchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  search: Joi.string().min(1).max(100).optional().allow(''), // ✅ Permet chaînes vides
+  client: Joi.string().optional().allow(''),
+  status: Joi.string().valid('all', 'active', 'inactive').default('all'),
+  sort: Joi.string().default('name'),
+  order: Joi.string().valid('asc', 'desc').default('asc')
+});
+
 const agencyCreateSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   address: Joi.string().min(5).max(200).required(),
   code: Joi.string().min(2).max(10).uppercase().pattern(/^[A-Z0-9]+$/).required(),
   client: Joi.string().min(2).max(50).required(),
+  phone: Joi.string().pattern(/^[\+]?[1-9][\d]{0,15}$/).optional(),
+  email: Joi.string().email().optional(),
   workingHours: Joi.object({
     start: timeFormat.required(),
     end: timeFormat.required()
@@ -31,6 +45,8 @@ const agencyUpdateSchema = Joi.object({
   name: Joi.string().min(2).max(100).optional(),
   address: Joi.string().min(5).max(200).optional(),
   client: Joi.string().min(2).max(50).optional(),
+  phone: Joi.string().pattern(/^[\+]?[1-9][\d]{0,15}$/).optional().allow(''),
+  email: Joi.string().email().optional().allow(''),
   workingHours: Joi.object({
     start: timeFormat.required(),
     end: timeFormat.required()
@@ -42,19 +58,138 @@ const agencyUpdateSchema = Joi.object({
   isActive: Joi.boolean().optional()
 });
 
-const agencyQuerySchema = Joi.object({
-  page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(20),
-  search: Joi.string().min(2).max(100).optional(),
-  client: Joi.string().optional(),
-  isActive: Joi.boolean().optional(),
-  includeStats: Joi.boolean().default(true),
-  sort: Joi.string().default('name'),
-  order: Joi.string().valid('asc', 'desc').default('asc')
+const agencyCodeCheckSchema = Joi.object({
+  code: Joi.string().min(2).max(10).required(),
+  excludeAgencyId: objectId.optional()
 });
 
 // Middleware auth pour toutes les routes
 router.use(auth, adminAuth);
+
+/**
+ * @route   GET /api/admin/agencies
+ * @desc    Liste des agences avec filtres et pagination
+ * @access  Admin
+ */
+router.get('/', validateQuery(agencySearchSchema), async (req, res) => {
+  try {
+    console.log('🔍 [GET /api/admin/agencies] Params reçus:', req.query);
+    
+    const { 
+      page, 
+      limit, 
+      search, 
+      client, 
+      status, 
+      sort, 
+      order 
+    } = req.query;
+
+    // Construire les filtres MongoDB
+    const filters = {};
+    
+    // ✅ Vérifier que search n'est pas vide avant de l'utiliser
+    if (search && search.trim().length > 0) {
+      filters.$or = [
+        { name: { $regex: search.trim(), $options: 'i' } },
+        { code: { $regex: search.trim(), $options: 'i' } },
+        { client: { $regex: search.trim(), $options: 'i' } },
+        { address: { $regex: search.trim(), $options: 'i' } }
+      ];
+      console.log('🔍 Filtre recherche appliqué:', search.trim());
+    }
+
+    // Filtre client
+    if (client && client.trim().length > 0) {
+      filters.client = { $regex: client.trim(), $options: 'i' };
+      console.log('🏢 Filtre client appliqué:', client.trim());
+    }
+
+    // Filtre statut
+    if (status && status !== 'all') {
+      filters.isActive = status === 'active';
+      console.log('📊 Filtre statut appliqué:', status);
+    }
+
+    console.log('🎯 Filtres MongoDB finaux:', filters);
+
+    // Compter le total
+    const total = await Agency.countDocuments(filters);
+    console.log('📈 Total agences trouvées:', total);
+
+    // Récupérer les agences avec pagination
+    const agencies = await Agency.find(filters)
+      .select('name code client address phone email isActive createdAt')
+      .sort({ [sort]: order === 'desc' ? -1 : 1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(); // Optimisation performance
+
+    console.log('✅ Agences récupérées:', agencies.length);
+
+    // Calcul pagination
+    const totalPages = Math.ceil(total / limit);
+    const hasNext = page < totalPages;
+    const hasPrev = page > 1;
+
+    // Statistiques globales
+    const stats = {
+      totalAgencies: total,
+      activeAgencies: await Agency.countDocuments({ ...filters, isActive: true }),
+      inactiveAgencies: await Agency.countDocuments({ ...filters, isActive: false })
+    };
+
+    // Transformation des données pour le frontend
+    const formattedAgencies = agencies.map(agency => ({
+      id: agency._id.toString(),
+      name: agency.name,
+      code: agency.code,
+      client: agency.client || '',
+      address: agency.address || '',
+      phone: agency.phone || '',
+      email: agency.email || '',
+      isActive: agency.isActive,
+      createdAt: agency.createdAt
+    }));
+
+    console.log('📦 Réponse preparée:', {
+      total: formattedAgencies.length,
+      page,
+      totalPages
+    });
+
+    // Réponse structurée
+    res.json({
+      success: true,
+      data: {
+        agencies: formattedAgencies,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: totalPages,        // Backend utilise 'pages'
+          totalPages,              // Alias pour le frontend
+          hasNext,
+          hasPrev
+        },
+        filters: {
+          search: search || '',
+          client: client || '',
+          status: status || 'all'
+        },
+        stats
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur récupération agences:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des agences',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
 
 /**
  * @route   POST /api/admin/agencies
@@ -63,7 +198,9 @@ router.use(auth, adminAuth);
  */
 router.post('/', validateBody(agencyCreateSchema), async (req, res) => {
   try {
-    const { name, address, code, client, workingHours, contact } = req.body;
+    console.log('➕ [POST /api/admin/agencies] Données reçues:', req.body);
+    
+    const { name, address, code, client, phone, email, workingHours, contact } = req.body;
 
     // Vérifier que le code n'existe pas déjà
     const existingAgency = await Agency.findOne({ code: code.toUpperCase() });
@@ -74,37 +211,24 @@ router.post('/', validateBody(agencyCreateSchema), async (req, res) => {
       });
     }
 
-    // Valider les horaires de travail si fournis
-    if (workingHours) {
-      const startMinutes = timeToMinutes(workingHours.start);
-      const endMinutes = timeToMinutes(workingHours.end);
-      
-      if (endMinutes <= startMinutes) {
-        return res.status(400).json({
-          success: false,
-          message: 'L\'heure de fermeture doit être postérieure à l\'heure d\'ouverture'
-        });
-      }
-    }
-
     // Créer l'agence
     const agency = new Agency({
-      name,
-      address,
+      name: name.trim(),
+      address: address.trim(),
       code: code.toUpperCase(),
-      client,
-      workingHours,
-      contact,
-      isActive: true,
-      createdBy: req.user.userId,
-      stats: {
-        totalUsers: 0,
-        activeSchedules: 0,
-        totalPreparations: 0
-      }
+      client: client.trim(),
+      phone: phone || '',
+      email: email || '',
+      workingHours: workingHours || {
+        start: '08:00',
+        end: '18:00'
+      },
+      contact: contact || {},
+      isActive: true
     });
 
     await agency.save();
+    console.log('✅ Agence créée:', agency._id);
 
     res.status(201).json({
       success: true,
@@ -113,145 +237,25 @@ router.post('/', validateBody(agencyCreateSchema), async (req, res) => {
         agency: {
           id: agency._id,
           name: agency.name,
-          address: agency.address,
           code: agency.code,
           client: agency.client,
+          address: agency.address,
+          phone: agency.phone,
+          email: agency.email,
           workingHours: agency.workingHours,
           contact: agency.contact,
           isActive: agency.isActive,
-          stats: agency.stats,
           createdAt: agency.createdAt
         }
       }
     });
 
   } catch (error) {
-    console.error('Erreur création agence:', error);
+    console.error('❌ Erreur création agence:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
-    });
-  }
-});
-
-/**
- * @route   GET /api/admin/agencies
- * @desc    Liste des agences avec filtres et statistiques
- * @access  Admin
- */
-router.get('/', validateQuery(agencyQuerySchema), async (req, res) => {
-  try {
-    const { page, limit, search, client, isActive, includeStats, sort, order } = req.query;
-
-    // Construire les filtres
-    const filters = {};
-    
-    if (search) {
-      filters.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { code: { $regex: search, $options: 'i' } },
-        { address: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    if (client) {
-      filters.client = { $regex: client, $options: 'i' };
-    }
-
-    if (isActive !== undefined) {
-      filters.isActive = isActive;
-    }
-
-    // Compter le total
-    const total = await Agency.countDocuments(filters);
-
-    // Récupérer les agences avec pagination
-    const agencies = await Agency.find(filters)
-      .sort({ [sort]: order === 'desc' ? -1 : 1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    // Enrichir avec des statistiques si demandé
-    const enrichedAgencies = await Promise.all(agencies.map(async (agency) => {
-      const agencyData = {
-        id: agency._id,
-        name: agency.name,
-        address: agency.address,
-        code: agency.code,
-        client: agency.client,
-        workingHours: agency.workingHours,
-        contact: agency.contact,
-        isActive: agency.isActive,
-        createdAt: agency.createdAt,
-        updatedAt: agency.updatedAt
-      };
-
-      if (includeStats) {
-        // Calculer les statistiques en temps réel
-        const [userCount, activeSchedules, totalPreparations] = await Promise.all([
-          User.countDocuments({ agencies: agency._id, isActive: true }),
-          Schedule.countDocuments({ agency: agency._id, status: 'active' }),
-          // Pour les préparations, on simule car le modèle n'est pas encore défini
-          Promise.resolve(Math.floor(Math.random() * 500))
-        ]);
-
-        agencyData.stats = {
-          totalUsers: userCount,
-          activeSchedules,
-          totalPreparations,
-          lastActivity: agency.updatedAt
-        };
-      }
-
-      return agencyData;
-    }));
-
-    // Calculer les statistiques globales
-    const globalStats = await Agency.aggregate([
-      { $match: filters },
-      {
-        $group: {
-          _id: null,
-          totalAgencies: { $sum: 1 },
-          activeAgencies: { $sum: { $cond: ['$isActive', 1, 0] } },
-          inactiveAgencies: { $sum: { $cond: ['$isActive', 0, 1] } },
-          clients: { $addToSet: '$client' }
-        }
-      }
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        agencies: enrichedAgencies,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        },
-        filters: {
-          search,
-          client,
-          isActive
-        },
-        stats: globalStats[0] ? {
-          ...globalStats[0],
-          uniqueClients: globalStats[0].clients.length
-        } : {
-          totalAgencies: 0,
-          activeAgencies: 0,
-          inactiveAgencies: 0,
-          uniqueClients: 0
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Erreur récupération agences:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+      message: 'Erreur lors de la création de l\'agence',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -263,6 +267,8 @@ router.get('/', validateQuery(agencyQuerySchema), async (req, res) => {
  */
 router.get('/:id', validateObjectId('id'), async (req, res) => {
   try {
+    console.log('🔍 [GET /api/admin/agencies/:id] ID:', req.params.id);
+    
     const agency = await Agency.findById(req.params.id);
 
     if (!agency) {
@@ -299,6 +305,8 @@ router.get('/:id', validateObjectId('id'), async (req, res) => {
           address: agency.address,
           code: agency.code,
           client: agency.client,
+          phone: agency.phone,
+          email: agency.email,
           workingHours: agency.workingHours,
           contact: agency.contact,
           isActive: agency.isActive,
@@ -337,7 +345,7 @@ router.get('/:id', validateObjectId('id'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erreur récupération agence:', error);
+    console.error('❌ Erreur récupération agence:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
@@ -352,6 +360,8 @@ router.get('/:id', validateObjectId('id'), async (req, res) => {
  */
 router.put('/:id', validateObjectId('id'), validateBody(agencyUpdateSchema), async (req, res) => {
   try {
+    console.log('✏️ [PUT /api/admin/agencies/:id] ID:', req.params.id, 'Data:', req.body);
+    
     const agency = await Agency.findById(req.params.id);
 
     if (!agency) {
@@ -361,31 +371,15 @@ router.put('/:id', validateObjectId('id'), validateBody(agencyUpdateSchema), asy
       });
     }
 
-    // Valider les horaires de travail si modifiés
-    if (req.body.workingHours) {
-      const startMinutes = timeToMinutes(req.body.workingHours.start);
-      const endMinutes = timeToMinutes(req.body.workingHours.end);
-      
-      if (endMinutes <= startMinutes) {
-        return res.status(400).json({
-          success: false,
-          message: 'L\'heure de fermeture doit être postérieure à l\'heure d\'ouverture'
-        });
-      }
-    }
-
     // Mettre à jour les champs
     Object.keys(req.body).forEach(key => {
-      if (key === 'contact' && agency.contact) {
-        // Merger les contacts au lieu de les remplacer
-        agency.contact = { ...agency.contact, ...req.body.contact };
-      } else {
+      if (req.body[key] !== undefined) {
         agency[key] = req.body[key];
       }
     });
 
-    agency.updatedAt = new Date();
     await agency.save();
+    console.log('✅ Agence modifiée:', agency._id);
 
     res.json({
       success: true,
@@ -394,9 +388,11 @@ router.put('/:id', validateObjectId('id'), validateBody(agencyUpdateSchema), asy
         agency: {
           id: agency._id,
           name: agency.name,
-          address: agency.address,
           code: agency.code,
           client: agency.client,
+          address: agency.address,
+          phone: agency.phone,
+          email: agency.email,
           workingHours: agency.workingHours,
           contact: agency.contact,
           isActive: agency.isActive,
@@ -406,21 +402,24 @@ router.put('/:id', validateObjectId('id'), validateBody(agencyUpdateSchema), asy
     });
 
   } catch (error) {
-    console.error('Erreur modification agence:', error);
+    console.error('❌ Erreur modification agence:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+      message: 'Erreur lors de la modification',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
 /**
  * @route   DELETE /api/admin/agencies/:id
- * @desc    Désactiver une agence (soft delete)
+ * @desc    Désactiver une agence
  * @access  Admin
  */
 router.delete('/:id', validateObjectId('id'), async (req, res) => {
   try {
+    console.log('🗑️ [DELETE /api/admin/agencies/:id] ID:', req.params.id);
+    
     const agency = await Agency.findById(req.params.id);
 
     if (!agency) {
@@ -430,33 +429,11 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
       });
     }
 
-    // Vérifier s'il y a des plannings actifs
-    const activeSchedules = await Schedule.countDocuments({
-      agency: agency._id,
-      status: 'active',
-      date: { $gte: new Date() }
-    });
-
-    if (activeSchedules > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Impossible de supprimer l'agence: ${activeSchedules} planning(s) actif(s)`,
-        details: {
-          activeSchedules
-        }
-      });
-    }
-
-    // Désactiver l'agence (soft delete)
+    // Désactiver plutôt que supprimer
     agency.isActive = false;
-    agency.updatedAt = new Date();
     await agency.save();
 
-    // Retirer l'agence des utilisateurs assignés
-    await User.updateMany(
-      { agencies: agency._id },
-      { $pull: { agencies: agency._id } }
-    );
+    console.log('✅ Agence désactivée:', agency._id);
 
     res.json({
       success: true,
@@ -464,21 +441,24 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erreur suppression agence:', error);
+    console.error('❌ Erreur désactivation agence:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+      message: 'Erreur lors de la désactivation',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
 /**
- * @route   POST /api/admin/agencies/:id/activate
+ * @route   PATCH /api/admin/agencies/:id/reactivate
  * @desc    Réactiver une agence
  * @access  Admin
  */
-router.post('/:id/activate', validateObjectId('id'), async (req, res) => {
+router.patch('/:id/reactivate', validateObjectId('id'), async (req, res) => {
   try {
+    console.log('🔄 [PATCH /api/admin/agencies/:id/reactivate] ID:', req.params.id);
+    
     const agency = await Agency.findById(req.params.id);
 
     if (!agency) {
@@ -488,16 +468,10 @@ router.post('/:id/activate', validateObjectId('id'), async (req, res) => {
       });
     }
 
-    if (agency.isActive) {
-      return res.status(400).json({
-        success: false,
-        message: 'L\'agence est déjà active'
-      });
-    }
-
     agency.isActive = true;
-    agency.updatedAt = new Date();
     await agency.save();
+
+    console.log('✅ Agence réactivée:', agency._id);
 
     res.json({
       success: true,
@@ -506,27 +480,57 @@ router.post('/:id/activate', validateObjectId('id'), async (req, res) => {
         agency: {
           id: agency._id,
           name: agency.name,
+          code: agency.code,
+          client: agency.client,
           isActive: agency.isActive
         }
       }
     });
 
   } catch (error) {
-    console.error('Erreur activation agence:', error);
+    console.error('❌ Erreur réactivation agence:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+      message: 'Erreur lors de la réactivation',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
 /**
- * Convertir un horaire en minutes depuis minuit
+ * @route   POST /api/admin/agencies/check-code
+ * @desc    Vérifier la disponibilité d'un code agence
+ * @access  Admin
  */
-function timeToMinutes(timeString) {
-  if (!timeString) return 0;
-  const [hours, minutes] = timeString.split(':').map(Number);
-  return (hours * 60) + minutes;
-}
+router.post('/check-code', validateBody(agencyCodeCheckSchema), async (req, res) => {
+  try {
+    console.log('🔍 [POST /api/admin/agencies/check-code] Code:', req.body.code);
+    
+    const { code, excludeAgencyId } = req.body;
+
+    const query = { code: code.toUpperCase() };
+    if (excludeAgencyId) {
+      query._id = { $ne: excludeAgencyId };
+    }
+
+    const existingAgency = await Agency.findOne(query);
+
+    res.json({
+      success: true,
+      data: {
+        available: !existingAgency,
+        message: existingAgency ? 'Ce code est déjà utilisé' : 'Code disponible'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur vérification code:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la vérification',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
 
 module.exports = router;

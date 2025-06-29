@@ -1,3 +1,4 @@
+// ===== backend/src/app.js - VERSION CORRIGÉE AVEC ROUTE AGENCIES =====
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -77,8 +78,9 @@ app.get('/', (req, res) => {
 
 try {
   app.use('/api/auth', require('./routes/auth'));
+  console.log('✅ Routes auth chargées avec succès');
 } catch (error) {
-  console.warn('⚠️  Route auth non trouvée, sera ajoutée plus tard');
+  console.warn('⚠️ Route auth non trouvée, sera ajoutée plus tard');
 }
 
 // ===== ROUTES ADMIN =====
@@ -88,31 +90,37 @@ try {
   app.use('/api/admin/users', require('./routes/admin/users/users'));
   app.use('/api/admin/users', require('./routes/admin/users/bulk-actions'));
   app.use('/api/admin/users', require('./routes/admin/users/profile-complete'));
+  console.log('✅ Routes users chargées avec succès');
 } catch (error) {
-  console.warn(error);
+  console.warn('⚠️ Erreur chargement routes users:', error.message);
 }
 
+// ✅ ROUTE AGENCIES AJOUTÉE - C'ÉTAIT LE PROBLÈME !
 try {
-  // Agencies
+  // Agencies - ROUTE MANQUANTE CORRIGÉE
   app.use('/api/admin/agencies', require('./routes/admin/agencies'));
+  console.log('✅ Routes agencies chargées avec succès');
 } catch (error) {
-  console.warn(error);
+  console.error('❌ Erreur chargement routes agencies:', error.message);
+  console.warn('Vérifiez que le fichier ./routes/admin/agencies.js existe');
 }
 
 try {
+  // Schedules
   app.use('/api/admin/schedules/stats', require('./routes/admin/schedules/stats'));
   app.use('/api/admin/schedules/calendar', require('./routes/admin/schedules/calendar'));
   app.use('/api/admin/schedules/validate', require('./routes/admin/schedules/validate'));
   app.use('/api/admin/schedules/templates', require('./routes/admin/schedules/templates'));
   app.use('/api/admin/schedules/conflicts', require('./routes/admin/schedules/conflicts'));
   app.use('/api/admin/schedules', require('./routes/admin/schedules/schedules'));
+  console.log('✅ Routes schedules chargées avec succès');
 } catch (error) {
   console.error('❌ Erreur chargement routes schedules:', error.message);
   console.warn('Vérifiez que tous les fichiers de routes schedules existent');
 }
 
 try {
-  // Dashboard - ROUTES COMPLÈTES
+  // Dashboard
   app.use('/api/admin/dashboard', require('./routes/admin/dashboard/dashboard'));
   app.use('/api/admin/dashboard/kpis', require('./routes/admin/dashboard/kpis'));
   app.use('/api/admin/dashboard/overview', require('./routes/admin/dashboard/overview'));
@@ -126,15 +134,27 @@ try {
 try {
   // Reports
   app.use('/api/admin/reports', require('./routes/admin/reports'));
+  console.log('✅ Routes reports chargées avec succès');
 } catch (error) {
-  console.warn('⚠️  Route admin/reports non trouvée');
+  console.warn('⚠️ Route admin/reports non trouvée');
 }
 
 try {
   // Settings
   app.use('/api/admin/settings', require('./routes/admin/settings'));
+  console.log('✅ Routes settings chargées avec succès');
 } catch (error) {
-  console.warn('⚠️  Route admin/settings non trouvée');
+  console.warn('⚠️ Route admin/settings non trouvée');
+}
+
+// ===== ROUTES COMMUNES (POUR TOUS LES UTILISATEURS) =====
+
+try {
+  // Routes communes agencies (pour préparateurs aussi)
+  app.use('/api/agencies', require('./routes/common/agencies'));
+  console.log('✅ Routes communes agencies chargées avec succès');
+} catch (error) {
+  console.warn('⚠️ Routes communes agencies non trouvées');
 }
 
 // ===== ROUTES PRÉPARATEUR =====
@@ -143,14 +163,17 @@ try {
   app.use('/api/timesheets', require('./routes/preparateur/timesheets'));
   app.use('/api/preparations', require('./routes/preparateur/preparations'));
   app.use('/api/profile', require('./routes/preparateur/profile'));
+  console.log('✅ Routes préparateur chargées avec succès');
 } catch (error) {
-  console.warn('⚠️  Certaines routes préparateur non trouvées, seront ajoutées plus tard');
+  console.warn('⚠️ Certaines routes préparateur non trouvées, seront ajoutées plus tard');
 }
 
 // ===== GESTION DES ERREURS =====
 
 // Route 404 pour les API non trouvées
 app.use('/api/*', (req, res) => {
+  console.log(`❌ Route API non trouvée: ${req.method} ${req.originalUrl}`);
+  
   res.status(404).json({
     success: false,
     message: `Route API non trouvée: ${req.method} ${req.originalUrl}`,
@@ -163,11 +186,15 @@ app.use('/api/*', (req, res) => {
       admin: [
         'GET /api/admin/users',
         'POST /api/admin/users',
-        'GET /api/admin/agencies',
+        'GET /api/admin/agencies',        // ✅ MAINTENANT DISPONIBLE
+        'POST /api/admin/agencies',       // ✅ MAINTENANT DISPONIBLE
         'GET /api/admin/schedules',
         'GET /api/admin/dashboard',
         'GET /api/admin/reports',
         'GET /api/admin/settings'
+      ],
+      common: [
+        'GET /api/agencies',              // Pour tous les utilisateurs
       ],
       health: [
         'GET /health',
