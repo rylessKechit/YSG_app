@@ -133,10 +133,11 @@ try {
 
 try {
   // Reports
-  app.use('/api/admin/reports', require('./routes/admin/reports'));
+  app.use('/api/admin/reports', require('./routes/admin/reports/index'));
   console.log('✅ Routes reports chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Route admin/reports non trouvée');
+  console.error('❌ Erreur chargement routes reports:', error.message);
+  console.warn('⚠️ Vérifiez que le dossier routes/admin/reports/ existe avec tous les fichiers');
 }
 
 try {
