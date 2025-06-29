@@ -11,7 +11,7 @@ const { ERROR_MESSAGES, USER_ROLES } = require('../../../utils/constants');
 
 const router = express.Router();
 
-// ===== SCHÉMAS DE VALIDATION LOCAUX =====
+// ===== SCHÉMAS DE VALIDATION CORRIGÉS =====
 const userCreateSchema = Joi.object({
   email: Joi.string().email().required().messages({
     'string.email': 'Format d\'email invalide',
@@ -37,12 +37,19 @@ const userUpdateSchema = Joi.object({
   role: Joi.string().valid(...Object.values(USER_ROLES)).optional()
 });
 
+// 🔧 SCHÉMA CORRIGÉ - Support des deux formats
 const userSearchSchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(20),
-  search: Joi.string().min(2).max(100).optional(),
-  agence: objectId.optional(),
-  statut: Joi.string().valid('all', 'active', 'inactive').default('all'),
+  search: Joi.string().min(1).max(100).optional().allow(''),
+  
+  // Support des deux formats pour rétrocompatibilité
+  agence: objectId.optional(),          // Format documentation 
+  agency: objectId.optional(),          // Format frontend
+  
+  statut: Joi.string().valid('all', 'active', 'inactive').optional(), // Format documentation
+  status: Joi.string().valid('all', 'active', 'inactive').optional(), // Format frontend
+  
   role: Joi.string().valid(...Object.values(USER_ROLES)).optional(),
   sort: Joi.string().default('createdAt'),
   order: Joi.string().valid('asc', 'desc').default('desc')
@@ -142,38 +149,72 @@ router.post('/', validateBody(userCreateSchema), async (req, res) => {
 
 /**
  * @route   GET /api/admin/users
- * @desc    Liste des utilisateurs avec filtres et recherche
+ * @desc    Liste des utilisateurs avec filtres et recherche - VERSION CORRIGÉE
  * @access  Admin
  */
 router.get('/', validateQuery(userSearchSchema), async (req, res) => {
   try {
-    const { page, limit, search, agence, statut, role, sort, order } = req.query;
+    console.log('🔍 Requête GET /api/admin/users avec params:', req.query);
+    
+    // 🔧 NORMALISATION DES PARAMÈTRES - Support des deux formats
+    const { 
+      page, 
+      limit, 
+      search, 
+      role, 
+      sort, 
+      order 
+    } = req.query;
+    
+    // Normaliser agency/agence
+    const agencyFilter = req.query.agency || req.query.agence;
+    
+    // Normaliser status/statut avec valeur par défaut
+    const statusFilter = req.query.status || req.query.statut || 'all';
 
-    // Construire les filtres
+    console.log('📊 Filtres normalisés:', {
+      page,
+      limit,
+      search,
+      agency: agencyFilter,
+      status: statusFilter,
+      role,
+      sort,
+      order
+    });
+
+    // Construire les filtres MongoDB
     const filters = {};
     
-    if (search) {
+    // Filtre de recherche
+    if (search && search.trim() !== '') {
       filters.$or = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
+        { firstName: { $regex: search.trim(), $options: 'i' } },
+        { lastName: { $regex: search.trim(), $options: 'i' } },
+        { email: { $regex: search.trim(), $options: 'i' } }
       ];
     }
 
-    if (agence) {
-      filters.agencies = agence;
+    // Filtre agence
+    if (agencyFilter) {
+      filters.agencies = agencyFilter;
     }
 
-    if (statut !== 'all') {
-      filters.isActive = statut === 'active';
+    // Filtre statut
+    if (statusFilter !== 'all') {
+      filters.isActive = statusFilter === 'active';
     }
 
+    // Filtre rôle
     if (role) {
       filters.role = role;
     }
 
+    console.log('🎯 Filtres MongoDB:', filters);
+
     // Compter le total
     const total = await User.countDocuments(filters);
+    console.log('📈 Total utilisateurs trouvés:', total);
 
     // Récupérer les utilisateurs avec pagination
     const users = await User.find(filters)
@@ -183,9 +224,11 @@ router.get('/', validateQuery(userSearchSchema), async (req, res) => {
       .skip((page - 1) * limit)
       .limit(limit);
 
+    console.log('👥 Utilisateurs récupérés:', users.length);
+
     // Calculer les statistiques globales
     const stats = await User.aggregate([
-      { $match: filters },
+      { $match: {} }, // Toutes les données pour les stats
       {
         $group: {
           _id: null,
@@ -198,7 +241,8 @@ router.get('/', validateQuery(userSearchSchema), async (req, res) => {
       }
     ]);
 
-    res.json({
+    // Construire la réponse
+    const response = {
       success: true,
       data: {
         users: users.map(user => ({
@@ -215,16 +259,18 @@ router.get('/', validateQuery(userSearchSchema), async (req, res) => {
           createdAt: user.createdAt
         })),
         pagination: {
-          page,
-          limit,
+          page: parseInt(page),
+          limit: parseInt(limit),
           total,
-          pages: Math.ceil(total / limit)
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1
         },
         filters: {
-          search,
-          agence,
-          statut,
-          role
+          search: search || '',
+          agency: agencyFilter || null,
+          status: statusFilter,
+          role: role || null
         },
         stats: stats[0] || {
           totalUsers: 0,
@@ -234,13 +280,22 @@ router.get('/', validateQuery(userSearchSchema), async (req, res) => {
           admins: 0
         }
       }
+    };
+
+    console.log('✅ Réponse envoyée:', {
+      usersCount: response.data.users.length,
+      pagination: response.data.pagination,
+      filters: response.data.filters
     });
 
+    res.json(response);
+
   } catch (error) {
-    console.error('Erreur récupération utilisateurs:', error);
+    console.error('❌ Erreur récupération utilisateurs:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -341,7 +396,9 @@ router.put('/:id', validateObjectId('id'), validateBody(userUpdateSchema), async
 
     // Mettre à jour les champs
     Object.keys(req.body).forEach(key => {
-      user[key] = req.body[key];
+      if (req.body[key] !== undefined) {
+        user[key] = req.body[key];
+      }
     });
 
     user.updatedAt = new Date();
@@ -364,6 +421,8 @@ router.put('/:id', validateObjectId('id'), validateBody(userUpdateSchema), async
           agencies: user.agencies,
           isActive: user.isActive,
           stats: user.stats,
+          lastLogin: user.lastLogin,
+          createdAt: user.createdAt,
           updatedAt: user.updatedAt
         }
       }
@@ -405,12 +464,11 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
       if (adminCount === 0) {
         return res.status(400).json({
           success: false,
-          message: 'Impossible de supprimer le dernier administrateur'
+          message: 'Impossible de désactiver le dernier administrateur'
         });
       }
     }
 
-    // Soft delete
     user.isActive = false;
     user.updatedAt = new Date();
     await user.save();
@@ -421,7 +479,70 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erreur suppression utilisateur:', error);
+    console.error('Erreur désactivation utilisateur:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/admin/users/:id/reactivate
+ * @desc    Réactiver un utilisateur
+ * @access  Admin
+ */
+router.patch('/:id/reactivate', validateObjectId('id'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Utilisateur non trouvé'
+      });
+    }
+
+    if (user.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'L\'utilisateur est déjà actif'
+      });
+    }
+
+    // Réactiver l'utilisateur
+    user.isActive = true;
+    user.updatedAt = new Date();
+    await user.save();
+
+    // Charger les agences pour la réponse
+    await user.populate('agencies', 'name code client');
+
+    console.log(`✅ Utilisateur ${user.email} réactivé par ${req.user.email}`);
+
+    res.json({
+      success: true,
+      message: 'Utilisateur réactivé avec succès',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phone: user.phone,
+          role: user.role,
+          agencies: user.agencies,
+          isActive: user.isActive,
+          stats: user.stats,
+          lastLogin: user.lastLogin,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur réactivation utilisateur:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
@@ -443,30 +564,66 @@ router.post('/check-email', validateBody(emailCheckSchema), async (req, res) => 
       query._id = { $ne: excludeUserId };
     }
 
-    const existingUser = await User.findOne(query).select('firstName lastName email role');
-
-    if (existingUser) {
-      return res.json({
-        success: false,
-        available: false,
-        message: 'Cet email est déjà utilisé',
-        conflictUser: {
-          id: existingUser._id,
-          name: `${existingUser.firstName} ${existingUser.lastName}`,
-          email: existingUser.email,
-          role: existingUser.role
-        }
-      });
-    }
+    const existingUser = await User.findOne(query);
 
     res.json({
       success: true,
-      available: true,
-      message: 'Email disponible'
+      available: !existingUser,
+      message: existingUser ? 'Email déjà utilisé' : 'Email disponible'
     });
 
   } catch (error) {
     console.error('Erreur vérification email:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+    });
+  }
+});
+
+/**
+ * @route   POST /api/admin/users/:id/reset-password
+ * @desc    Réinitialiser le mot de passe d'un utilisateur
+ * @access  Admin
+ */
+router.post('/:id/reset-password', validateObjectId('id'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Utilisateur non trouvé'
+      });
+    }
+
+    // Générer un mot de passe temporaire
+    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+    
+    // Hasher le mot de passe
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(tempPassword, salt);
+
+    // Mettre à jour l'utilisateur
+    user.password = hashedPassword;
+    user.mustChangePassword = true; // Flag pour forcer le changement de mot de passe
+    user.updatedAt = new Date();
+    await user.save();
+
+    console.log(`🔑 Mot de passe réinitialisé pour ${user.email} par ${req.user.email}`);
+
+    res.json({
+      success: true,
+      message: 'Mot de passe réinitialisé avec succès',
+      data: {
+        tempPassword: tempPassword,
+        userId: user._id,
+        email: user.email
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur réinitialisation mot de passe:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'

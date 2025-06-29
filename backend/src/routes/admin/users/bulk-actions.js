@@ -1,12 +1,11 @@
-// ===== backend/src/routes/admin/users-bulk.js =====
+// ===== backend/src/routes/admin/users/bulk-actions.js =====
 const express = require('express');
 const Joi = require('joi');
 const User = require('../../../models/User');
 const Agency = require('../../../models/Agency');
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
-const { validateBody } = require('../../../middleware/validation');
-const { objectId } = require('../../../middleware/validation');
+const { validateBody, objectId } = require('../../../middleware/validation');
 const { ERROR_MESSAGES, USER_ROLES } = require('../../../utils/constants');
 
 const router = express.Router();
@@ -19,7 +18,7 @@ router.use(auth, adminAuth);
  * @desc    Actions en masse sur les utilisateurs
  * @access  Admin
  */
-router.post('/', validateBody(Joi.object({
+router.post('/bulk-actions', validateBody(Joi.object({
   action: Joi.string().valid('activate', 'deactivate', 'change_agency', 'export').required(),
   userIds: Joi.array().items(objectId).min(1).required(),
   params: Joi.object({
@@ -31,10 +30,11 @@ router.post('/', validateBody(Joi.object({
   try {
     const { action, userIds, params = {} } = req.body;
     
+    console.log(`🔄 Action en masse: ${action} sur ${userIds.length} utilisateurs`);
+    
     // Vérifier que tous les utilisateurs existent
     const users = await User.find({ 
-      _id: { $in: userIds },
-      role: USER_ROLES.PREPARATEUR // Sécurité: seulement les préparateurs
+      _id: { $in: userIds }
     });
 
     if (users.length !== userIds.length) {
@@ -52,8 +52,14 @@ router.post('/', validateBody(Joi.object({
       try {
         switch (action) {
           case 'activate':
-            user.isActive = true;
-            await user.save();
+            if (!user.isActive) {
+              user.isActive = true;
+              user.updatedAt = new Date();
+              await user.save();
+              results.push({ userId: user._id, status: 'activated' });
+            } else {
+              results.push({ userId: user._id, status: 'already_active' });
+            }
             break;
             
           case 'deactivate':
@@ -61,147 +67,135 @@ router.post('/', validateBody(Joi.object({
             if (user.role === USER_ROLES.ADMIN) {
               const adminCount = await User.countDocuments({ 
                 role: USER_ROLES.ADMIN, 
-                isActive: true 
+                isActive: true,
+                _id: { $ne: user._id }
               });
-              if (adminCount <= 1) {
-                throw new Error('Impossible de désactiver le dernier administrateur');
+              if (adminCount === 0) {
+                results.push({ 
+                  userId: user._id, 
+                  status: 'error', 
+                  error: 'Impossible de désactiver le dernier administrateur' 
+                });
+                failed++;
+                continue;
               }
             }
-            user.isActive = false;
-            await user.save();
+            
+            if (user.isActive) {
+              user.isActive = false;
+              user.updatedAt = new Date();
+              await user.save();
+              results.push({ userId: user._id, status: 'deactivated' });
+            } else {
+              results.push({ userId: user._id, status: 'already_inactive' });
+            }
             break;
             
           case 'change_agency':
             if (!params.newAgencyId) {
               throw new Error('ID agence requis pour changement');
             }
+            
             // Vérifier que l'agence existe
             const agency = await Agency.findById(params.newAgencyId);
             if (!agency) {
-              throw new Error('Agence introuvable');
+              throw new Error('Agence non trouvée');
             }
+            
             user.agencies = [params.newAgencyId];
+            user.updatedAt = new Date();
             await user.save();
+            results.push({ 
+              userId: user._id, 
+              status: 'agency_changed',
+              newAgency: agency.name 
+            });
             break;
             
           case 'export':
-            // L'export sera géré après la boucle
+            // Pour l'export, on collecte juste les données
+            results.push({
+              userId: user._id,
+              email: user.email,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              role: user.role,
+              isActive: user.isActive,
+              agencies: user.agencies
+            });
             break;
+            
+          default:
+            throw new Error(`Action non supportée: ${action}`);
         }
-
-        results.push({
-          userId: user._id,
-          status: 'success',
-          message: `${action} réussie`
-        });
+        
         processed++;
-
-        // Envoyer notification si demandé
-        if (params.notify && ['activate', 'deactivate', 'change_agency'].includes(action)) {
-          // TODO: Implémenter service de notification
-          console.log(`Notification à envoyer à ${user.email} pour ${action}`);
-        }
-
-      } catch (error) {
-        results.push({
-          userId: user._id,
-          status: 'failed',
-          message: error.message
+        
+      } catch (userError) {
+        console.error(`Erreur pour utilisateur ${user._id}:`, userError);
+        results.push({ 
+          userId: user._id, 
+          status: 'error', 
+          error: userError.message 
         });
         failed++;
       }
     }
 
-    // Gestion de l'export
-    if (action === 'export') {
-      const exportData = users.map(user => ({
-        'Prénom': user.firstName,
-        'Nom': user.lastName,
-        'Email': user.email,
-        'Téléphone': user.phone || '',
-        'Agences': user.agencies.map(a => a.name).join(', '),
-        'Statut': user.isActive ? 'Actif' : 'Inactif',
-        'Dernière connexion': user.lastLogin ? user.lastLogin.toLocaleDateString('fr-FR') : 'Jamais',
-        'Date création': user.createdAt.toLocaleDateString('fr-FR')
-      }));
+    // Logging de l'action
+    console.log(`✅ Action ${action} terminée: ${processed} réussies, ${failed} échecs`);
 
-      // Pour un vrai projet, vous pourriez utiliser une lib comme 'exceljs' ou 'json2csv'
-      return res.json({
+    // Réponse selon le type d'action
+    if (action === 'export') {
+      const format = params.format || 'json';
+      
+      if (format === 'csv') {
+        // Générer CSV
+        const csvHeader = 'Email,Prénom,Nom,Rôle,Statut,Agences\n';
+        const csvData = results.map(user => 
+          `${user.email},"${user.firstName}","${user.lastName}",${user.role},${user.isActive ? 'Actif' : 'Inactif'},"${user.agencies.length}"`
+        ).join('\n');
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="utilisateurs.csv"');
+        res.send(csvHeader + csvData);
+        return;
+      }
+      
+      // Export JSON par défaut
+      res.json({
         success: true,
+        action: 'export',
         data: {
-          action: 'export',
-          format: params.format || 'csv',
-          data: exportData,
-          filename: `preparateurs_${new Date().toISOString().split('T')[0]}.${params.format || 'csv'}`
+          users: results,
+          exportedAt: new Date(),
+          exportedBy: req.user.email,
+          total: results.length
+        }
+      });
+      
+    } else {
+      // Réponse standard pour les autres actions
+      res.json({
+        success: true,
+        action,
+        data: {
+          processed,
+          failed,
+          total: userIds.length,
+          results: results,
+          performedBy: req.user.email,
+          performedAt: new Date()
         }
       });
     }
-
-    res.json({
-      success: true,
-      data: {
-        action,
-        processed,
-        failed,
-        results
-      }
-    });
 
   } catch (error) {
     console.error('Erreur action en masse:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
-    });
-  }
-});
-
-/**
- * @route   POST /api/admin/users/check-email
- * @desc    Vérifier disponibilité email
- * @access  Admin
- */
-router.post('/check-email', validateBody(Joi.object({
-  email: Joi.string().email().required(),
-  excludeUserId: objectId.optional()
-})), async (req, res) => {
-  try {
-    const { email, excludeUserId } = req.body;
-    
-    const query = { 
-      email: email.toLowerCase(),
-      isActive: true
-    };
-    
-    if (excludeUserId) {
-      query._id = { $ne: excludeUserId };
-    }
-    
-    const existingUser = await User.findOne(query).select('firstName lastName');
-    
-    if (existingUser) {
-      return res.json({
-        success: true,
-        data: {
-          available: false,
-          message: `Email déjà utilisé par ${existingUser.firstName} ${existingUser.lastName}`
-        }
-      });
-    }
-    
-    res.json({
-      success: true,
-      data: {
-        available: true,
-        message: 'Email disponible'
-      }
-    });
-
-  } catch (error) {
-    console.error('Erreur vérification email:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR,
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

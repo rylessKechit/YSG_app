@@ -1,4 +1,4 @@
-// src/lib/api/users.ts
+// src/lib/api/users.ts - VERSION CORRIGÉE
 import { apiClient, apiRequest, ApiResponse } from './client';
 import { User } from '@/types/auth';
 
@@ -40,15 +40,29 @@ export interface UserStats {
   lastActivity: string;
 }
 
-export interface UserListResponse {
+// 🔧 TYPES CORRIGÉS selon la documentation backend
+export interface UserListData {
   users: User[];
   pagination: {
     page: number;
     limit: number;
     total: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrev: boolean;
+    pages: number; // Backend utilise 'pages' au lieu de 'totalPages'
+    hasNext?: boolean;
+    hasPrev?: boolean;
+  };
+  filters: {
+    search: string;
+    agency: string | null;
+    status: string;
+    role: string | null;
+  };
+  stats: {
+    totalUsers: number;
+    activeUsers: number;
+    inactiveUsers: number;
+    preparateurs: number;
+    admins: number;
   };
 }
 
@@ -65,9 +79,9 @@ export interface BulkActionData {
 // API Client pour les utilisateurs
 export const usersApi = {
   // Récupérer la liste des utilisateurs avec filtres
-  async getUsers(filters: UserFilters = {}): Promise<ApiResponse<UserListResponse>> {
+  async getUsers(filters: UserFilters = {}): Promise<ApiResponse<UserListData>> {
     return apiRequest(
-      () => apiClient.get<ApiResponse<UserListResponse>>('/admin/users', {
+      () => apiClient.get<ApiResponse<UserListData>>('/admin/users', {
         params: filters
       }),
       {
@@ -135,11 +149,47 @@ export const usersApi = {
     );
   },
 
-  // Récupérer les statistiques d'un utilisateur
-  async getUserStats(id: string, period?: string): Promise<ApiResponse<UserStats>> {
+  // Vérifier la disponibilité d'un email
+  async checkEmail(email: string, excludeUserId?: string): Promise<ApiResponse<{ available: boolean; message: string }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{ available: boolean; message: string }>>('/admin/users/check-email', {
+        email,
+        excludeUserId
+      }),
+      {
+        showErrorToast: false // Pas de toast pour cette vérification
+      }
+    );
+  },
+
+  // Réinitialiser le mot de passe d'un utilisateur
+  async resetPassword(id: string): Promise<ApiResponse<{ tempPassword: string; userId: string; email: string }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{ tempPassword: string; userId: string; email: string }>>(`/admin/users/${id}/reset-password`),
+      {
+        showErrorToast: true,
+        showSuccessToast: true,
+        successMessage: 'Mot de passe réinitialisé avec succès'
+      }
+    );
+  },
+
+  // Actions en masse
+  async bulkAction(data: BulkActionData): Promise<ApiResponse<{ processed: number; failed: number; total: number; results: any[] }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{ processed: number; failed: number; total: number; results: any[] }>>('/admin/users/bulk-actions', data),
+      {
+        showErrorToast: true,
+        showSuccessToast: false // Le message de succès est géré dans le hook
+      }
+    );
+  },
+
+  // Récupérer les statistiques d'un utilisateur  
+  async getUserStats(id: string, period: string = 'month'): Promise<ApiResponse<UserStats>> {
     return apiRequest(
       () => apiClient.get<ApiResponse<UserStats>>(`/admin/users/${id}/stats`, {
-        params: period ? { period } : {}
+        params: { period }
       }),
       {
         showErrorToast: true
@@ -147,50 +197,17 @@ export const usersApi = {
     );
   },
 
-  // Actions en masse
-  async bulkAction(data: BulkActionData): Promise<ApiResponse<{ processed: number; failed: number; results: any[] }>> {
-    return apiRequest(
-      () => apiClient.post<ApiResponse<{ processed: number; failed: number; results: any[] }>>('/admin/users/bulk-actions', data),
-      {
-        showErrorToast: true,
-        showSuccessToast: true,
-        successMessage: `Action en masse effectuée sur ${data.userIds.length} utilisateur(s)`
-      }
-    );
-  },
-
-  // Vérifier si un email existe
-  async checkEmail(email: string, excludeUserId?: string): Promise<ApiResponse<{ available: boolean }>> {
-    return apiRequest(
-      () => apiClient.post<ApiResponse<{ available: boolean }>>('/admin/users/check-email', {
-        email,
-        excludeUserId
-      }),
-      {
-        showErrorToast: false
-      }
-    );
-  },
-
-  // Réinitialiser le mot de passe
-  async resetPassword(id: string): Promise<ApiResponse<{ tempPassword: string }>> {
-    return apiRequest(
-      () => apiClient.post<ApiResponse<{ tempPassword: string }>>(`/admin/users/${id}/reset-password`),
-      {
-        showErrorToast: true,
-        showSuccessToast: true,
-        successMessage: 'Mot de passe réinitialisé'
-      }
-    );
-  },
-
-  // Exporter la liste des utilisateurs
-  async exportUsers(filters: UserFilters = {}, format: 'excel' | 'csv' = 'excel'): Promise<Blob> {
-    const response = await apiClient.get('/admin/users/export', {
-      params: { ...filters, format },
-      responseType: 'blob'
-    });
-    
-    return response.data;
+  // Export des utilisateurs
+  async exportUsers(filters: UserFilters = {}, format: 'csv' | 'excel' = 'csv'): Promise<Blob> {
+    try {
+      const response = await apiClient.get('/admin/users/export', {
+        params: { ...filters, format },
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Erreur export utilisateurs:', error);
+      throw error;
+    }
   }
 };
