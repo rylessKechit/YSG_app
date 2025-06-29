@@ -44,7 +44,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { useUsers } from '@/hooks/api/useUsers';
 import { useAgencies } from '@/hooks/api/useAgencies';
-import { useCreateSchedule, useCheckConflicts, useBulkCreateSchedules } from '@/hooks/api/useSchedules';
+import { useCreateSchedule, useScheduleConflicts, useBulkCreateSchedules } from '@/hooks/api/useSchedules';
 import { ScheduleCreateData } from '@/types/schedule';
 
 // Schéma de validation
@@ -119,7 +119,7 @@ export function QuickCreateSchedule({
   const { data: agenciesData } = useAgencies({ limit: 100 });
   const createSchedule = useCreateSchedule();
   const bulkCreateSchedules = useBulkCreateSchedules();
-  const checkConflicts = useCheckConflicts();
+  const checkConflicts = useScheduleConflicts();
 
   // Forms
   const singleForm = useForm<QuickScheduleForm>({
@@ -184,9 +184,9 @@ export function QuickCreateSchedule({
       };
 
       setIsCheckingConflicts(true);
-      checkConflicts.mutateAsync(checkData)
+      checkConflicts.refetch()
         .then(result => {
-          setConflicts(result.data.conflicts || []);
+          setConflicts(result.data?.conflicts || []);
         })
         .catch(() => {
           setConflicts([]);

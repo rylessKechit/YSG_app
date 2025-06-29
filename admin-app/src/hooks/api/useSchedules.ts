@@ -1,15 +1,21 @@
-// src/hooks/api/useSchedules.ts
+// admin-app/src/hooks/api/useSchedules.ts - FICHIER COMPLET AVEC TYPES CORRECTS
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { schedulesApi } from '@/lib/api/schedules';
 import {
+  Schedule,
   ScheduleFilters,
   ScheduleCreateData,
   ScheduleUpdateData,
-  BulkCreateData
+  ScheduleListData,
+  BulkCreateData,
+  CalendarData,
+  ScheduleStatsData,
+  ScheduleTemplate,
+  WeekSchedule
 } from '@/types/schedule';
 import { toast } from 'sonner';
 
-// Query keys pour le cache
+// ===== QUERY KEYS POUR LE CACHE =====
 export const scheduleKeys = {
   all: ['schedules'] as const,
   lists: () => [...scheduleKeys.all, 'list'] as const,
@@ -20,7 +26,11 @@ export const scheduleKeys = {
   templates: () => [...scheduleKeys.all, 'templates'] as const,
   userWeek: (userId: string, date?: string) => [...scheduleKeys.all, 'userWeek', userId, date] as const,
   stats: (filters: any) => [...scheduleKeys.all, 'stats', filters] as const,
+  conflicts: (params: any) => [...scheduleKeys.all, 'conflicts', params] as const,
+  search: (query: any) => [...scheduleKeys.all, 'search', query] as const,
 };
+
+// ===== HOOKS DE LECTURE (QUERIES) =====
 
 // ✅ Hook pour récupérer la liste des plannings
 export function useSchedules(filters: ScheduleFilters = {}) {
@@ -45,7 +55,7 @@ export function useSchedule(id: string, enabled = true) {
   });
 }
 
-// ✅ Hook pour la vue calendrier
+// ✅ Hook pour la vue calendrier avec types corrects
 export function useScheduleCalendar(params: {
   year?: number;
   month?: number;
@@ -58,7 +68,24 @@ export function useScheduleCalendar(params: {
     queryFn: () => schedulesApi.getCalendarView(params),
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 5 * 60 * 1000, // 5 minutes
-    select: (data) => data.data,
+    select: (data) => data.data, // Retourne directement CalendarData
+  });
+}
+
+// ✅ Hook pour les statistiques avec types corrects
+export function useScheduleStats(filters: {
+  startDate?: string;
+  endDate?: string;
+  agency?: string;
+  user?: string;
+  period?: string;
+} = {}) {
+  return useQuery({
+    queryKey: scheduleKeys.stats(filters),
+    queryFn: () => schedulesApi.getScheduleStats(filters),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    select: (data) => data.data, // Retourne directement ScheduleStatsData
   });
 }
 
@@ -88,21 +115,53 @@ export function useUserWeekSchedule(userId: string, date?: string, enabled = tru
   });
 }
 
-// ✅ Hook pour les statistiques
-export function useScheduleStats(filters: {
+// ✅ Hook pour les conflits
+export function useScheduleConflicts(params: {
   startDate?: string;
   endDate?: string;
-  agency?: string;
-  user?: string;
+  severity?: 'all' | 'critical' | 'warning';
+  includeResolutions?: boolean;
 } = {}) {
   return useQuery({
-    queryKey: scheduleKeys.stats(filters),
-    queryFn: () => schedulesApi.getScheduleStats(filters),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    queryKey: scheduleKeys.conflicts(params),
+    queryFn: () => schedulesApi.getConflicts(params),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes
     select: (data) => data.data,
   });
 }
+
+// ✅ Hook pour vérifier les conflits (alias de useScheduleConflicts)
+export function useCheckConflicts(params: {
+  startDate?: string;
+  endDate?: string;
+  severity?: 'all' | 'critical' | 'warning';
+  includeResolutions?: boolean;
+} = {}) {
+  return useScheduleConflicts(params);
+}
+
+// ✅ Hook pour la recherche de plannings
+export function useScheduleSearch(query: {
+  search: string;
+  filters?: ScheduleFilters;
+  options?: {
+    includeArchived?: boolean;
+    groupBy?: 'user' | 'agency' | 'date';
+    sortBy?: 'relevance' | 'date' | 'user';
+  };
+}, enabled = true) {
+  return useQuery({
+    queryKey: scheduleKeys.search(query),
+    queryFn: () => schedulesApi.searchSchedules(query),
+    enabled: enabled && !!query.search,
+    staleTime: 1 * 60 * 1000, // 1 minute
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    select: (data) => data.data,
+  });
+}
+
+// ===== HOOKS DE MODIFICATION (MUTATIONS) =====
 
 // ✅ Hook pour créer un planning
 export function useCreateSchedule() {
@@ -149,10 +208,13 @@ export function useUpdateSchedule() {
       // Invalider le calendrier
       queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'calendar'] });
       
+      // Invalider les stats
+      queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'stats'] });
+      
       toast.success('Planning modifié avec succès');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Erreur lors de la modification');
+      toast.error(error.response?.data?.message || 'Erreur lors de la modification du planning');
     }
   });
 }
@@ -163,18 +225,23 @@ export function useDeleteSchedule() {
 
   return useMutation({
     mutationFn: (id: string) => schedulesApi.deleteSchedule(id),
-    onSuccess: (_, id) => {
-      // Invalider toutes les queries liées aux plannings
+    onSuccess: (data, id) => {
+      // Invalider les listes
       queryClient.invalidateQueries({ queryKey: scheduleKeys.lists() });
+      
+      // Supprimer du cache de détail
       queryClient.removeQueries({ queryKey: scheduleKeys.detail(id) });
       
       // Invalider le calendrier
       queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'calendar'] });
       
+      // Invalider les stats
+      queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'stats'] });
+      
       toast.success('Planning supprimé avec succès');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Erreur lors de la suppression');
+      toast.error(error.response?.data?.message || 'Erreur lors de la suppression du planning');
     }
   });
 }
@@ -185,33 +252,22 @@ export function useBulkCreateSchedules() {
 
   return useMutation({
     mutationFn: (data: BulkCreateData) => schedulesApi.bulkCreateSchedules(data),
-    onSuccess: (result) => {
-      // Invalider toutes les listes
+    onSuccess: (data) => {
+      // Invalider tous les caches liés aux plannings
       queryClient.invalidateQueries({ queryKey: scheduleKeys.lists() });
-      
-      // Invalider le calendrier
       queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'calendar'] });
+      queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'stats'] });
       
-      // Message de succès détaillé
-      const { created, failed } = result.data;
-      if (failed > 0) {
-        toast.warning(`Plannings créés: ${created} réussis, ${failed} échecs`);
-      } else {
-        toast.success(`${created} planning(s) créé(s) avec succès`);
+      const result = data.data;
+      if (result.created > 0) {
+        toast.success(`${result.created} planning(s) créé(s) avec succès`);
+      }
+      if (result.failed > 0) {
+        toast.warning(`${result.failed} planning(s) ont échoué`);
       }
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Erreur lors de la création en masse');
-    }
-  });
-}
-
-// ✅ Hook pour vérifier les conflits
-export function useCheckConflicts() {
-  return useMutation({
-    mutationFn: (scheduleData: ScheduleCreateData) => schedulesApi.checkConflicts(scheduleData),
-    onError: () => {
-      // Pas de toast d'erreur pour cette vérification
     }
   });
 }
@@ -221,11 +277,21 @@ export function useCreateTemplate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (templateData: any) => schedulesApi.createTemplate(templateData),
+    mutationFn: (templateData: {
+      name: string;
+      description?: string;
+      category: string;
+      template: {
+        startTime: string;
+        endTime: string;
+        breakStart?: string;
+        breakEnd?: string;
+      };
+      defaultAgencies?: string[];
+    }) => schedulesApi.createTemplate(templateData),
     onSuccess: () => {
-      // Invalider la liste des templates
+      // Invalider les templates
       queryClient.invalidateQueries({ queryKey: scheduleKeys.templates() });
-      
       toast.success('Template créé avec succès');
     },
     onError: (error: any) => {
@@ -239,21 +305,28 @@ export function useApplyTemplate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: any) => schedulesApi.applyTemplate(data),
-    onSuccess: (result) => {
-      // Invalider toutes les listes
+    mutationFn: (data: {
+      templateId: string;
+      userIds: string[];
+      dateRange: {
+        start: string;
+        end: string;
+      };
+      agencyId: string;
+      options: {
+        skipConflicts: boolean;
+        notifyUsers: boolean;
+        overwrite: boolean;
+      };
+    }) => schedulesApi.applyTemplate(data),
+    onSuccess: (data) => {
+      // Invalider tous les caches
       queryClient.invalidateQueries({ queryKey: scheduleKeys.lists() });
-      
-      // Invalider le calendrier
       queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'calendar'] });
+      queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'stats'] });
       
-      // Message de succès
-      const { created, failed } = result.data;
-      if (failed > 0) {
-        toast.warning(`Template appliqué: ${created} plannings créés, ${failed} échecs`);
-      } else {
-        toast.success(`Template appliqué: ${created} planning(s) créé(s)`);
-      }
+      const result = data.data;
+      toast.success(`Template appliqué : ${result.applied} planning(s) créé(s)`);
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Erreur lors de l\'application du template');
@@ -261,43 +334,94 @@ export function useApplyTemplate() {
   });
 }
 
-// ✅ Hook utilitaire pour invalider le cache plannings
-export function useSchedulesCache() {
+// ✅ Hook pour résoudre les conflits
+export function useResolveConflicts() {
   const queryClient = useQueryClient();
 
-  const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: scheduleKeys.all });
-  };
-
-  const invalidateList = (filters?: ScheduleFilters) => {
-    if (filters) {
-      queryClient.invalidateQueries({ queryKey: scheduleKeys.list(filters) });
-    } else {
+  return useMutation({
+    mutationFn: (data: {
+      conflictIds: string[];
+      resolutionType: 'auto' | 'manual';
+      parameters?: Record<string, any>;
+    }) => schedulesApi.resolveConflicts(data),
+    onSuccess: (data) => {
+      // Invalider les conflits et les plannings
+      queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'conflicts'] });
       queryClient.invalidateQueries({ queryKey: scheduleKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'calendar'] });
+      
+      const result = data.data;
+      toast.success(`${result.resolved} conflit(s) résolu(s)`);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Erreur lors de la résolution des conflits');
     }
-  };
+  });
+}
 
-  const invalidateSchedule = (id: string) => {
-    queryClient.invalidateQueries({ queryKey: scheduleKeys.detail(id) });
-  };
+// ✅ Hook pour dupliquer un planning
+export function useDuplicateSchedule() {
+  const queryClient = useQueryClient();
 
-  const invalidateCalendar = () => {
-    queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'calendar'] });
-  };
+  return useMutation({
+    mutationFn: ({ id, data }: {
+      id: string;
+      data: {
+        newDate?: string;
+        userId?: string;
+        agencyId?: string;
+      };
+    }) => schedulesApi.duplicateSchedule(id, data),
+    onSuccess: (data) => {
+      // Invalider les listes et le calendrier
+      queryClient.invalidateQueries({ queryKey: scheduleKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: [...scheduleKeys.all, 'calendar'] });
+      
+      // Ajouter le nouveau planning au cache
+      const newSchedule = data.data.schedule;
+      queryClient.setQueryData(scheduleKeys.detail(newSchedule.id), data);
+      
+      toast.success('Planning dupliqué avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Erreur lors de la duplication du planning');
+    }
+  });
+}
 
-  const prefetchSchedule = (id: string) => {
-    queryClient.prefetchQuery({
-      queryKey: scheduleKeys.detail(id),
-      queryFn: () => schedulesApi.getSchedule(id),
-      staleTime: 2 * 60 * 1000,
-    });
-  };
+// ✅ Hook pour valider un planning
+export function useValidateSchedule() {
+  return useMutation({
+    mutationFn: (scheduleData: ScheduleCreateData) => schedulesApi.validateSchedule(scheduleData),
+    onError: (error: any) => {
+      // Pas de toast d'erreur automatique pour la validation
+      console.error('Erreur validation planning:', error);
+    }
+  });
+}
 
-  return {
-    invalidateAll,
-    invalidateList,
-    invalidateSchedule,
-    invalidateCalendar,
-    prefetchSchedule,
-  };
+// ✅ Hook pour l'export
+export function useExportSchedules() {
+  return useMutation({
+    mutationFn: (filters: ScheduleFilters & {
+      format?: 'csv' | 'excel' | 'pdf';
+      includeStats?: boolean;
+    }) => schedulesApi.exportSchedules(filters),
+    onSuccess: (blob, variables) => {
+      // Créer un lien de téléchargement
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `plannings.${variables.format || 'csv'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Export terminé avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Erreur lors de l\'export');
+    }
+  });
 }

@@ -1,22 +1,22 @@
-// src/components/schedules/schedule-calendar.tsx
+// src/components/schedules/schedule-calendar.tsx - VERSION SANS SIMULATION
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
-  Calendar,
-  Clock,
+  Plus,
   Users,
   Building,
-  Plus,
-  Filter
+  Clock,
+  AlertCircle
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { LoadingSpinner } from '@/components/common/loading-spinner';
 import {
   Select,
   SelectContent,
@@ -24,71 +24,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
 
 import { useScheduleCalendar } from '@/hooks/api/useSchedules';
 import { useUsers } from '@/hooks/api/useUsers';
 import { useAgencies } from '@/hooks/api/useAgencies';
-
-interface CalendarDay {
-  date: Date;
-  isCurrentMonth: boolean;
-  isToday: boolean;
-  isWeekend: boolean;
-  schedules: Array<{
-    id: string;
-    user: {
-      id: string;
-      name: string;
-      email: string;
-    };
-    agency: {
-      id: string;
-      name: string;
-      code: string;
-    };
-    startTime: string;
-    endTime: string;
-    workingHours: number;
-    status: string;
-  }>;
-}
+import { CalendarDay, CalendarData } from '@/types/schedule';
 
 export function ScheduleCalendar() {
-  // États locaux
+  // État local pour la navigation
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedUser, setSelectedUser] = useState<string>('all');
-  const [selectedAgency, setSelectedAgency] = useState<string>('all');
-  const [view, setView] = useState<'month' | 'week'>('month');
+  const [selectedAgency, setSelectedAgency] = useState<string>('all'); // ✅ Valeur non-vide
+  const [selectedUser, setSelectedUser] = useState<string>('all'); // ✅ Valeur non-vide
 
-  // Calcul des paramètres de la vue actuelle
+  // Calcul des paramètres pour l'API
   const calendarParams = useMemo(() => ({
     year: currentDate.getFullYear(),
     month: currentDate.getMonth() + 1,
-    view,
-    ...(selectedUser !== 'all' && { user: selectedUser }),
-    ...(selectedAgency !== 'all' && { agency: selectedAgency })
-  }), [currentDate, view, selectedUser, selectedAgency]);
+    view: 'month' as const,
+    // ✅ Convertir "all" en undefined pour l'API
+    ...(selectedAgency !== 'all' && { agency: selectedAgency }),
+    ...(selectedUser !== 'all' && { user: selectedUser })
+  }), [currentDate, selectedAgency, selectedUser]);
 
-  // Hooks API
-  const { data: calendarData, isLoading, error } = useScheduleCalendar(calendarParams);
+  // ✅ HOOKS API - UNIQUEMENT des vraies données avec types corrects
+  const { data: calendarData, isLoading, error, refetch } = useScheduleCalendar(calendarParams);
   const { data: usersData } = useUsers({ limit: 100 });
   const { data: agenciesData } = useAgencies({ limit: 100 });
 
-  // Navigation du calendrier
+  // Navigation mois
   const navigateMonth = useCallback((direction: 'prev' | 'next') => {
     setCurrentDate(prev => {
       const newDate = new Date(prev);
       if (direction === 'prev') {
-        newDate.setMonth(newDate.getMonth() - 1);
+        newDate.setMonth(prev.getMonth() - 1);
       } else {
-        newDate.setMonth(newDate.getMonth() + 1);
+        newDate.setMonth(prev.getMonth() + 1);
       }
       return newDate;
     });
@@ -98,71 +68,30 @@ export function ScheduleCalendar() {
     setCurrentDate(new Date());
   }, []);
 
-  // Construction des jours du calendrier
+  // ✅ DONNÉES RÉELLES SEULEMENT - pas de simulation avec types sécurisés
   const calendarDays = useMemo(() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    
-    // Premier jour du mois
-    const firstDay = new Date(year, month, 1);
-    // Dernier jour du mois
-    const lastDay = new Date(year, month + 1, 0);
-    
-    // Premier jour affiché (peut être du mois précédent)
-    const startDate = new Date(firstDay);
-    startDate.setDate(startDate.getDate() - firstDay.getDay() + 1); // Commencer le lundi
-    
-    // Dernier jour affiché (peut être du mois suivant)
-    const endDate = new Date(lastDay);
-    const daysToAdd = 7 - lastDay.getDay();
-    if (daysToAdd < 7) {
-      endDate.setDate(endDate.getDate() + daysToAdd);
-    }
+    if (!calendarData?.calendar) return [];
 
+    // Transformer les données API en format calendrier
     const days: CalendarDay[] = [];
-    const currentDay = new Date(startDate);
-    const today = new Date();
     
-    // Créer les données simulées pour les jours en attendant l'API
-    while (currentDay <= endDate) {
-      const isCurrentMonth = currentDay.getMonth() === month;
-      const isToday = currentDay.toDateString() === today.toDateString();
-      const isWeekend = currentDay.getDay() === 0 || currentDay.getDay() === 6;
-      
-      // Simuler quelques plannings pour la démo
-      const schedules = isCurrentMonth && Math.random() > 0.7 ? [
-        {
-          id: `schedule-${currentDay.getTime()}`,
-          user: {
-            id: 'user1',
-            name: 'Jean Dupont',
-            email: 'jean.dupont@sixt.fr'
-          },
-          agency: {
-            id: 'agency1',
-            name: 'Paris Gare du Nord',
-            code: 'PGDN'
-          },
-          startTime: '08:00',
-          endTime: '17:00',
-          workingHours: 8,
-          status: 'active'
-        }
-      ] : [];
+    calendarData.calendar.forEach((week: any) => {
+      if (week.days && Array.isArray(week.days)) {
+        week.days.forEach((day: any) => {
+          days.push({
+            date: new Date(day.date),
+            dateKey: day.dateKey,
+            isCurrentMonth: day.isCurrentMonth,
+            isToday: day.isToday,
+            schedules: day.schedules || [],
+            stats: day.stats || { totalSchedules: 0, totalHours: 0, agencies: 0 }
+          });
+        });
+      }
+    });
 
-      days.push({
-        date: new Date(currentDay),
-        isCurrentMonth,
-        isToday,
-        isWeekend,
-        schedules
-      });
-      
-      currentDay.setDate(currentDay.getDate() + 1);
-    }
-    
     return days;
-  }, [currentDate]);
+  }, [calendarData]);
 
   // Organiser les jours en semaines
   const weeks = useMemo(() => {
@@ -216,8 +145,12 @@ export function ScheduleCalendar() {
       <Card>
         <CardContent className="flex items-center justify-center h-64">
           <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <p className="text-red-600 mb-2">Erreur lors du chargement du calendrier</p>
-            <Button onClick={() => window.location.reload()}>Réessayer</Button>
+            <p className="text-sm text-gray-500 mb-4">
+              {error?.message || 'Impossible de récupérer les données depuis l\'API'}
+            </p>
+            <Button onClick={() => refetch()}>Réessayer</Button>
           </div>
         </CardContent>
       </Card>
@@ -243,36 +176,20 @@ export function ScheduleCalendar() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          
           <Button variant="outline" size="sm" onClick={goToToday}>
             Aujourd'hui
           </Button>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Filtre utilisateur */}
-          <Select value={selectedUser} onValueChange={setSelectedUser}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Tous les utilisateurs" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous les utilisateurs</SelectItem>
-              {users.map((user: any) => (
-                <SelectItem key={user.id} value={user.id}>
-                  {user.firstName} {user.lastName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Filtre agence */}
+        <div className="flex items-center gap-4">
+          {/* Filtres */}
           <Select value={selectedAgency} onValueChange={setSelectedAgency}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Toutes les agences" />
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Filtrer par agence" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Toutes les agences</SelectItem>
-              {agencies.map((agency: any) => (
+              {agencies.map((agency) => (
                 <SelectItem key={agency.id} value={agency.id}>
                   {agency.name}
                 </SelectItem>
@@ -280,189 +197,157 @@ export function ScheduleCalendar() {
             </SelectContent>
           </Select>
 
-          {/* Sélecteur de vue */}
-          <Select value={view} onValueChange={(value: 'month' | 'week') => setView(value)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
+          <Select value={selectedUser} onValueChange={setSelectedUser}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Filtrer par préparateur" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="month">Mois</SelectItem>
-              <SelectItem value="week">Semaine</SelectItem>
+              <SelectItem value="all">Tous les préparateurs</SelectItem>
+              {users.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.firstName} {user.lastName}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
 
-      {/* Légende */}
-      <div className="flex items-center gap-6 text-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-blue-500 rounded"></div>
-          <span>Planning actif</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-gray-400 rounded"></div>
-          <span>Planning annulé</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-green-500 rounded"></div>
-          <span>Planning terminé</span>
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Nouveau planning
+          </Button>
         </div>
       </div>
 
       {/* Calendrier */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-0">
           {/* En-têtes des jours */}
-          <div className="grid grid-cols-7 gap-px mb-4">
-            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day, index) => (
-              <div
-                key={day}
-                className={`p-2 text-center text-sm font-medium ${
-                  index >= 5 ? 'text-red-600' : 'text-gray-700'
-                }`}
-              >
+          <div className="grid grid-cols-7 border-b">
+            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day) => (
+              <div key={day} className="p-4 text-center font-medium text-gray-600 border-r last:border-r-0">
                 {day}
               </div>
             ))}
           </div>
 
-          {/* Grille du calendrier */}
-          <div className="grid grid-cols-7 gap-px bg-gray-200">
-            {weeks.map((week, weekIndex) =>
-              week.map((day, dayIndex) => (
-                <div
-                  key={`${weekIndex}-${dayIndex}`}
-                  className={`
-                    min-h-[120px] bg-white p-2 cursor-pointer hover:bg-gray-50 transition-colors
-                    ${!day.isCurrentMonth ? 'bg-gray-50 text-gray-400' : ''}
-                    ${day.isToday ? 'ring-2 ring-blue-500' : ''}
-                    ${day.isWeekend ? 'bg-red-50' : ''}
-                  `}
-                  onClick={() => handleDayClick(day)}
-                >
-                  {/* Numéro du jour */}
-                  <div className={`
-                    text-sm font-medium mb-1
-                    ${day.isToday ? 'text-blue-600' : ''}
-                    ${day.isWeekend ? 'text-red-600' : ''}
-                  `}>
-                    {day.date.getDate()}
-                  </div>
+          {/* Grille des jours */}
+          {weeks.length > 0 ? (
+            <div className="grid grid-cols-7">
+              {weeks.map((week, weekIndex) => (
+                week.map((day, dayIndex) => (
+                  <div
+                    key={`${weekIndex}-${dayIndex}`}
+                    className={`
+                      min-h-[120px] p-2 border-r border-b last:border-r-0 cursor-pointer hover:bg-gray-50
+                      ${!day.isCurrentMonth ? 'bg-gray-50 text-gray-400' : ''}
+                      ${day.isToday ? 'bg-blue-50 border-blue-200' : ''}
+                    `}
+                    onClick={() => handleDayClick(day)}
+                  >
+                    {/* Numéro du jour */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`
+                        text-sm font-medium
+                        ${day.isToday ? 'bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center' : ''}
+                      `}>
+                        {day.date.getDate()}
+                      </span>
+                      {day.stats.totalSchedules > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {day.stats.totalSchedules}
+                        </Badge>
+                      )}
+                    </div>
 
-                  {/* Plannings du jour */}
-                  <div className="space-y-1">
-                    {day.schedules.slice(0, 3).map((schedule, index) => (
-                      <TooltipProvider key={schedule.id}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div
-                              className={`
-                                text-xs p-1 rounded cursor-pointer truncate
-                                ${schedule.status === 'active' ? 'bg-blue-100 text-blue-800' : ''}
-                                ${schedule.status === 'cancelled' ? 'bg-gray-100 text-gray-600' : ''}
-                                ${schedule.status === 'completed' ? 'bg-green-100 text-green-800' : ''}
-                                hover:opacity-80
-                              `}
-                              onClick={(e) => handleScheduleClick(e, schedule)}
-                            >
-                              <div className="flex items-center gap-1">
-                                <Avatar className="h-3 w-3">
-                                  <AvatarFallback className="text-[8px]">
-                                    {getUserInitials(schedule.user.name)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <span className="truncate">
-                                  {schedule.startTime} - {schedule.user.name.split(' ')[0]}
-                                </span>
-                              </div>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <div className="text-xs">
-                              <div className="font-medium">{schedule.user.name}</div>
-                              <div>{schedule.agency.name}</div>
-                              <div>{schedule.startTime} - {schedule.endTime}</div>
-                              <div>{schedule.workingHours}h de travail</div>
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ))}
-                    
-                    {/* Indicateur s'il y a plus de plannings */}
-                    {day.schedules.length > 3 && (
-                      <div className="text-xs text-gray-500 font-medium">
-                        +{day.schedules.length - 3} autre(s)
+                    {/* Plannings du jour */}
+                    <div className="space-y-1">
+                      {day.schedules.slice(0, 3).map((schedule) => (
+                        <div
+                          key={schedule.id}
+                          className="text-xs p-1 rounded bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer"
+                          onClick={(e) => handleScheduleClick(e, schedule)}
+                        >
+                          <div className="font-medium truncate">
+                            {schedule.user.name}
+                          </div>
+                          <div className="flex items-center gap-1 text-blue-600">
+                            <Clock className="h-3 w-3" />
+                            {schedule.startTime}-{schedule.endTime}
+                          </div>
+                          <div className="flex items-center gap-1 text-blue-600">
+                            <Building className="h-3 w-3" />
+                            {schedule.agency.code}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Indicateur s'il y a plus de plannings */}
+                      {day.schedules.length > 3 && (
+                        <div className="text-xs text-gray-500 text-center">
+                          +{day.schedules.length - 3} autres
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Stats du jour (si pas de plannings) */}
+                    {day.schedules.length === 0 && day.isCurrentMonth && (
+                      <div className="flex items-center justify-center h-full text-gray-400">
+                        <Plus className="h-4 w-4" />
                       </div>
                     )}
-                    
-                    {/* Bouton d'ajout pour les jours vides */}
-                    {day.schedules.length === 0 && day.isCurrentMonth && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full h-6 text-xs text-gray-400 hover:text-gray-600"
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Ajouter
-                      </Button>
-                    )}
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-gray-500">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+              <p>Aucune donnée de calendrier disponible</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Résumé du mois */}
-      {calendarData?.summary && (
+      {/* Légende et informations */}
+      {calendarData?.metadata && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center">
-                <Calendar className="h-4 w-4 text-blue-600" />
-                <div className="ml-3">
-                  <div className="text-lg font-bold">{calendarData.summary.totalSchedules}</div>
-                  <p className="text-xs text-gray-600">Plannings ce mois</p>
-                </div>
-              </div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Total plannings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{calendarData.metadata.totalSchedules}</div>
+              <p className="text-xs text-muted-foreground">ce mois</p>
             </CardContent>
           </Card>
-          
+
           <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 text-green-600" />
-                <div className="ml-3">
-                  <div className="text-lg font-bold">{Math.round(calendarData.summary.totalWorkingHours)}h</div>
-                  <p className="text-xs text-gray-600">Heures totales</p>
-                </div>
-              </div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Heures totales</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{Math.round(calendarData.metadata.totalWorkingHours)}h</div>
+              <p className="text-xs text-muted-foreground">planifiées</p>
             </CardContent>
           </Card>
-          
+
           <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center">
-                <Users className="h-4 w-4 text-purple-600" />
-                <div className="ml-3">
-                  <div className="text-lg font-bold">{calendarData.summary.averagePerDay}h</div>
-                  <p className="text-xs text-gray-600">Moyenne par jour</p>
-                </div>
-              </div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Préparateurs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{calendarData.metadata.uniqueUsers}</div>
+              <p className="text-xs text-muted-foreground">actifs</p>
             </CardContent>
           </Card>
-          
+
           <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center">
-                <Building className="h-4 w-4 text-orange-600" />
-                <div className="ml-3">
-                  <div className="text-lg font-bold">{calendarData.summary.busiest?.count || 0}</div>
-                  <p className="text-xs text-gray-600">Jour le plus chargé</p>
-                </div>
-              </div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Agences</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{calendarData.metadata.uniqueAgencies}</div>
+              <p className="text-xs text-muted-foreground">impliquées</p>
             </CardContent>
           </Card>
         </div>

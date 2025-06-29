@@ -100,13 +100,15 @@ try {
 }
 
 try {
-  // Schedules
-  app.use('/api/admin/schedules', require('./routes/admin/schedules/schedules'));
-  app.use('/api/admin/schedules', require('./routes/admin/schedules/calendar'));
+  app.use('/api/admin/schedules/stats', require('./routes/admin/schedules/stats'));
+  app.use('/api/admin/schedules/calendar', require('./routes/admin/schedules/calendar'));
+  app.use('/api/admin/schedules/validate', require('./routes/admin/schedules/validate'));
   app.use('/api/admin/schedules/templates', require('./routes/admin/schedules/templates'));
   app.use('/api/admin/schedules/conflicts', require('./routes/admin/schedules/conflicts'));
+  app.use('/api/admin/schedules', require('./routes/admin/schedules/schedules'));
 } catch (error) {
-  console.warn(error);
+  console.error('❌ Erreur chargement routes schedules:', error.message);
+  console.warn('Vérifiez que tous les fichiers de routes schedules existent');
 }
 
 try {

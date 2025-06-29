@@ -1,4 +1,4 @@
-// src/lib/api/schedules.ts
+// admin-app/src/lib/api/schedules.ts - FICHIER COMPLET AVEC TYPES CORRECTS
 import { apiClient, apiRequest, ApiResponse } from './client';
 import {
   Schedule,
@@ -8,6 +8,7 @@ import {
   ScheduleListData,
   BulkCreateData,
   CalendarData,
+  ScheduleStatsData,
   ScheduleTemplate,
   WeekSchedule
 } from '@/types/schedule';
@@ -73,7 +74,12 @@ export const schedulesApi = {
   },
 
   // ✅ Création en masse de plannings
-  async bulkCreateSchedules(data: BulkCreateData): Promise<ApiResponse<{ created: number; failed: number; total: number; results: any[] }>> {
+  async bulkCreateSchedules(data: BulkCreateData): Promise<ApiResponse<{ 
+    created: number; 
+    failed: number; 
+    total: number; 
+    results: any[] 
+  }>> {
     return apiRequest(
       () => apiClient.post<ApiResponse<{ created: number; failed: number; total: number; results: any[] }>>('/admin/schedules/bulk-create', data),
       {
@@ -83,7 +89,7 @@ export const schedulesApi = {
     );
   },
 
-  // ✅ Vue calendrier
+  // ✅ Vue calendrier avec types corrects
   async getCalendarView(params: {
     year?: number;
     month?: number;
@@ -93,7 +99,7 @@ export const schedulesApi = {
   } = {}): Promise<ApiResponse<CalendarData>> {
     return apiRequest(
       () => apiClient.get<ApiResponse<CalendarData>>('/admin/schedules/calendar', {
-        params
+        params: params
       }),
       {
         showErrorToast: true
@@ -101,24 +107,38 @@ export const schedulesApi = {
     );
   },
 
-  // ✅ Vérifier les conflits avant création
-  async checkConflicts(scheduleData: ScheduleCreateData): Promise<ApiResponse<{ conflicts: any[]; canCreate: boolean }>> {
+  // ✅ Statistiques des plannings avec types corrects
+  async getScheduleStats(filters: {
+    startDate?: string;
+    endDate?: string;
+    agency?: string;
+    user?: string;
+    period?: string;
+  } = {}): Promise<ApiResponse<ScheduleStatsData>> {
     return apiRequest(
-      () => apiClient.post<ApiResponse<{ conflicts: any[]; canCreate: boolean }>>('/admin/schedules/conflicts/check', scheduleData),
+      () => apiClient.get<ApiResponse<ScheduleStatsData>>('/admin/schedules/stats', {
+        params: filters
+      }),
       {
-        showErrorToast: false // Pas de toast pour une vérification
+        showErrorToast: true
       }
     );
   },
 
-  // ✅ Récupérer les templates de planning
+  // ✅ Templates de planning
   async getTemplates(params: {
     category?: string;
     includeUsage?: boolean;
-  } = {}): Promise<ApiResponse<{ templates: ScheduleTemplate[]; categories: Record<string, number> }>> {
+  } = {}): Promise<ApiResponse<{
+    templates: ScheduleTemplate[];
+    categories: Record<string, number>;
+  }>> {
     return apiRequest(
-      () => apiClient.get<ApiResponse<{ templates: ScheduleTemplate[]; categories: Record<string, number> }>>('/admin/schedules/templates', {
-        params
+      () => apiClient.get<ApiResponse<{
+        templates: ScheduleTemplate[];
+        categories: Record<string, number>;
+      }>>('/admin/schedules/templates', {
+        params: params
       }),
       {
         showErrorToast: true
@@ -126,8 +146,19 @@ export const schedulesApi = {
     );
   },
 
-  // ✅ Créer un template
-  async createTemplate(templateData: Omit<ScheduleTemplate, 'id' | 'createdAt' | 'updatedAt' | 'usageCount' | 'recentUsage'>): Promise<ApiResponse<{ template: ScheduleTemplate }>> {
+  // ✅ Créer un template de planning
+  async createTemplate(templateData: {
+    name: string;
+    description?: string;
+    category: string;
+    template: {
+      startTime: string;
+      endTime: string;
+      breakStart?: string;
+      breakEnd?: string;
+    };
+    defaultAgencies?: string[];
+  }): Promise<ApiResponse<{ template: ScheduleTemplate }>> {
     return apiRequest(
       () => apiClient.post<ApiResponse<{ template: ScheduleTemplate }>>('/admin/schedules/templates', templateData),
       {
@@ -152,17 +183,18 @@ export const schedulesApi = {
       notifyUsers: boolean;
       overwrite: boolean;
     };
-  }): Promise<ApiResponse<{ created: number; failed: number; conflicts: any[] }>> {
+  }): Promise<ApiResponse<{ applied: number; failed: number; results: any[] }>> {
     return apiRequest(
-      () => apiClient.post<ApiResponse<{ created: number; failed: number; conflicts: any[] }>>('/admin/schedules/apply-template', data),
+      () => apiClient.post<ApiResponse<{ applied: number; failed: number; results: any[] }>>('/admin/schedules/apply-template', data),
       {
         showErrorToast: true,
-        showSuccessToast: false // Message géré dans le hook
+        showSuccessToast: true,
+        successMessage: 'Template appliqué avec succès'
       }
     );
   },
 
-  // ✅ Planning de la semaine pour un utilisateur
+  // ✅ Planning hebdomadaire d'un utilisateur
   async getUserWeekSchedule(userId: string, date?: string): Promise<ApiResponse<WeekSchedule>> {
     return apiRequest(
       () => apiClient.get<ApiResponse<WeekSchedule>>(`/admin/schedules/user/${userId}/week`, {
@@ -170,6 +202,57 @@ export const schedulesApi = {
       }),
       {
         showErrorToast: true
+      }
+    );
+  },
+
+  // ✅ Détecter les conflits
+  async getConflicts(params: {
+    startDate?: string;
+    endDate?: string;
+    severity?: 'all' | 'critical' | 'warning';
+    includeResolutions?: boolean;
+  } = {}): Promise<ApiResponse<{
+    conflicts: any[];
+    statistics: {
+      total: number;
+      bySeverity: Record<string, number>;
+      byType: Record<string, number>;
+      autoFixable: number;
+    };
+    priorities: {
+      immediate: any[];
+      thisWeek: any[];
+      planned: any[];
+    };
+    recommendations: any[];
+  }>> {
+    return apiRequest(
+      () => apiClient.get<ApiResponse<any>>('/admin/schedules/conflicts', {
+        params: params
+      }),
+      {
+        showErrorToast: true
+      }
+    );
+  },
+
+  // ✅ Résoudre des conflits
+  async resolveConflicts(data: {
+    conflictIds: string[];
+    resolutionType: 'auto' | 'manual';
+    parameters?: Record<string, any>;
+  }): Promise<ApiResponse<{
+    resolved: number;
+    failed: number;
+    results: any[];
+  }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{ resolved: number; failed: number; results: any[] }>>('/admin/schedules/conflicts/resolve', data),
+      {
+        showErrorToast: true,
+        showSuccessToast: true,
+        successMessage: 'Conflits résolus avec succès'
       }
     );
   },
@@ -191,37 +274,64 @@ export const schedulesApi = {
     }
   },
 
-  // ✅ Statistiques des plannings
-  async getScheduleStats(filters: {
-    startDate?: string;
-    endDate?: string;
-    agency?: string;
-    user?: string;
-  } = {}): Promise<ApiResponse<{
-    totalSchedules: number;
-    totalWorkingHours: number;
-    averagePerUser: number;
-    averagePerDay: number;
-    busiestrDays: Array<{ date: string; count: number; hours: number }>;
-    userStats: Array<{
-      userId: string;
-      userName: string;
-      totalHours: number;
-      totalDays: number;
-      averagePerDay: number;
-    }>;
-    agencyStats: Array<{
-      agencyId: string;
-      agencyName: string;
-      totalSchedules: number;
-      totalHours: number;
-      activeUsers: number;
-    }>;
+  // ✅ Dupliquer un planning
+  async duplicateSchedule(id: string, data: {
+    newDate?: string;
+    userId?: string;
+    agencyId?: string;
+  }): Promise<ApiResponse<{ schedule: Schedule }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{ schedule: Schedule }>>(`/admin/schedules/${id}/duplicate`, data),
+      {
+        showErrorToast: true,
+        showSuccessToast: true,
+        successMessage: 'Planning dupliqué avec succès'
+      }
+    );
+  },
+
+  // ✅ Valider un planning (vérifier les conflits)
+  async validateSchedule(scheduleData: ScheduleCreateData): Promise<ApiResponse<{
+    isValid: boolean;
+    conflicts: any[];
+    warnings: any[];
+    suggestions: any[];
   }>> {
     return apiRequest(
-      () => apiClient.get<ApiResponse<any>>('/admin/schedules/stats', {
-        params: filters
-      }),
+      () => apiClient.post<ApiResponse<{
+        isValid: boolean;
+        conflicts: any[];
+        warnings: any[];
+        suggestions: any[];
+      }>>('/admin/schedules/validate', scheduleData),
+      {
+        showErrorToast: false // Pas d'erreur toast pour la validation
+      }
+    );
+  },
+
+  // ✅ Recherche avancée de plannings
+  async searchSchedules(query: {
+    search: string;
+    filters?: ScheduleFilters;
+    options?: {
+      includeArchived?: boolean;
+      groupBy?: 'user' | 'agency' | 'date';
+      sortBy?: 'relevance' | 'date' | 'user';
+    };
+  }): Promise<ApiResponse<{
+    results: Schedule[];
+    total: number;
+    grouped?: Record<string, Schedule[]>;
+    suggestions?: string[];
+  }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{
+        results: Schedule[];
+        total: number;
+        grouped?: Record<string, Schedule[]>;
+        suggestions?: string[];
+      }>>('/admin/schedules/search', query),
       {
         showErrorToast: true
       }
