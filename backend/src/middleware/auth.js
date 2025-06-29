@@ -3,15 +3,18 @@ const User = require('../models/User');
 const { ERROR_MESSAGES } = require('../utils/constants');
 
 /**
- * Middleware d'authentification JWT
+ * Middleware d'authentification JWT - VERSION CORRIGÉE
  * Vérifie la validité du token et charge les données utilisateur
  */
 const auth = async (req, res, next) => {
   try {
+    console.log('🔍 Auth middleware - JWT_SECRET exists:', !!process.env.JWT_SECRET);
+    
     // Récupérer le token depuis l'header Authorization
     const authHeader = req.header('Authorization');
     
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ Token manquant ou format invalide');
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.TOKEN_REQUIRED
@@ -19,17 +22,30 @@ const auth = async (req, res, next) => {
     }
 
     // Extraire le token (format: "Bearer TOKEN")
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.substring(7); // Plus sûr que replace
+    console.log('🎫 Token reçu:', token.substring(0, 20) + '...');
     
-    if (!token) {
+    if (!token || token === 'null' || token === 'undefined') {
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.TOKEN_REQUIRED
       });
     }
 
+    // VÉRIFICATION CRITIQUE - JWT_SECRET doit exister
+    if (!process.env.JWT_SECRET) {
+      console.error('💥 ERREUR CRITIQUE: JWT_SECRET manquant dans .env !');
+      return res.status(500).json({
+        success: false,
+        message: 'Configuration serveur manquante'
+      });
+    }
+
+    console.log('🔐 Vérification token avec JWT_SECRET...');
+    
     // Vérifier et décoder le token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✅ Token décodé:', { userId: decoded.userId, role: decoded.role });
     
     // Charger l'utilisateur depuis la base de données
     const user = await User.findById(decoded.userId)
@@ -37,6 +53,7 @@ const auth = async (req, res, next) => {
       .select('-password');
 
     if (!user) {
+      console.log('❌ Utilisateur non trouvé:', decoded.userId);
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.USER_NOT_FOUND
@@ -45,6 +62,7 @@ const auth = async (req, res, next) => {
 
     // Vérifier que l'utilisateur est actif
     if (!user.isActive) {
+      console.log('❌ Utilisateur inactif:', user.email);
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.USER_INACTIVE
@@ -60,13 +78,19 @@ const auth = async (req, res, next) => {
       fullUser: user // Pour accès complet si nécessaire
     };
 
+    console.log('✅ Auth réussie pour:', user.email);
     next();
 
   } catch (error) {
-    console.error('Erreur authentification:', error);
+    console.error('💥 Erreur authentification:', error.name, error.message);
 
     // Gérer les différents types d'erreurs JWT
     if (error.name === 'JsonWebTokenError') {
+      console.error('🔐 JWT Error details:', {
+        message: error.message,
+        jwtSecretExists: !!process.env.JWT_SECRET,
+        jwtSecretLength: process.env.JWT_SECRET?.length || 0
+      });
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.TOKEN_INVALID
@@ -100,7 +124,7 @@ const optionalAuth = async (req, res, next) => {
       return next(); // Pas de token, on continue sans utilisateur
     }
 
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.substring(7);
     
     if (!token) {
       return next();

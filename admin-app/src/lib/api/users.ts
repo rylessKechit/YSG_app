@@ -1,111 +1,97 @@
 // src/lib/api/users.ts
 import { apiClient, apiRequest, ApiResponse } from './client';
+import { User } from '@/types/auth';
 
-export interface User {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: 'admin' | 'preparateur';
-  agencies: Array<{
-    _id: string;
-    name: string;
-    code: string;
-    client: string;
-  }>;
-  isActive: boolean;
-  lastLogin?: string;
-  phone?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateUserData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-  role: 'admin' | 'preparateur';
-  agencies: string[];
-  phone?: string;
-}
-
-export interface UpdateUserData {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  role?: 'admin' | 'preparateur';
-  agencies?: string[];
-  phone?: string;
-  isActive?: boolean;
-}
-
-export interface UsersFilters {
+// Types spécifiques pour les utilisateurs
+export interface UserFilters {
   page?: number;
   limit?: number;
   search?: string;
-  role?: 'admin' | 'preparateur';
   agency?: string;
-  isActive?: boolean;
+  status?: 'all' | 'active' | 'inactive';
+  role?: 'admin' | 'preparateur';
   sort?: string;
   order?: 'asc' | 'desc';
 }
 
-export interface UsersResponse {
+export interface UserCreateData {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  agencies: string[];
+  role?: 'admin' | 'preparateur';
+}
+
+export interface UserUpdateData {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  agencies?: string[];
+  isActive?: boolean;
+  role?: 'admin' | 'preparateur';
+}
+
+export interface UserStats {
+  totalPreparations: number;
+  averageTime: number;
+  onTimeRate: number;
+  lastActivity: string;
+}
+
+export interface UserListResponse {
   users: User[];
   pagination: {
     page: number;
     limit: number;
     total: number;
-    pages: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
   };
-  filters: UsersFilters;
 }
 
-export interface UserStats {
-  total: number;
-  active: number;
-  byRole: {
-    admin: number;
-    preparateur: number;
+export interface BulkActionData {
+  action: 'activate' | 'deactivate' | 'change_agency' | 'export';
+  userIds: string[];
+  params?: {
+    newAgencyId?: string;
+    format?: 'excel' | 'csv';
+    notify?: boolean;
   };
-  byAgency: Array<{
-    agencyId: string;
-    agencyName: string;
-    count: number;
-  }>;
-  recentLogins: number;
 }
 
+// API Client pour les utilisateurs
 export const usersApi = {
-  // Récupérer la liste des utilisateurs
-  async getUsers(filters: UsersFilters = {}): Promise<ApiResponse<UsersResponse>> {
+  // Récupérer la liste des utilisateurs avec filtres
+  async getUsers(filters: UserFilters = {}): Promise<ApiResponse<UserListResponse>> {
     return apiRequest(
-      () => apiClient.get<ApiResponse<UsersResponse>>('/admin/users', {
+      () => apiClient.get<ApiResponse<UserListResponse>>('/admin/users', {
         params: filters
       }),
-      { 
+      {
         showErrorToast: true,
-        retryCount: 1 
+        retryCount: 2
       }
     );
   },
 
   // Récupérer un utilisateur par ID
-  async getUserById(id: string): Promise<ApiResponse<User>> {
+  async getUser(id: string): Promise<ApiResponse<{ user: User }>> {
     return apiRequest(
-      () => apiClient.get<ApiResponse<User>>(`/admin/users/${id}`),
-      { 
-        showErrorToast: true 
+      () => apiClient.get<ApiResponse<{ user: User }>>(`/admin/users/${id}`),
+      {
+        showErrorToast: true
       }
     );
   },
 
   // Créer un nouvel utilisateur
-  async createUser(userData: CreateUserData): Promise<ApiResponse<User>> {
+  async createUser(userData: UserCreateData): Promise<ApiResponse<{ user: User }>> {
     return apiRequest(
-      () => apiClient.post<ApiResponse<User>>('/admin/users', userData),
-      { 
+      () => apiClient.post<ApiResponse<{ user: User }>>('/admin/users', userData),
+      {
         showErrorToast: true,
         showSuccessToast: true,
         successMessage: 'Utilisateur créé avec succès'
@@ -114,22 +100,22 @@ export const usersApi = {
   },
 
   // Mettre à jour un utilisateur
-  async updateUser(id: string, userData: UpdateUserData): Promise<ApiResponse<User>> {
+  async updateUser(id: string, userData: UserUpdateData): Promise<ApiResponse<{ user: User }>> {
     return apiRequest(
-      () => apiClient.put<ApiResponse<User>>(`/admin/users/${id}`, userData),
-      { 
+      () => apiClient.put<ApiResponse<{ user: User }>>(`/admin/users/${id}`, userData),
+      {
         showErrorToast: true,
         showSuccessToast: true,
-        successMessage: 'Utilisateur mis à jour avec succès'
+        successMessage: 'Utilisateur modifié avec succès'
       }
     );
   },
 
   // Désactiver un utilisateur
-  async deactivateUser(id: string): Promise<ApiResponse<void>> {
+  async deleteUser(id: string): Promise<ApiResponse<void>> {
     return apiRequest(
       () => apiClient.delete<ApiResponse<void>>(`/admin/users/${id}`),
-      { 
+      {
         showErrorToast: true,
         showSuccessToast: true,
         successMessage: 'Utilisateur désactivé avec succès'
@@ -138,10 +124,10 @@ export const usersApi = {
   },
 
   // Réactiver un utilisateur
-  async reactivateUser(id: string): Promise<ApiResponse<User>> {
+  async reactivateUser(id: string): Promise<ApiResponse<{ user: User }>> {
     return apiRequest(
-      () => apiClient.patch<ApiResponse<User>>(`/admin/users/${id}/reactivate`),
-      { 
+      () => apiClient.patch<ApiResponse<{ user: User }>>(`/admin/users/${id}/reactivate`),
+      {
         showErrorToast: true,
         showSuccessToast: true,
         successMessage: 'Utilisateur réactivé avec succès'
@@ -149,58 +135,62 @@ export const usersApi = {
     );
   },
 
-  // Réinitialiser le mot de passe
-  async resetPassword(id: string, newPassword: string): Promise<ApiResponse<void>> {
+  // Récupérer les statistiques d'un utilisateur
+  async getUserStats(id: string, period?: string): Promise<ApiResponse<UserStats>> {
     return apiRequest(
-      () => apiClient.patch<ApiResponse<void>>(`/admin/users/${id}/reset-password`, {
-        newPassword
+      () => apiClient.get<ApiResponse<UserStats>>(`/admin/users/${id}/stats`, {
+        params: period ? { period } : {}
       }),
-      { 
+      {
+        showErrorToast: true
+      }
+    );
+  },
+
+  // Actions en masse
+  async bulkAction(data: BulkActionData): Promise<ApiResponse<{ processed: number; failed: number; results: any[] }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{ processed: number; failed: number; results: any[] }>>('/admin/users/bulk-actions', data),
+      {
         showErrorToast: true,
         showSuccessToast: true,
-        successMessage: 'Mot de passe réinitialisé avec succès'
+        successMessage: `Action en masse effectuée sur ${data.userIds.length} utilisateur(s)`
       }
     );
   },
 
-  // Obtenir les statistiques des utilisateurs
-  async getUserStats(): Promise<ApiResponse<UserStats>> {
+  // Vérifier si un email existe
+  async checkEmail(email: string, excludeUserId?: string): Promise<ApiResponse<{ available: boolean }>> {
     return apiRequest(
-      () => apiClient.get<ApiResponse<UserStats>>('/admin/users/stats'),
-      { 
-        showErrorToast: true 
+      () => apiClient.post<ApiResponse<{ available: boolean }>>('/admin/users/check-email', {
+        email,
+        excludeUserId
+      }),
+      {
+        showErrorToast: false
       }
     );
   },
 
-  // Exporter les utilisateurs
-  async exportUsers(filters: UsersFilters = {}, format: 'csv' | 'excel' = 'csv'): Promise<Blob> {
+  // Réinitialiser le mot de passe
+  async resetPassword(id: string): Promise<ApiResponse<{ tempPassword: string }>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{ tempPassword: string }>>(`/admin/users/${id}/reset-password`),
+      {
+        showErrorToast: true,
+        showSuccessToast: true,
+        successMessage: 'Mot de passe réinitialisé'
+      }
+    );
+  },
+
+  // Exporter la liste des utilisateurs
+  async exportUsers(filters: UserFilters = {}, format: 'excel' | 'csv' = 'excel'): Promise<Blob> {
     const response = await apiClient.get('/admin/users/export', {
       params: { ...filters, format },
       responseType: 'blob'
     });
+    
     return response.data;
-  },
-
-  // Importer des utilisateurs
-  async importUsers(file: File): Promise<ApiResponse<{
-    imported: number;
-    errors: Array<{ row: number; error: string; }>;
-  }>> {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return apiRequest(
-      () => apiClient.post<ApiResponse<any>>('/admin/users/import', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      }),
-      { 
-        showErrorToast: true,
-        showSuccessToast: true,
-        successMessage: 'Import des utilisateurs terminé'
-      }
-    );
   }
 };

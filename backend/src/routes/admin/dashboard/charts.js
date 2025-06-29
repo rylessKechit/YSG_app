@@ -1,482 +1,415 @@
-// ===== backend/src/routes/admin/dashboard-charts.js =====
 const express = require('express');
 const Joi = require('joi');
 const Preparation = require('../../../models/Preparation');
 const Timesheet = require('../../../models/Timesheet');
+const User = require('../../../models/User');
+const Agency = require('../../../models/Agency');
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
 const { validateQuery } = require('../../../middleware/validation');
-const { objectId } = require('../../../middleware/validation');
-const { ERROR_MESSAGES, TIME_LIMITS } = require('../../../utils/constants');
+const { ERROR_MESSAGES } = require('../../../utils/constants');
 
 const router = express.Router();
+
+// Schéma de validation pour les graphiques
+const chartsQuerySchema = Joi.object({
+  type: Joi.string().valid('all', 'timeline', 'ponctualite', 'temps', 'agencies').default('all'),
+  period: Joi.string().valid('today', 'week', 'month', 'quarter', 'year').default('week'),
+  granularity: Joi.string().valid('hour', 'day', 'week', 'month').default('day'),
+  agencies: Joi.array().items(Joi.string()).optional(),
+  startDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional()
+});
 
 // Middleware auth
 router.use(auth, adminAuth);
 
 /**
  * @route   GET /api/admin/dashboard/charts
- * @desc    Données pour graphiques dashboard
+ * @desc    Données pour les graphiques du dashboard
  * @access  Admin
  */
-router.get('/', validateQuery(Joi.object({
-  type: Joi.string().valid('all', 'timeline', 'ponctualite', 'distribution', 'heatmap').default('all'),
-  period: Joi.string().valid('today', '7d', '30d', '90d').default('7d'),
-  agencies: Joi.array().items(objectId).optional(),
-  granularity: Joi.string().valid('hour', 'day', 'week').default('day')
-})), async (req, res) => {
+router.get('/', validateQuery(chartsQuerySchema), async (req, res) => {
   try {
-    const { type, period, agencies = [], granularity } = req.query;
-
-    // Calculer les dates selon la période
-    const endDate = new Date();
-    let startDate;
+    const { type, period, granularity, agencies, startDate, endDate } = req.query;
     
-    switch (period) {
-      case 'today':
-        startDate = new Date();
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case '90d':
-        startDate = new Date(endDate.getTime() - 90 * 24 * 60 * 60 * 1000);
-        break;
-      case '30d':
-        startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default: // 7d
-        startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    console.log('📊 Charts - Type:', type, 'Période:', period, 'Granularité:', granularity);
+
+    // Calculer les dates
+    const dateRange = calculateDateRange(period, startDate, endDate);
+    
+    // Filtres de base
+    const baseFilter = {};
+    if (agencies && agencies.length > 0) {
+      baseFilter.agency = { $in: agencies };
     }
 
-    const agencyFilter = agencies.length > 0 ? { agency: { $in: agencies } } : {};
-    const charts = {};
+    const chartData = {};
 
-    // Timeline des préparations par heure/jour
+    // ===== 1. DONNÉES TEMPORELLES (TIMELINE) =====
     if (type === 'all' || type === 'timeline') {
-      let timeGrouping;
-      
-      if (period === 'today' || granularity === 'hour') {
-        // Grouper par heure
-        timeGrouping = {
-          year: { $year: '$startTime' },
-          month: { $month: '$startTime' },
-          day: { $dayOfMonth: '$startTime' },
-          hour: { $hour: '$startTime' }
-        };
-      } else {
-        // Grouper par jour
-        timeGrouping = {
-          year: { $year: '$createdAt' },
-          month: { $month: '$createdAt' },
-          day: { $dayOfMonth: '$createdAt' }
-        };
-      }
-
-      const timelineData = await Preparation.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: startDate, $lte: endDate },
-            status: 'completed',
-            ...agencyFilter
-          }
-        },
-        {
-          $group: {
-            _id: timeGrouping,
-            preparations: { $sum: 1 },
-            tempsMoyen: { $avg: '$totalMinutes' },
-            ponctuals: {
-              $sum: { $cond: [{ $eq: ['$isOnTime', true] }, 1, 0] }
-            }
-          }
-        },
-        {
-          $project: {
-            period: '$_id',
-            preparations: 1,
-            tempsMoyen: { $round: ['$tempsMoyen', 1] },
-            ponctualite: {
-              $round: [
-                { $multiply: [{ $divide: ['$ponctuals', '$preparations'] }, 100] },
-                1
-              ]
-            },
-            // Formater la période pour l'affichage
-            label: {
-              $cond: [
-                { $ifNull: ['$_id.hour', false] },
-                // Format heure: "14:00"
-                { $concat: [
-                  { $toString: '$_id.hour' }, ':00'
-                ]},
-                // Format date: "15/01"
-                { $concat: [
-                  { $toString: '$_id.day' }, '/',
-                  { $toString: '$_id.month' }
-                ]}
-              ]
-            }
-          }
-        },
-        { $sort: { 'period.year': 1, 'period.month': 1, 'period.day': 1, 'period.hour': 1 } }
-      ]);
-
-      charts.timeline = timelineData;
+      chartData.timeline = await getTimelineData(dateRange, granularity, baseFilter);
     }
 
-    // Ponctualité par agence
+    // ===== 2. PONCTUALITÉ PAR AGENCE =====
     if (type === 'all' || type === 'ponctualite') {
-      const ponctualiteData = await Timesheet.aggregate([
-        {
-          $match: {
-            date: { $gte: startDate, $lte: endDate },
-            startTime: { $exists: true },
-            ...agencyFilter
-          }
-        },
-        {
-          $lookup: {
-            from: 'agencies',
-            localField: 'agency',
-            foreignField: '_id',
-            as: 'agencyInfo'
-          }
-        },
-        { $unwind: '$agencyInfo' },
-        {
-          $group: {
-            _id: '$agency',
-            agence: { $first: '$agencyInfo.name' },
-            code: { $first: '$agencyInfo.code' },
-            totalPointages: { $sum: 1 },
-            retards: {
-              $sum: {
-                $cond: [
-                  { $gt: ['$delays.startDelay', TIME_LIMITS.LATE_THRESHOLD_MINUTES] },
-                  1,
-                  0
-                ]
-              }
-            },
-            retardMoyen: { $avg: '$delays.startDelay' }
-          }
-        },
-        {
-          $project: {
-            agence: 1,
-            code: 1,
-            ponctualite: {
-              $round: [
-                { 
-                  $multiply: [
-                    { $divide: [{ $subtract: ['$totalPointages', '$retards'] }, '$totalPointages'] },
-                    100
-                  ]
-                },
-                1
-              ]
-            },
-            retards: 1,
-            totalPointages: 1,
-            retardMoyen: { $round: ['$retardMoyen', 1] }
-          }
-        },
-        { $sort: { ponctualite: -1 } }
-      ]);
-
-      charts.ponctualiteParAgence = ponctualiteData;
+      chartData.punctualityByAgency = await getPunctualityByAgency(dateRange, baseFilter);
     }
 
-    // Distribution des temps de préparation
-    if (type === 'all' || type === 'distribution') {
-      const distributionData = await Preparation.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: startDate, $lte: endDate },
-            status: 'completed',
-            ...agencyFilter
-          }
-        },
-        {
-          $bucket: {
-            groupBy: '$totalMinutes',
-            boundaries: [0, 15, 20, 25, 30, 40, 999],
-            default: '>40min',
-            output: {
-              count: { $sum: 1 },
-              avgTime: { $avg: '$totalMinutes' }
-            }
-          }
-        },
-        {
-          $project: {
-            tranche: {
-              $switch: {
-                branches: [
-                  { case: { $eq: ['$_id', 0] }, then: '0-15min' },
-                  { case: { $eq: ['$_id', 15] }, then: '15-20min' },
-                  { case: { $eq: ['$_id', 20] }, then: '20-25min' },
-                  { case: { $eq: ['$_id', 25] }, then: '25-30min' },
-                  { case: { $eq: ['$_id', 30] }, then: '30-40min' },
-                  { case: { $eq: ['$_id', 40] }, then: '>40min' }
-                ],
-                default: '>40min'
-              }
-            },
-            count: 1,
-            avgTime: { $round: ['$avgTime', 1] },
-            percentage: 0 // Sera calculé côté client
-          }
-        },
-        { $sort: { '_id': 1 } }
-      ]);
-
-      // Calculer les pourcentages
-      const total = distributionData.reduce((sum, item) => sum + item.count, 0);
-      distributionData.forEach(item => {
-        item.percentage = total > 0 ? Math.round((item.count / total) * 100) : 0;
-      });
-
-      charts.distributionTemps = distributionData;
+    // ===== 3. DISTRIBUTION DES TEMPS =====
+    if (type === 'all' || type === 'temps') {
+      chartData.timeDistribution = await getTimeDistribution(dateRange, baseFilter);
     }
 
-    // Heatmap des activités (jour de semaine vs heure)
-    if (type === 'all' || type === 'heatmap') {
-      const heatmapData = await Preparation.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: startDate, $lte: endDate },
-            status: 'completed',
-            ...agencyFilter
-          }
-        },
-        {
-          $group: {
-            _id: {
-              dayOfWeek: { $dayOfWeek: '$startTime' },
-              hour: { $hour: '$startTime' }
-            },
-            count: { $sum: 1 },
-            avgTime: { $avg: '$totalMinutes' }
-          }
-        },
-        {
-          $project: {
-            dayOfWeek: {
-              $switch: {
-                branches: [
-                  { case: { $eq: ['$_id.dayOfWeek', 1] }, then: 'Dimanche' },
-                  { case: { $eq: ['$_id.dayOfWeek', 2] }, then: 'Lundi' },
-                  { case: { $eq: ['$_id.dayOfWeek', 3] }, then: 'Mardi' },
-                  { case: { $eq: ['$_id.dayOfWeek', 4] }, then: 'Mercredi' },
-                  { case: { $eq: ['$_id.dayOfWeek', 5] }, then: 'Jeudi' },
-                  { case: { $eq: ['$_id.dayOfWeek', 6] }, then: 'Vendredi' },
-                  { case: { $eq: ['$_id.dayOfWeek', 7] }, then: 'Samedi' }
-                ]
-              }
-            },
-            hour: '$_id.hour',
-            count: 1,
-            avgTime: { $round: ['$avgTime', 1] },
-            intensity: 0 // Sera calculé après
-          }
-        },
-        { $sort: { '_id.dayOfWeek': 1, '_id.hour': 1 } }
-      ]);
-
-      // Normaliser l'intensité (0-100)
-      const maxCount = Math.max(...heatmapData.map(item => item.count));
-      heatmapData.forEach(item => {
-        item.intensity = maxCount > 0 ? Math.round((item.count / maxCount) * 100) : 0;
-      });
-
-      charts.heatmapActivite = heatmapData;
+    // ===== 4. PERFORMANCE PAR AGENCE =====
+    if (type === 'all' || type === 'agencies') {
+      chartData.agencyPerformance = await getAgencyPerformance(dateRange, baseFilter);
     }
 
-    // Évolution comparative (cette semaine vs semaine précédente)
-    if (type === 'all' && period === '7d') {
-      const previousWeekStart = new Date(startDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const previousWeekEnd = new Date(startDate.getTime() - 1);
-
-      const [currentWeekStats, previousWeekStats] = await Promise.all([
-        Preparation.aggregate([
-          {
-            $match: {
-              createdAt: { $gte: startDate, $lte: endDate },
-              status: 'completed',
-              ...agencyFilter
-            }
-          },
-          {
-            $group: {
-              _id: null,
-              totalPreparations: { $sum: 1 },
-              tempsMoyen: { $avg: '$totalMinutes' },
-              onTimeCount: { $sum: { $cond: [{ $eq: ['$isOnTime', true] }, 1, 0] } }
-            }
-          }
-        ]),
-        Preparation.aggregate([
-          {
-            $match: {
-              createdAt: { $gte: previousWeekStart, $lte: previousWeekEnd },
-              status: 'completed',
-              ...agencyFilter
-            }
-          },
-          {
-            $group: {
-              _id: null,
-              totalPreparations: { $sum: 1 },
-              tempsMoyen: { $avg: '$totalMinutes' },
-              onTimeCount: { $sum: { $cond: [{ $eq: ['$isOnTime', true] }, 1, 0] } }
-            }
-          }
-        ])
-      ]);
-
-      const current = currentWeekStats[0] || { totalPreparations: 0, tempsMoyen: 0, onTimeCount: 0 };
-      const previous = previousWeekStats[0] || { totalPreparations: 0, tempsMoyen: 0, onTimeCount: 0 };
-
-      charts.evolutionComparative = {
-        current: {
-          ...current,
-          onTimeRate: current.totalPreparations > 0 ? 
-            Math.round((current.onTimeCount / current.totalPreparations) * 100) : 0
-        },
-        previous: {
-          ...previous,
-          onTimeRate: previous.totalPreparations > 0 ? 
-            Math.round((previous.onTimeCount / previous.totalPreparations) * 100) : 0
-        },
-        evolution: {
-          preparations: previous.totalPreparations > 0 ? 
-            Math.round(((current.totalPreparations - previous.totalPreparations) / previous.totalPreparations) * 100) : 0,
-          tempsMoyen: previous.tempsMoyen > 0 ? 
-            Math.round(((current.tempsMoyen - previous.tempsMoyen) / previous.tempsMoyen) * 100) : 0,
-          onTimeRate: (current.onTimeRate || 0) - (previous.onTimeRate || 0)
-        }
-      };
-    }
+    console.log('✅ Charts générés:', Object.keys(chartData));
 
     res.json({
       success: true,
-      data: {
-        period: {
-          startDate,
-          endDate,
-          type,
-          periodDays: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)),
-          granularity
+      data: chartData,
+      meta: {
+        period,
+        granularity,
+        dateRange: {
+          start: dateRange.start,
+          end: dateRange.end
         },
-        charts,
-        metadata: {
-          agenciesFilter: agencies,
-          totalDataPoints: Object.values(charts).reduce((sum, chart) => 
-            sum + (Array.isArray(chart) ? chart.length : 0), 0
-          ),
-          generatedAt: new Date()
-        }
+        filters: { agencies }
       }
     });
 
   } catch (error) {
-    console.error('Erreur graphiques dashboard:', error);
+    console.error('💥 Erreur charts:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
+
+// ===== FONCTIONS UTILITAIRES =====
 
 /**
- * @route   GET /api/admin/dashboard/charts/realtime
- * @desc    Données temps réel pour graphiques live
- * @access  Admin
+ * Données chronologiques - AGGREGATION CORRIGÉE
  */
-router.get('/realtime', async (req, res) => {
+async function getTimelineData(dateRange, granularity, baseFilter) {
   try {
-    const now = new Date();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Format de groupement selon la granularité
+    let groupFormat;
+    switch (granularity) {
+      case 'hour':
+        groupFormat = '%Y-%m-%d-%H';
+        break;
+      case 'day':
+        groupFormat = '%Y-%m-%d';
+        break;
+      case 'week':
+        groupFormat = '%Y-%U'; // Année-Semaine
+        break;
+      case 'month':
+        groupFormat = '%Y-%m';
+        break;
+      default:
+        groupFormat = '%Y-%m-%d';
+    }
 
-    // Données temps réel pour le dashboard
-    const [
-      currentHourActivity,
-      todayByHour,
-      livePreparations
-    ] = await Promise.all([
-      // Activité de l'heure courante
-      Preparation.countDocuments({
-        createdAt: { 
-          $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()),
-          $lt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1)
-        },
-        status: 'completed'
-      }),
-
-      // Activité par heure depuis ce matin
-      Preparation.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: today },
-            status: 'completed'
+    const result = await Preparation.aggregate([
+      {
+        $match: {
+          ...baseFilter,
+          createdAt: {
+            $gte: dateRange.start,
+            $lte: dateRange.end
           }
-        },
-        {
-          $group: {
-            _id: { $hour: '$createdAt' },
-            count: { $sum: 1 },
-            avgTime: { $avg: '$totalMinutes' }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: groupFormat,
+              date: '$createdAt'
+            }
+          },
+          totalPreparations: { $sum: 1 },
+          completedPreparations: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          totalTime: {
+            $sum: {
+              $cond: [
+                { $and: [{ $ne: ['$totalTime', null] }, { $eq: ['$status', 'completed'] }] },
+                '$totalTime',
+                0
+              ]
+            }
+          },
+          completedCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $ne: ['$totalTime', null] }, { $eq: ['$status', 'completed'] }] },
+                1,
+                0
+              ]
+            }
           }
-        },
-        {
-          $project: {
-            hour: '$_id',
-            count: 1,
-            avgTime: { $round: ['$avgTime', 1] }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          date: '$_id',
+          totalPreparations: 1,
+          completedPreparations: 1,
+          averageTime: {
+            $cond: [
+              { $eq: ['$completedCount', 0] },
+              0,
+              { $round: [{ $divide: ['$totalTime', '$completedCount'] }, 1] }
+            ]
+          },
+          completionRate: {
+            $cond: [
+              { $eq: ['$totalPreparations', 0] },
+              0,
+              { $round: [{ $multiply: [{ $divide: ['$completedPreparations', '$totalPreparations'] }, 100] }, 1] }
+            ]
           }
-        },
-        { $sort: { hour: 1 } }
-      ]),
-
-      // Préparations en cours
-      Preparation.countDocuments({ status: 'in_progress' })
+        }
+      },
+      {
+        $sort: { date: 1 }
+      }
     ]);
 
-    // Construire les données pour graphique temps réel
-    const hourlyData = Array.from({ length: 24 }, (_, hour) => {
-      const data = todayByHour.find(item => item.hour === hour);
+    return result.map(item => ({
+      date: item.date,
+      preparations: item.totalPreparations,
+      completed: item.completedPreparations,
+      averageTime: item.averageTime,
+      completionRate: item.completionRate
+    }));
+
+  } catch (error) {
+    console.error('Erreur timeline:', error);
+    return [];
+  }
+}
+
+/**
+ * Ponctualité par agence - MÉTHODE SIMPLIFIÉE
+ */
+async function getPunctualityByAgency(dateRange, baseFilter) {
+  try {
+    // Méthode simple pour éviter les erreurs d'aggregation
+    const agencies = await Agency.find({});
+    const results = [];
+
+    for (const agency of agencies) {
+      const timesheets = await Timesheet.find({
+        ...baseFilter,
+        agency: agency._id,
+        date: {
+          $gte: dateRange.start,
+          $lte: dateRange.end
+        },
+        clockInTime: { $exists: true }
+      }).populate('schedule', 'startTime');
+
+      let total = timesheets.length;
+      let onTime = 0;
+
+      timesheets.forEach(timesheet => {
+        if (timesheet.schedule && timesheet.clockInTime) {
+          const clockInHour = timesheet.clockInTime.getHours();
+          const clockInMinute = timesheet.clockInTime.getMinutes();
+          const clockInTime = clockInHour * 60 + clockInMinute;
+          
+          const [scheduleHour, scheduleMinute] = timesheet.schedule.startTime.split(':').map(Number);
+          const scheduleTime = scheduleHour * 60 + scheduleMinute;
+          
+          if (clockInTime <= scheduleTime + 5) { // 5 min de tolérance
+            onTime++;
+          }
+        }
+      });
+
+      if (total > 0) {
+        results.push({
+          agencyName: agency.name,
+          agencyId: agency._id,
+          total,
+          onTime,
+          punctualityRate: Math.round((onTime / total) * 100)
+        });
+      }
+    }
+
+    return results.sort((a, b) => b.punctualityRate - a.punctualityRate);
+
+  } catch (error) {
+    console.error('Erreur ponctualité agences:', error);
+    return [];
+  }
+}
+
+/**
+ * Distribution des temps de préparation
+ */
+async function getTimeDistribution(dateRange, baseFilter) {
+  try {
+    const preparations = await Preparation.find({
+      ...baseFilter,
+      createdAt: {
+        $gte: dateRange.start,
+        $lte: dateRange.end
+      },
+      status: 'completed',
+      totalTime: { $exists: true, $ne: null }
+    }).select('totalTime');
+
+    // Créer des tranches de temps
+    const ranges = [
+      { range: '0-15 min', min: 0, max: 15 },
+      { range: '15-30 min', min: 15, max: 30 },
+      { range: '30-45 min', min: 30, max: 45 },
+      { range: '45-60 min', min: 45, max: 60 },
+      { range: '60+ min', min: 60, max: Infinity }
+    ];
+
+    const distribution = ranges.map(range => {
+      const count = preparations.filter(prep => 
+        prep.totalTime >= range.min && prep.totalTime < range.max
+      ).length;
+      
       return {
-        hour: `${hour.toString().padStart(2, '0')}:00`,
-        count: data ? data.count : 0,
-        avgTime: data ? data.avgTime : 0,
-        isCurrentHour: hour === now.getHours()
+        range: range.range,
+        count,
+        percentage: preparations.length > 0 ? Math.round((count / preparations.length) * 100) : 0
       };
     });
 
-    res.json({
-      success: true,
-      data: {
-        currentHour: {
-          hour: `${now.getHours()}:00`,
-          activity: currentHourActivity,
-          timestamp: now
-        },
-        todayHourly: hourlyData,
-        live: {
-          preparationsEnCours: livePreparations,
-          lastUpdate: now
-        }
-      }
-    });
+    return distribution;
 
   } catch (error) {
-    console.error('Erreur graphiques temps réel:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
-    });
+    console.error('Erreur distribution temps:', error);
+    return [];
   }
-});
+}
+
+/**
+ * Performance par agence
+ */
+async function getAgencyPerformance(dateRange, baseFilter) {
+  try {
+    const agencies = await Agency.find({});
+    const results = [];
+
+    for (const agency of agencies) {
+      const preparations = await Preparation.find({
+        ...baseFilter,
+        agency: agency._id,
+        createdAt: {
+          $gte: dateRange.start,
+          $lte: dateRange.end
+        }
+      });
+
+      const completed = preparations.filter(p => p.status === 'completed');
+      const totalTime = completed.reduce((sum, p) => sum + (p.totalTime || 0), 0);
+
+      if (preparations.length > 0) {
+        results.push({
+          agencyName: agency.name,
+          agencyId: agency._id,
+          totalPreparations: preparations.length,
+          completedPreparations: completed.length,
+          averageTime: completed.length > 0 ? Math.round(totalTime / completed.length) : 0,
+          completionRate: Math.round((completed.length / preparations.length) * 100)
+        });
+      }
+    }
+
+    return results.sort((a, b) => b.completionRate - a.completionRate);
+
+  } catch (error) {
+    console.error('Erreur performance agences:', error);
+    return [];
+  }
+}
+
+/**
+ * Calculer les dates selon la période
+ */
+function calculateDateRange(period, startDate, endDate) {
+  if (startDate && endDate) {
+    return {
+      start: new Date(startDate),
+      end: new Date(endDate)
+    };
+  }
+
+  const now = new Date();
+  const today = new Date(now.setHours(0, 0, 0, 0));
+  
+  switch (period) {
+    case 'today':
+      return {
+        start: today,
+        end: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+      };
+      
+    case 'week':
+      const startOfWeek = getStartOfWeek(today);
+      const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
+      return {
+        start: startOfWeek,
+        end: endOfWeek
+      };
+      
+    case 'month':
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return {
+        start: startOfMonth,
+        end: endOfMonth
+      };
+      
+    case 'quarter':
+      const quarter = Math.floor(now.getMonth() / 3);
+      const startOfQuarter = new Date(now.getFullYear(), quarter * 3, 1);
+      const endOfQuarter = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
+      return {
+        start: startOfQuarter,
+        end: endOfQuarter
+      };
+      
+    case 'year':
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      const endOfYear = new Date(now.getFullYear(), 11, 31);
+      return {
+        start: startOfYear,
+        end: endOfYear
+      };
+      
+    default:
+      return {
+        start: startOfWeek,
+        end: endOfWeek
+      };
+  }
+}
+
+function getStartOfWeek(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Lundi = début semaine
+  return new Date(d.setDate(diff));
+}
 
 module.exports = router;

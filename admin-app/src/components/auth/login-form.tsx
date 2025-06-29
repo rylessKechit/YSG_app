@@ -1,4 +1,3 @@
-// src/components/auth/login-form.tsx
 'use client';
 
 import { useState } from 'react';
@@ -37,23 +36,55 @@ export function LoginForm() {
   });
 
   const onSubmit = async (data: LoginFormData) => {
+    console.log('🔐 Tentative de connexion:', data.email);
+    
     setIsLoading(true);
     setError(null);
 
     try {
+      console.log('📤 Envoi requête login...');
       const response = await authApi.login(data);
       
-      if (response.success) {
+      console.log('📥 Réponse login:', {
+        success: response.success,
+        hasToken: !!response.data?.token,
+        tokenPreview: response.data?.token?.substring(0, 20) + '...' || 'AUCUN',
+        userRole: response.data?.user?.role
+      });
+      
+      if (response.success && response.data) {
         const { user, token, refreshToken } = response.data;
         
-        // Mettre à jour le store
+        if (!token) {
+          console.error('❌ Pas de token dans la réponse !');
+          setError('Erreur: Token manquant dans la réponse');
+          return;
+        }
+        
+        console.log('✅ Token reçu, mise à jour du store...');
+        
+        // Mettre à jour le store auth
         login(user, token, refreshToken);
+        
+        console.log('🔄 Redirection vers dashboard...');
         
         // Rediriger vers le dashboard
         router.push('/dashboard');
+      } else {
+        console.error('❌ Réponse login sans succès:', response);
+        setError('Échec de la connexion');
       }
     } catch (error: any) {
-      setError(error.response?.data?.message || 'Erreur de connexion');
+      console.error('💥 Erreur lors du login:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          'Erreur de connexion inconnue';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -63,32 +94,27 @@ export function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-            <LogIn className="h-6 w-6 text-blue-600" />
-          </div>
           <CardTitle className="text-2xl font-bold">Vehicle Prep Admin</CardTitle>
           <CardDescription>
-            Connectez-vous à votre espace d'administration
+            Connectez-vous à votre espace administrateur
           </CardDescription>
         </CardHeader>
-        
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="admin@example.com"
-                disabled={isLoading}
                 {...register('email')}
-                className={errors.email ? 'border-red-500' : ''}
+                disabled={isLoading}
               />
               {errors.email && (
                 <p className="text-sm text-red-500">{errors.email.message}</p>
@@ -102,13 +128,12 @@ export function LoginForm() {
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
-                  disabled={isLoading}
                   {...register('password')}
-                  className={errors.password ? 'border-red-500 pr-10' : 'pr-10'}
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                   onClick={() => setShowPassword(!showPassword)}
                   disabled={isLoading}
                 >
@@ -146,8 +171,11 @@ export function LoginForm() {
           {/* Infos de test en développement */}
           {process.env.NODE_ENV === 'development' && (
             <div className="mt-6 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
-              <p className="font-medium mb-1">Comptes de test :</p>
-              <p>Admin: admin@example.com / password123</p>
+              <p className="font-medium mb-1">🧪 Comptes de test :</p>
+              <p><strong>Admin:</strong> admin@example.com / password123</p>
+              <p className="mt-2 text-yellow-600">
+                💡 Vérifiez les logs console pour le debug des tokens
+              </p>
             </div>
           )}
         </CardContent>

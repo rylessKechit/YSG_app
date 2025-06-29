@@ -110,13 +110,15 @@ try {
 }
 
 try {
-  // Dashboard
+  // Dashboard - ROUTES COMPLÈTES
   app.use('/api/admin/dashboard', require('./routes/admin/dashboard/dashboard'));
   app.use('/api/admin/dashboard/kpis', require('./routes/admin/dashboard/kpis'));
+  app.use('/api/admin/dashboard/overview', require('./routes/admin/dashboard/overview'));
   app.use('/api/admin/dashboard/charts', require('./routes/admin/dashboard/charts'));
   app.use('/api/admin/dashboard/alerts', require('./routes/admin/dashboard/alerts'));
+  console.log('✅ Routes dashboard chargées avec succès');
 } catch (error) {
-  console.warn(error);
+  console.warn('⚠️ Erreur chargement routes dashboard:', error.message);
 }
 
 try {

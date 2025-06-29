@@ -1,10 +1,7 @@
-// ===== backend/src/routes/admin/dashboard-alerts.js =====
 const express = require('express');
 const Joi = require('joi');
-const User = require('../../../models/User');
 const Timesheet = require('../../../models/Timesheet');
 const Preparation = require('../../../models/Preparation');
-const Schedule = require('../../../models/Schedule');
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
 const { validateQuery } = require('../../../middleware/validation');
@@ -12,667 +9,278 @@ const { ERROR_MESSAGES, TIME_LIMITS } = require('../../../utils/constants');
 
 const router = express.Router();
 
+// Schéma de validation pour les alertes
+const alertsQuerySchema = Joi.object({
+  priority: Joi.string().valid('low', 'medium', 'high', 'critical', 'all').default('all'),
+  limit: Joi.number().integer().min(1).max(50).default(10),
+  unreadOnly: Joi.boolean().default(false),
+  type: Joi.string().valid('late_start', 'missing_clock_out', 'long_preparation', 'system_error', 'all').default('all')
+});
+
 // Middleware auth
 router.use(auth, adminAuth);
 
 /**
  * @route   GET /api/admin/dashboard/alerts
- * @desc    Alertes et notifications temps réel
+ * @desc    Récupérer les alertes système
  * @access  Admin
  */
-router.get('/', validateQuery(Joi.object({
-  priority: Joi.string().valid('all', 'critical', 'warning', 'info').default('all'),
-  limit: Joi.number().min(1).max(100).default(20),
-  includeResolved: Joi.boolean().default(false)
-})), async (req, res) => {
+router.get('/', validateQuery(alertsQuerySchema), async (req, res) => {
   try {
-    const { priority, limit, includeResolved } = req.query;
+    const { priority, limit, unreadOnly, type } = req.query;
     
+    console.log('🚨 Récupération alertes:', { priority, limit, type });
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const alerts = [];
 
-    const [
-      retardsEnCours,
-      preparationsDepassees,
-      absencesNonPrevues,
-      preparationsStagnantes,
-      vehiculesProblematiques
-    ] = await Promise.all([
-      // 🚨 CRITIQUE: Retards de pointage en cours
-      Timesheet.aggregate([
-        {
-          $match: {
-            date: today,
-            startTime: null // Pas encore pointé
-          }
-        },
-        {
-          $lookup: {
-            from: 'schedules',
-            let: { userId: '$user', date: '$date' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ['$user', '$$userId'] },
-                      { $eq: ['$date', '$$date'] },
-                      { $eq: ['$status', 'active'] }
-                    ]
-                  }
-                }
-              }
-            ],
-            as: 'schedule'
-          }
-        },
-        { $unwind: { path: '$schedule', preserveNullAndEmptyArrays: true } },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'user',
-            foreignField: '_id',
-            as: 'userInfo'
-          }
-        },
-        { $unwind: '$userInfo' },
-        {
-          $lookup: {
-            from: 'agencies',
-            localField: 'agency',
-            foreignField: '_id',
-            as: 'agencyInfo'
-          }
-        },
-        { $unwind: '$agencyInfo' },
-        {
-          $project: {
-            user: {
-              _id: '$userInfo._id',
-              firstName: '$userInfo.firstName',
-              lastName: '$userInfo.lastName',
-              email: '$userInfo.email'
-            },
-            agency: {
-              _id: '$agencyInfo._id',
-              name: '$agencyInfo.name',
-              code: '$agencyInfo.code'
-            },
-            scheduledTime: '$schedule.startTime',
-            retardMinutes: {
-              $cond: [
-                { $ifNull: ['$schedule.startTime', false] },
-                {
-                  $floor: {
-                    $divide: [
-                      {
-                        $subtract: [
-                          new Date(),
-                          {
-                            $dateFromString: {
-                              dateString: {
-                                $concat: [
-                                  { $dateToString: { format: '%Y-%m-%d', date: today } },
-                                  'T',
-                                  '$schedule.startTime',
-                                  ':00Z'
-                                ]
-                              }
-                            }
-                          }
-                        ]
-                      },
-                      60000 // millisecondes vers minutes
-                    ]
-                  }
-                },
-                0
-              ]
-            }
-          }
-        },
-        {
-          $match: {
-            retardMinutes: { $gt: TIME_LIMITS.LATE_THRESHOLD_MINUTES }
-          }
-        },
-        { $sort: { retardMinutes: -1 } },
-        { $limit: parseInt(limit) }
-      ]),
+    // ===== 1. ALERTES RETARDS DE POINTAGE =====
+    if (type === 'all' || type === 'late_start') {
+      const lateAlerts = await getLateStartAlerts(today);
+      alerts.push(...lateAlerts);
+    }
 
-      // ⚠️ WARNING: Préparations qui dépassent 30min
-      Preparation.find({
-        status: 'in_progress',
-        startTime: { 
-          $lt: new Date(Date.now() - TIME_LIMITS.PREPARATION_MAX_MINUTES * 60 * 1000)
-        }
-      })
-      .populate('user', 'firstName lastName email')
-      .populate('agency', 'name code')
-      .sort({ startTime: 1 })
-      .limit(parseInt(limit)),
+    // ===== 2. ALERTES PRÉPARATIONS EN RETARD =====
+    if (type === 'all' || type === 'long_preparation') {
+      const prepAlerts = await getLongPreparationAlerts();
+      alerts.push(...prepAlerts);
+    }
 
-      // 📅 INFO: Absences non prévues (planning mais pas de pointage après 1h)
-      Schedule.aggregate([
-        {
-          $match: {
-            date: today,
-            status: 'active'
-          }
-        },
-        {
-          $lookup: {
-            from: 'timesheets',
-            let: { userId: '$user', date: '$date' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ['$user', '$$userId'] },
-                      { $eq: ['$date', '$$date'] }
-                    ]
-                  }
-                }
-              }
-            ],
-            as: 'timesheet'
-          }
-        },
-        {
-          $match: {
-            timesheet: { $size: 0 } // Pas de pointage
-          }
-        },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'user',
-            foreignField: '_id',
-            as: 'userInfo'
-          }
-        },
-        { $unwind: '$userInfo' },
-        {
-          $lookup: {
-            from: 'agencies',
-            localField: 'agency',
-            foreignField: '_id',
-            as: 'agencyInfo'
-          }
-        },
-        { $unwind: '$agencyInfo' },
-        {
-          $project: {
-            user: {
-              _id: '$userInfo._id',
-              firstName: '$userInfo.firstName',
-              lastName: '$userInfo.lastName',
-              email: '$userInfo.email'
-            },
-            agency: {
-              _id: '$agencyInfo._id',
-              name: '$agencyInfo.name',
-              code: '$agencyInfo.code'
-            },
-            scheduledTime: '$startTime',
-            retardEstime: {
-              $floor: {
-                $divide: [
-                  {
-                    $subtract: [
-                      new Date(),
-                      {
-                        $dateFromString: {
-                          dateString: {
-                            $concat: [
-                              { $dateToString: { format: '%Y-%m-%d', date: today } },
-                              'T',
-                              '$startTime',
-                              ':00Z'
-                            ]
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  60000
-                ]
-              }
-            }
-          }
-        },
-        {
-          $match: {
-            retardEstime: { $gt: 60 } // Plus d'1h de retard
-          }
-        },
-        { $sort: { retardEstime: -1 } },
-        { $limit: parseInt(limit) }
-      ]),
+    // ===== 3. ALERTES POINTAGES MANQUANTS =====
+    if (type === 'all' || type === 'missing_clock_out') {
+      const clockOutAlerts = await getMissingClockOutAlerts(today);
+      alerts.push(...clockOutAlerts);
+    }
 
-      // ⚠️ WARNING: Préparations qui stagnent (en cours depuis >15min sans activité)
-      Preparation.find({
-        status: 'in_progress',
-        startTime: { 
-          $lt: new Date(Date.now() - 15 * 60 * 1000), // >15min
-          $gt: new Date(Date.now() - 2 * 60 * 60 * 1000) // <2h (pour éviter les très anciennes)
-        },
-        updatedAt: { 
-          $lt: new Date(Date.now() - 10 * 60 * 1000) // Pas de mise à jour depuis 10min
-        }
-      })
-      .populate('user', 'firstName lastName email')
-      .populate('agency', 'name code')
-      .sort({ updatedAt: 1 })
-      .limit(10),
+    // ===== FILTRAGE ET TRI =====
+    let filteredAlerts = alerts;
 
-      // 🔧 INFO: Véhicules avec beaucoup d'incidents récents
-      Preparation.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }, // 7 derniers jours
-            'issues.0': { $exists: true } // A des problèmes
-          }
-        },
-        {
-          $group: {
-            _id: '$vehicle.licensePlate',
-            vehicleInfo: { $first: '$vehicle' },
-            totalIssues: { $sum: { $size: '$issues' } },
-            totalPreparations: { $sum: 1 },
-            lastIssue: { $max: '$createdAt' },
-            agencies: { $addToSet: '$agency' }
-          }
-        },
-        {
-          $match: {
-            totalIssues: { $gte: 3 } // Au moins 3 problèmes en 7 jours
-          }
-        },
-        {
-          $lookup: {
-            from: 'agencies',
-            localField: 'agencies',
-            foreignField: '_id',
-            as: 'agencyDetails'
-          }
-        },
-        {
-          $project: {
-            vehicule: {
-              licensePlate: '$_id',
-              brand: '$vehicleInfo.brand',
-              model: '$vehicleInfo.model'
-            },
-            totalIssues: 1,
-            totalPreparations: 1,
-            issueRate: {
-              $round: [
-                { $multiply: [{ $divide: ['$totalIssues', '$totalPreparations'] }, 100] },
-                1
-              ]
-            },
-            lastIssue: 1,
-            agencies: { $slice: ['$agencyDetails.name', 3] }
-          }
-        },
-        { $sort: { totalIssues: -1 } },
-        { $limit: 5 }
-      ])
-    ]);
+    // Filtre par priorité
+    if (priority !== 'all') {
+      filteredAlerts = filteredAlerts.filter(alert => alert.priority === priority);
+    }
 
-    // Formater les alertes avec priorités et actions
-    const alertes = [];
+    // Filtre non lues seulement
+    if (unreadOnly) {
+      filteredAlerts = filteredAlerts.filter(alert => !alert.isRead);
+    }
 
-    // 🚨 Retards critiques
-    retardsEnCours.forEach(retard => {
-      if (priority === 'all' || priority === 'critical') {
-        alertes.push({
-          id: `retard_${retard.user._id}_${today.getTime()}`,
-          type: 'retard_pointage',
-          priority: retard.retardMinutes > 30 ? 'critical' : 'warning',
-          severity: retard.retardMinutes > 30 ? 'error' : 'warning',
-          title: `Retard de pointage - ${retard.user.firstName} ${retard.user.lastName}`,
-          message: `${retard.retardMinutes} minutes de retard (prévu à ${retard.scheduledTime})`,
-          data: {
-            user: retard.user,
-            agency: retard.agency,
-            retardMinutes: retard.retardMinutes,
-            scheduledTime: retard.scheduledTime
-          },
-          timestamp: new Date(),
-          actionRequired: true,
-          actions: [
-            { type: 'call', label: 'Appeler', phone: retard.user.phone },
-            { type: 'notify', label: 'Notifier équipe' },
-            { type: 'reassign', label: 'Réassigner tâches' }
-          ]
-        });
-      }
-    });
-
-    // ⚠️ Préparations dépassées
-    preparationsDepassees.forEach(prep => {
-      const dureeMinutes = Math.floor((new Date() - prep.startTime) / (1000 * 60));
-      if (priority === 'all' || priority === 'warning') {
-        alertes.push({
-          id: `preparation_${prep._id}`,
-          type: 'preparation_depassee',
-          priority: dureeMinutes > 45 ? 'critical' : 'warning',
-          severity: 'warning',
-          title: `Préparation longue - ${prep.vehicle?.licensePlate || 'Véhicule'}`,
-          message: `${dureeMinutes} minutes (limite: ${TIME_LIMITS.PREPARATION_MAX_MINUTES}min)`,
-          data: {
-            preparation: {
-              id: prep._id,
-              vehicule: prep.vehicle?.licensePlate || 'N/A',
-              vehicleBrand: prep.vehicle?.brand,
-              vehicleModel: prep.vehicle?.model
-            },
-            user: {
-              _id: prep.user._id,
-              firstName: prep.user.firstName,
-              lastName: prep.user.lastName
-            },
-            agency: prep.agency,
-            dureeMinutes,
-            startTime: prep.startTime
-          },
-          timestamp: prep.startTime,
-          actionRequired: true,
-          actions: [
-            { type: 'check', label: 'Vérifier progression' },
-            { type: 'assist', label: 'Envoyer aide' },
-            { type: 'report', label: 'Signaler problème' }
-          ]
-        });
-      }
-    });
-
-    // 📅 Absences non prévues
-    absencesNonPrevues.forEach(absence => {
-      if (priority === 'all' || priority === 'info') {
-        alertes.push({
-          id: `absence_${absence.user._id}_${today.getTime()}`,
-          type: 'absence_non_prevue',
-          priority: 'info',
-          severity: 'info',
-          title: `Absence non justifiée - ${absence.user.firstName} ${absence.user.lastName}`,
-          message: `Prévu à ${absence.scheduledTime}, absent depuis ${absence.retardEstime} minutes`,
-          data: {
-            user: absence.user,
-            agency: absence.agency,
-            scheduledTime: absence.scheduledTime,
-            retardEstime: absence.retardEstime
-          },
-          timestamp: new Date(),
-          actionRequired: false,
-          actions: [
-            { type: 'contact', label: 'Contacter' },
-            { type: 'mark_absent', label: 'Marquer absent' },
-            { type: 'reschedule', label: 'Replanifier' }
-          ]
-        });
-      }
-    });
-
-    // ⚠️ Préparations stagnantes
-    preparationsStagnantes.forEach(prep => {
-      const dureeStagnation = Math.floor((new Date() - prep.updatedAt) / (1000 * 60));
-      if (priority === 'all' || priority === 'warning') {
-        alertes.push({
-          id: `stagnation_${prep._id}`,
-          type: 'preparation_stagnante',
-          priority: 'warning',
-          severity: 'warning',
-          title: `Préparation inactive - ${prep.vehicle?.licensePlate || 'Véhicule'}`,
-          message: `Aucune activité depuis ${dureeStagnation} minutes`,
-          data: {
-            preparation: {
-              id: prep._id,
-              vehicule: prep.vehicle?.licensePlate || 'N/A'
-            },
-            user: {
-              _id: prep.user._id,
-              firstName: prep.user.firstName,
-              lastName: prep.user.lastName
-            },
-            agency: prep.agency,
-            dureeStagnation,
-            lastActivity: prep.updatedAt
-          },
-          timestamp: prep.updatedAt,
-          actionRequired: true,
-          actions: [
-            { type: 'ping', label: 'Relancer préparateur' },
-            { type: 'check_status', label: 'Vérifier statut' }
-          ]
-        });
-      }
-    });
-
-    // 🔧 Véhicules problématiques
-    vehiculesProblematiques.forEach(vehicule => {
-      if (priority === 'all' || priority === 'info') {
-        alertes.push({
-          id: `vehicule_${vehicule.vehicule.licensePlate}`,
-          type: 'vehicule_problematique',
-          priority: 'info',
-          severity: 'info',
-          title: `Véhicule à surveiller - ${vehicule.vehicule.licensePlate}`,
-          message: `${vehicule.totalIssues} incidents en 7 jours (${vehicule.issueRate}% des préparations)`,
-          data: {
-            vehicule: vehicule.vehicule,
-            totalIssues: vehicule.totalIssues,
-            totalPreparations: vehicule.totalPreparations,
-            issueRate: vehicule.issueRate,
-            lastIssue: vehicule.lastIssue,
-            agencies: vehicule.agencies
-          },
-          timestamp: vehicule.lastIssue,
-          actionRequired: false,
-          actions: [
-            { type: 'inspect', label: 'Programmer inspection' },
-            { type: 'maintenance', label: 'Maintenance préventive' },
-            { type: 'history', label: 'Voir historique' }
-          ]
-        });
-      }
-    });
-
-    // Trier par priorité et timestamp
-    const priorityOrder = { critical: 0, warning: 1, info: 2 };
-    alertes.sort((a, b) => {
+    // Tri par priorité puis par timestamp
+    const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+    filteredAlerts.sort((a, b) => {
       if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-        return priorityOrder[a.priority] - priorityOrder[b.priority];
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
       }
-      return new Date(b.timestamp) - new Date(a.timestamp);
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
 
-    // Statistiques des alertes
-    const stats = {
-      total: alertes.length,
-      critical: alertes.filter(a => a.priority === 'critical').length,
-      warning: alertes.filter(a => a.priority === 'warning').length,
-      info: alertes.filter(a => a.priority === 'info').length,
-      actionRequired: alertes.filter(a => a.actionRequired).length
-    };
+    // Limitation du nombre de résultats
+    const limitedAlerts = filteredAlerts.slice(0, limit);
 
-    // Alertes système (logique métier)
-    const alertesSysteme = [];
-    
-    if (stats.critical > 3) {
-      alertesSysteme.push({
-        type: 'system_overload',
-        message: `${stats.critical} alertes critiques simultanées`,
-        severity: 'error',
-        timestamp: new Date()
-      });
-    }
-
-    if (stats.warning > 10) {
-      alertesSysteme.push({
-        type: 'high_warning_count',
-        message: `Nombre élevé d'alertes (${stats.warning})`,
-        severity: 'warning',
-        timestamp: new Date()
-      });
-    }
-
-    // Suggestions automatiques
-    const suggestions = [];
-    
-    if (retardsEnCours.length > 2) {
-      suggestions.push({
-        type: 'staffing',
-        title: 'Renforcer les équipes',
-        description: 'Plusieurs retards détectés, envisager du personnel supplémentaire',
-        priority: 'medium'
-      });
-    }
-
-    if (preparationsDepassees.length > 3) {
-      suggestions.push({
-        type: 'process_review',
-        title: 'Revoir les processus',
-        description: 'Temps de préparation systématiquement dépassés',
-        priority: 'high'
-      });
-    }
+    console.log(`✅ ${limitedAlerts.length} alertes trouvées`);
 
     res.json({
       success: true,
-      data: {
-        alertes: alertes.slice(0, parseInt(limit)),
-        statistiques: stats,
-        alertesSysteme,
-        suggestions,
-        metadata: {
-          filtres: { priority, limit, includeResolved },
-          derniereMiseAJour: new Date(),
-          prochaineMiseAJour: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
-        }
+      data: limitedAlerts,
+      meta: {
+        total: filteredAlerts.length,
+        displayed: limitedAlerts.length,
+        filters: { priority, type, unreadOnly }
       }
     });
 
   } catch (error) {
-    console.error('Erreur récupération alertes:', error);
+    console.error('💥 Erreur alertes:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
 /**
- * @route   POST /api/admin/dashboard/alerts/:id/resolve
- * @desc    Marquer une alerte comme résolue
+ * @route   PATCH /api/admin/dashboard/alerts/:id/read
+ * @desc    Marquer une alerte comme lue
  * @access  Admin
  */
-router.post('/:id/resolve', async (req, res) => {
+router.patch('/:id/read', async (req, res) => {
   try {
     const { id } = req.params;
-    const { resolution, notes } = req.body;
-
-    // TODO: En production, stocker les résolutions en base
-    // const resolvedAlert = new ResolvedAlert({
-    //   alertId: id,
-    //   resolvedBy: req.user.userId,
-    //   resolution,
-    //   notes,
-    //   resolvedAt: new Date()
-    // });
-    // await resolvedAlert.save();
-
-    console.log(`✅ Alerte ${id} résolue par ${req.user.email}: ${resolution}`);
+    
+    // Pour l'instant, on retourne juste un succès
+    // Dans une vraie implémentation, on sauvegarderait l'état en BDD
+    
+    console.log(`✅ Alerte ${id} marquée comme lue`);
 
     res.json({
       success: true,
-      message: 'Alerte marquée comme résolue',
       data: {
-        alertId: id,
-        resolution,
-        resolvedBy: req.user.email,
-        resolvedAt: new Date()
+        id,
+        isRead: true,
+        readAt: new Date()
       }
     });
 
   } catch (error) {
-    console.error('Erreur résolution alerte:', error);
+    console.error('💥 Erreur marquage alerte:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR
     });
   }
 });
+
+// ===== FONCTIONS UTILITAIRES =====
 
 /**
- * @route   GET /api/admin/dashboard/alerts/stats
- * @desc    Statistiques des alertes sur une période
- * @access  Admin
+ * Alertes de retards de pointage
  */
-router.get('/stats', validateQuery(Joi.object({
-  period: Joi.string().valid('today', 'week', 'month').default('today'),
-  groupBy: Joi.string().valid('hour', 'day', 'type').default('hour')
-})), async (req, res) => {
+async function getLateStartAlerts(today) {
   try {
-    const { period, groupBy } = req.query;
-    
-    // Calculer période
-    const endDate = new Date();
-    let startDate;
-    
-    switch (period) {
-      case 'week':
-        startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'month':
-        startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default: // today
-        startDate = new Date();
-        startDate.setHours(0, 0, 0, 0);
-    }
+    const now = new Date();
+    const lateTimesheets = await Timesheet.find({
+      date: { $gte: today },
+      clockInTime: null,
+      schedule: { $exists: true }
+    })
+    .populate('user', 'firstName lastName email')
+    .populate('agency', 'name')
+    .populate('schedule', 'startTime')
+    .limit(10);
 
-    // TODO: Récupérer depuis une collection AlertHistory
-    // Pour l'exemple, on simule avec les données actuelles
-    const mockStats = {
-      period: { startDate, endDate },
-      totalAlertes: 47,
-      parType: {
-        retard_pointage: 15,
-        preparation_depassee: 12,
-        absence_non_prevue: 8,
-        preparation_stagnante: 7,
-        vehicule_problematique: 5
-      },
-      evolution: {
-        retard_pointage: +12, // % vs période précédente
-        preparation_depassee: -5,
-        absence_non_prevue: +23
-      },
-      resolution: {
-        resolues: 35,
-        enCours: 12,
-        tauxResolution: 74.5 // %
+    const alerts = [];
+    
+    lateTimesheets.forEach(timesheet => {
+      if (timesheet.user && timesheet.schedule) {
+        const [scheduleHour, scheduleMinute] = timesheet.schedule.startTime.split(':').map(Number);
+        const scheduleTime = new Date(today);
+        scheduleTime.setHours(scheduleHour, scheduleMinute, 0, 0);
+        
+        if (now > scheduleTime) {
+          const delayMinutes = Math.floor((now - scheduleTime) / (1000 * 60));
+          const priority = delayMinutes > 30 ? 'critical' : delayMinutes > 15 ? 'high' : 'medium';
+          
+          alerts.push({
+            id: `late_start_${timesheet._id}`,
+            type: 'late_start',
+            priority,
+            title: 'Retard de pointage',
+            message: `${timesheet.user.firstName} ${timesheet.user.lastName} en retard de ${delayMinutes} minutes`,
+            userId: timesheet.user._id,
+            userName: `${timesheet.user.firstName} ${timesheet.user.lastName}`,
+            agencyId: timesheet.agency?._id,
+            agencyName: timesheet.agency?.name,
+            timestamp: now.toISOString(),
+            isRead: false,
+            actionRequired: true,
+            actionUrl: `/admin/users/${timesheet.user._id}`
+          });
+        }
       }
-    };
-
-    res.json({
-      success: true,
-      data: mockStats
     });
 
+    return alerts;
   } catch (error) {
-    console.error('Erreur stats alertes:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
-    });
+    console.error('Erreur alertes retards:', error);
+    return [];
   }
-});
+}
+
+/**
+ * Alertes de préparations trop longues
+ */
+async function getLongPreparationAlerts() {
+  try {
+    const cutoffTime = new Date(Date.now() - TIME_LIMITS.PREPARATION_MAX_MINUTES * 60 * 1000);
+    
+    const longPreparations = await Preparation.find({
+      status: 'in_progress',
+      startTime: { $lte: cutoffTime }
+    })
+    .populate('preparateur', 'firstName lastName')
+    .populate('vehicle', 'licensePlate model')
+    .populate('agency', 'name')
+    .limit(10);
+
+    const alerts = [];
+    
+    longPreparations.forEach(prep => {
+      if (prep.preparateur) {
+        const durationMinutes = Math.floor((Date.now() - prep.startTime) / (1000 * 60));
+        const priority = durationMinutes > 60 ? 'high' : 'medium';
+        
+        alerts.push({
+          id: `long_prep_${prep._id}`,
+          type: 'long_preparation',
+          priority,
+          title: 'Préparation en retard',
+          message: `Préparation en cours depuis ${durationMinutes} minutes (véhicule ${prep.vehicle?.licensePlate || 'N/A'})`,
+          userId: prep.preparateur._id,
+          userName: `${prep.preparateur.firstName} ${prep.preparateur.lastName}`,
+          agencyId: prep.agency?._id,
+          agencyName: prep.agency?.name,
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          actionRequired: true,
+          actionUrl: `/admin/preparations/${prep._id}`
+        });
+      }
+    });
+
+    return alerts;
+  } catch (error) {
+    console.error('Erreur alertes préparations:', error);
+    return [];
+  }
+}
+
+/**
+ * Alertes de fin de service non pointée
+ */
+async function getMissingClockOutAlerts(today) {
+  try {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const missingClockOuts = await Timesheet.find({
+      date: { $gte: yesterday, $lt: today },
+      clockInTime: { $exists: true },
+      clockOutTime: null
+    })
+    .populate('user', 'firstName lastName')
+    .populate('agency', 'name')
+    .limit(10);
+
+    const alerts = [];
+    
+    missingClockOuts.forEach(timesheet => {
+      if (timesheet.user) {
+        alerts.push({
+          id: `missing_out_${timesheet._id}`,
+          type: 'missing_clock_out',
+          priority: 'medium',
+          title: 'Fin de service non pointée',
+          message: `${timesheet.user.firstName} ${timesheet.user.lastName} n'a pas pointé sa fin de service`,
+          userId: timesheet.user._id,
+          userName: `${timesheet.user.firstName} ${timesheet.user.lastName}`,
+          agencyId: timesheet.agency?._id,
+          agencyName: timesheet.agency?.name,
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          actionRequired: true,
+          actionUrl: `/admin/timesheets/${timesheet._id}`
+        });
+      }
+    });
+
+    return alerts;
+  } catch (error) {
+    console.error('Erreur alertes clock-out:', error);
+    return [];
+  }
+}
 
 module.exports = router;

@@ -1,13 +1,23 @@
 // src/lib/api/auth.ts
-import { apiClient, apiRequest } from './client';
-import { ApiResponse, LoginRequest, LoginResponse } from '@/types/api';
-import { User } from '@/types/auth';
+import { apiClient, apiRequest, ApiResponse } from './client';
+import { LoginRequest, User } from '@/types/auth';
+
+// Types pour les réponses API qui correspondent à votre backend
+interface AuthLoginResponse {
+  token: string;
+  user: User;
+  refreshToken?: string;
+}
+
+interface AuthProfileData {
+  user: User;
+}
 
 export const authApi = {
-  // Connexion
-  async login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
+  // Connexion - TYPE CORRIGÉ
+  async login(credentials: LoginRequest): Promise<ApiResponse<AuthLoginResponse>> {
     return apiRequest(
-      () => apiClient.post<ApiResponse<LoginResponse>>('/auth/login', credentials),
+      () => apiClient.post<ApiResponse<AuthLoginResponse>>('/auth/login', credentials),
       {
         showErrorToast: true,
         showSuccessToast: true,
@@ -16,15 +26,15 @@ export const authApi = {
     );
   },
 
-  // Récupérer le profil utilisateur
-  async getProfile(): Promise<ApiResponse<User>> {
+  // Récupérer le profil utilisateur - TYPE CORRIGÉ
+  async getProfile(): Promise<ApiResponse<AuthProfileData>> {
     return apiRequest(
-      () => apiClient.get<ApiResponse<User>>('/auth/me'),
+      () => apiClient.get<ApiResponse<AuthProfileData>>('/auth/me'),
       { showErrorToast: true }
     );
   },
 
-  // Refresh token
+  // Refresh token - TYPE CORRIGÉ
   async refreshToken(refreshToken: string): Promise<ApiResponse<{ token: string }>> {
     return apiRequest(
       () => apiClient.post<ApiResponse<{ token: string }>>('/auth/refresh', { refreshToken }),
@@ -35,12 +45,32 @@ export const authApi = {
   // Vérifier si l'utilisateur est toujours connecté
   async verifyAuth(): Promise<boolean> {
     try {
-      await this.getProfile();
-      return true;
+      const response = await this.getProfile();
+      return response.success && !!response.data?.user;
     } catch {
       return false;
     }
   },
+
+  // Vérifier la validité du token
+  async verifyToken(): Promise<ApiResponse<{ valid: boolean; userId?: string; role?: string }>> {
+    return apiRequest(
+      () => apiClient.get<ApiResponse<{ valid: boolean; userId?: string; role?: string }>>('/auth/verify'),
+      { showErrorToast: false }
+    );
+  },
+
+  // Déconnexion
+  async logout(): Promise<ApiResponse<{}>> {
+    return apiRequest(
+      () => apiClient.post<ApiResponse<{}>>('/auth/logout'),
+      { 
+        showErrorToast: false,
+        showSuccessToast: true,
+        successMessage: 'Déconnexion réussie'
+      }
+    );
+  }
 };
 
 // Hook React Query pour l'authentification
@@ -60,5 +90,13 @@ export const useAuthQueries = () => {
       queryFn: authApi.getProfile,
       enabled: false, // Activé manuellement
     },
+
+    // Query pour vérifier le token
+    verifyToken: {
+      queryKey: ['auth', 'token'],
+      queryFn: authApi.verifyToken,
+      retry: false,
+      staleTime: 1 * 60 * 1000, // 1 minute
+    }
   };
 };

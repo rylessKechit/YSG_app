@@ -1,7 +1,7 @@
-// src/lib/stores/auth-store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User } from '@/types/auth';
+import { setAuthToken, clearAuthTokens } from '@/lib/api/client';
 
 interface AuthState {
   user: User | null;
@@ -10,7 +10,7 @@ interface AuthState {
   isLoading: boolean;
   
   // Actions
-  login: (user: User, token: string, refreshToken: string) => void;
+  login: (user: User, token: string, refreshToken?: string) => void;
   logout: () => void;
   updateUser: (user: Partial<User>) => void;
   setLoading: (loading: boolean) => void;
@@ -28,10 +28,21 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
 
-      login: (user: User, token: string, refreshToken: string) => {
-        // Stocker dans localStorage
-        localStorage.setItem('auth-token', token);
-        localStorage.setItem('refresh-token', refreshToken);
+      login: (user: User, token: string, refreshToken?: string) => {
+        console.log('🔑 Login store:', {
+          email: user.email,
+          role: user.role,
+          tokenPreview: token.substring(0, 20) + '...',
+          hasRefreshToken: !!refreshToken
+        });
+        
+        // Utiliser les fonctions du client API pour la cohérence
+        setAuthToken(token);
+        
+        if (refreshToken) {
+          localStorage.setItem('refresh-token', refreshToken);
+          localStorage.setItem('refreshToken', refreshToken); // Compatibilité
+        }
         
         set({
           user,
@@ -39,12 +50,18 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
           isLoading: false,
         });
+
+        console.log('✅ État auth mis à jour:', {
+          isAuthenticated: true,
+          userRole: user.role
+        });
       },
 
       logout: () => {
-        // Nettoyer localStorage
-        localStorage.removeItem('auth-token');
-        localStorage.removeItem('refresh-token');
+        console.log('👋 Logout depuis store...');
+        
+        // Utiliser la fonction du client API pour nettoyer
+        clearAuthTokens();
         
         set({
           user: null,
@@ -52,13 +69,18 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           isLoading: false,
         });
+
+        console.log('✅ Logout terminé, état reseté');
       },
 
       updateUser: (userData: Partial<User>) => {
         const currentUser = get().user;
         if (currentUser) {
+          const updatedUser = { ...currentUser, ...userData };
+          console.log('📝 Mise à jour utilisateur:', userData);
+          
           set({
-            user: { ...currentUser, ...userData }
+            user: updatedUser
           });
         }
       },
@@ -84,17 +106,36 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,
+        // Ne pas persister le token dans Zustand, il est déjà dans localStorage
       }),
+      onRehydrateStorage: () => (state) => {
+        console.log('🔄 Hydratation auth store:', {
+          isAuthenticated: state?.isAuthenticated || false,
+          userEmail: state?.user?.email || 'aucun'
+        });
+        
+        // Vérifier la cohérence entre le store et localStorage
+        if (typeof window !== 'undefined') {
+          const tokenInStorage = localStorage.getItem('auth-token') || localStorage.getItem('token');
+          if (state?.isAuthenticated && !tokenInStorage) {
+            console.warn('⚠️ Incohérence détectée: store authentifié mais pas de token');
+            // Forcer la déconnexion
+            state.isAuthenticated = false;
+            state.user = null;
+          }
+        }
+      },
     }
   )
 );
 
-// Hook personnalisé pour l'authentification
+// Hook personnalisé pour l'authentification avec méthodes utilitaires
 export const useAuth = () => {
   const store = useAuthStore();
   
   return {
     ...store,
+    
     // Méthodes utilitaires
     hasPermission: (permission: string) => {
       return store.isAdmin(); // Pour l'instant, seuls les admins ont toutes les permissions
@@ -104,5 +145,21 @@ export const useAuth = () => {
       if (store.isAdmin()) return true;
       return store.user?.agencies.some(agency => agency.id === agencyId) || false;
     },
+    
+    // Vérification de cohérence auth
+    checkAuthConsistency: () => {
+      if (typeof window === 'undefined') return true;
+      
+      const tokenInStorage = localStorage.getItem('auth-token') || localStorage.getItem('token');
+      const isStoredAsAuthenticated = store.isAuthenticated;
+      
+      if (isStoredAsAuthenticated && !tokenInStorage) {
+        console.warn('⚠️ Incohérence auth détectée, déconnexion forcée');
+        store.logout();
+        return false;
+      }
+      
+      return true;
+    }
   };
 };

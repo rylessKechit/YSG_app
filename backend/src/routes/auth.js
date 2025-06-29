@@ -10,17 +10,33 @@ const router = express.Router();
 
 /**
  * @route   POST /api/auth/login
- * @desc    Connexion utilisateur
+ * @desc    Connexion utilisateur - VERSION CORRIGÉE AVEC LOGS
  * @access  Public
  */
 router.post('/login', validateBody(authSchemas.login), async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('🔑 Tentative login pour:', email);
+
+    // VÉRIFICATION CRITIQUE JWT_SECRET
+    if (!process.env.JWT_SECRET) {
+      console.error('💥 ERREUR CRITIQUE: JWT_SECRET manquant dans .env !');
+      return res.status(500).json({
+        success: false,
+        message: 'Configuration serveur manquante'
+      });
+    }
+
+    console.log('🔐 JWT_SECRET configuré:', {
+      exists: !!process.env.JWT_SECRET,
+      length: process.env.JWT_SECRET?.length || 0
+    });
 
     // Chercher l'utilisateur avec le mot de passe
     const user = await User.findByEmailWithPassword(email.toLowerCase());
     
     if (!user) {
+      console.log('❌ Utilisateur non trouvé:', email);
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.INVALID_CREDENTIALS
@@ -31,6 +47,7 @@ router.post('/login', validateBody(authSchemas.login), async (req, res) => {
     const isPasswordValid = await user.comparePassword(password);
     
     if (!isPasswordValid) {
+      console.log('❌ Mot de passe invalide pour:', email);
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.INVALID_CREDENTIALS
@@ -39,18 +56,22 @@ router.post('/login', validateBody(authSchemas.login), async (req, res) => {
 
     // Vérifier que l'utilisateur est actif
     if (!user.isActive) {
+      console.log('❌ Utilisateur inactif:', email);
       return res.status(401).json({
         success: false,
         message: ERROR_MESSAGES.USER_INACTIVE
       });
     }
 
-    // Générer le token JWT
+    // Générer le token JWT avec logs détaillés
+    console.log('🔐 Génération token JWT...');
     const tokenPayload = {
       userId: user._id,
       email: user.email,
       role: user.role
     };
+
+    console.log('📝 Token payload:', tokenPayload);
 
     const token = jwt.sign(
       tokenPayload,
@@ -61,12 +82,28 @@ router.post('/login', validateBody(authSchemas.login), async (req, res) => {
       }
     );
 
+    console.log('✅ Token généré avec succès:', token.substring(0, 30) + '...');
+
+    // Test immédiat de vérification du token
+    try {
+      const testDecoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('✅ Test vérification token OK:', { userId: testDecoded.userId });
+    } catch (testError) {
+      console.error('💥 ERREUR: Le token généré ne peut pas être vérifié !', testError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur génération token'
+      });
+    }
+
     // Mettre à jour la dernière connexion
     user.lastLogin = new Date();
     await user.save();
 
     // Charger les agences pour la réponse
     await user.populate('agencies', 'name code client');
+
+    console.log('✅ Login réussi pour:', email);
 
     // Réponse avec les données utilisateur
     res.json({
@@ -89,7 +126,7 @@ router.post('/login', validateBody(authSchemas.login), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erreur lors de la connexion:', error);
+    console.error('💥 Erreur lors de la connexion:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR,

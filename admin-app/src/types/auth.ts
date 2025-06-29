@@ -1,37 +1,55 @@
+// src/types/auth.ts - Types pour l'authentification
+
 export interface User {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  phone: string;
+  fullName?: string;
   role: 'admin' | 'preparateur';
+  phone?: string; // ✅ Ajouté
   agencies: Agency[];
-  isActive: boolean;
-  stats?: {
-    totalPreparations: number;
-    averageTime: number;
-    onTimeRate: number;
-  };
+  stats?: UserStats;
   lastLogin?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  isActive?: boolean; // ✅ Ajouté
 }
 
 export interface Agency {
   id: string;
+  _id?: string;
   name: string;
   code: string;
-  address: {
-    street: string;
-    city: string;
-    postalCode: string;
-    country: string;
-  };
-  contact: {
-    manager: string;
-    phone: string;
-    email: string;
-  };
-  isActive: boolean;
-  createdAt: string;
+  client?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface UserStats {
+  totalPreparations: number;
+  averageTime: number;
+  onTimeRate: number;
+  lastCalculated?: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (user: User, token: string, refreshToken?: string) => void;
+  logout: () => void;
+  updateUser: (userData: Partial<User>) => void;
+  setLoading: (loading: boolean) => void;
+  isAdmin: () => boolean;
+  getUserFullName: () => string;
+  hasPermission: (permission: string) => boolean;
+  hasAgencyAccess: (agencyId: string) => boolean;
+  checkAuthConsistency: () => boolean;
 }
