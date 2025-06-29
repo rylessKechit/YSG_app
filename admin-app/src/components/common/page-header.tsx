@@ -1,23 +1,44 @@
+// admin-app/src/components/common/page-header.tsx - COMPOSANT PAGE HEADER
+'use client';
+
+import { LucideIcon } from 'lucide-react';
+
 interface PageHeaderProps {
   title: string;
   description?: string;
+  icon?: LucideIcon;
+  actions?: React.ReactNode;
   children?: React.ReactNode;
 }
 
-export function PageHeader({ title, description, children }: PageHeaderProps) {
+export function PageHeader({ 
+  title, 
+  description, 
+  icon: Icon, 
+  actions, 
+  children 
+}: PageHeaderProps) {
   return (
-    <div className="border-b border-gray-200 pb-4 mb-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            {title}
-          </h1>
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            {Icon && <Icon className="h-6 w-6 text-gray-600" />}
+            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+          </div>
           {description && (
-            <p className="mt-1 text-sm text-gray-600">{description}</p>
+            <p className="text-gray-600">{description}</p>
           )}
         </div>
-        {children && <div className="flex items-center space-x-2">{children}</div>}
+        
+        {actions && (
+          <div className="flex items-center gap-2">
+            {actions}
+          </div>
+        )}
       </div>
+      
+      {children}
     </div>
   );
 }
