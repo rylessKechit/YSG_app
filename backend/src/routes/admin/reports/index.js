@@ -1,74 +1,43 @@
-// backend/src/routes/admin/reports/index.js - FICHIER PRINCIPAL
+// backend/src/routes/admin/reports/index.js - VERSION CORRIGÉE
 const express = require('express');
 const router = express.Router();
 
-// Import des middlewares
-let authMiddleware, adminMiddleware;
-try {
-  const auth = require('../../../middleware/auth');
-  authMiddleware = auth.authMiddleware;
-  adminMiddleware = auth.adminMiddleware;
-} catch (error) {
-  console.warn('⚠️ Middlewares auth non trouvés, création de middlewares de base');
-  authMiddleware = (req, res, next) => {
-    req.user = { id: 'test-user', firstName: 'Test', lastName: 'User' };
-    next();
-  };
-  adminMiddleware = (req, res, next) => next();
-}
+// ✅ CORRECTION: Import des bons middlewares
+const { auth } = require('../../../middleware/auth');
+const { adminAuth } = require('../../../middleware/adminAuth');
 
-// Appliquer les middlewares d'authentification à toutes les routes
-router.use(authMiddleware);
-router.use(adminMiddleware);
+// ✅ Application des middlewares corrects
+router.use(auth);      // Authentification
+router.use(adminAuth); // Vérification admin
 
-// Import et montage des sous-routes
-try {
-  router.use('/quick-metrics', require('./quick-metrics'));
-  console.log('✅ Route quick-metrics chargée');
-} catch (error) {
-  console.error('❌ Erreur chargement route quick-metrics:', error.message);
-}
+// Import et montage des sous-routes avec gestion d'erreurs améliorée
+const routes = [
+  { path: '/quick-metrics', file: './quick-metrics', name: 'quick-metrics' },
+  { path: '/ponctualite', file: './punctuality', name: 'ponctualite' },
+  { path: '/performance', file: './performance', name: 'performance' },
+  { path: '/activite', file: './activity', name: 'activite' },
+  { path: '/export', file: './export', name: 'export' },
+  { path: '/templates', file: './templates', name: 'templates' },
+  { path: '/', file: './list', name: 'list' }
+];
 
-try {
-  router.use('/ponctualite', require('./punctuality'));
-  console.log('✅ Route ponctualite chargée');
-} catch (error) {
-  console.error('❌ Erreur chargement route ponctualite:', error.message);
-}
-
-try {
-  router.use('/performance', require('./performance'));
-  console.log('✅ Route performance chargée');
-} catch (error) {
-  console.error('❌ Erreur chargement route performance:', error.message);
-}
-
-try {
-  router.use('/activite', require('./activity'));
-  console.log('✅ Route activite chargée');
-} catch (error) {
-  console.error('❌ Erreur chargement route activite:', error.message);
-}
-
-try {
-  router.use('/export', require('./export'));
-  console.log('✅ Route export chargée');
-} catch (error) {
-  console.error('❌ Erreur chargement route export:', error.message);
-}
-
-try {
-  router.use('/templates', require('./templates'));
-  console.log('✅ Route templates chargée');
-} catch (error) {
-  console.error('❌ Erreur chargement route templates:', error.message);
-}
-
-try {
-  router.use('/', require('./list'));
-  console.log('✅ Route list chargée');
-} catch (error) {
-  console.error('❌ Erreur chargement route list:', error.message);
-}
+routes.forEach(({ path, file, name }) => {
+  try {
+    router.use(path, require(file));
+    console.log(`✅ Route ${name} chargée`);
+  } catch (error) {
+    console.error(`❌ Erreur chargement route ${name}:`, error.message);
+    console.error(`   Fichier: ${file}`);
+    
+    // Route de fallback pour éviter le crash
+    router.use(path, (req, res) => {
+      res.status(503).json({
+        success: false,
+        message: `Service ${name} temporairement indisponible`,
+        error: `Module ${file} non trouvé`
+      });
+    });
+  }
+});
 
 module.exports = router;
