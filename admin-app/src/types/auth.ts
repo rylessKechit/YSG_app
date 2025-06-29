@@ -1,3 +1,4 @@
+// src/types/auth.ts - VERSION CORRIGÉE avec updatedAt
 // src/types/auth.ts - Types pour l'authentification
 
 export interface User {
@@ -7,12 +8,13 @@ export interface User {
   lastName: string;
   fullName?: string;
   role: 'admin' | 'preparateur';
-  phone?: string; // ✅ Ajouté
+  phone?: string;
   agencies: Agency[];
   stats?: UserStats;
   lastLogin?: string;
   createdAt?: string;
-  isActive?: boolean; // ✅ Ajouté
+  updatedAt?: string; // ✅ AJOUTÉ pour corriger l'erreur TypeScript
+  isActive?: boolean;
 }
 
 export interface Agency {

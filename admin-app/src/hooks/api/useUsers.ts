@@ -1,4 +1,4 @@
-// src/hooks/api/useUsers.ts
+// src/hooks/api/useUsers.ts - VERSION CORRIGÉE
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, UserFilters, UserCreateData, UserUpdateData, BulkActionData } from '@/lib/api/users';
 import { toast } from 'sonner';
@@ -13,7 +13,7 @@ export const userKeys = {
   stats: (id: string, period?: string) => [...userKeys.all, 'stats', id, period] as const,
 };
 
-// Hook pour récupérer la liste des utilisateurs
+// ✅ CORRECTION PRINCIPALE : Hook pour récupérer la liste des utilisateurs
 export function useUsers(filters: UserFilters = {}) {
   return useQuery({
     queryKey: userKeys.list(filters),
@@ -21,7 +21,9 @@ export function useUsers(filters: UserFilters = {}) {
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
     retry: 2,
-    select: (data) => data.data, // Extraire directement les données
+    // 🔧 SUPPRESSION du select problématique
+    // Le hook retourne maintenant la réponse complète ApiResponse<UserListData>
+    // Plus besoin d'extraire .data ici, c'est fait dans le component
   });
 }
 
@@ -33,21 +35,12 @@ export function useUser(id: string, enabled = true) {
     enabled: enabled && !!id,
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 5 * 60 * 1000, // 5 minutes
-    select: (data) => data.data.user,
+    select: (data) => data.data.user, // ✅ Ici on peut garder le select car on retourne directement l'utilisateur
   });
 }
 
-// Hook pour récupérer les statistiques d'un utilisateur
-export function useUserStats(id: string, period?: string, enabled = true) {
-  return useQuery({
-    queryKey: userKeys.stats(id, period),
-    queryFn: () => usersApi.getUserStats(id, period),
-    enabled: enabled && !!id,
-    staleTime: 1 * 60 * 1000, // 1 minute
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    select: (data) => data.data,
-  });
-}
+// ✅ SUPPRIMÉ: Hook useUserStats car l'endpoint n'existe pas
+// Les stats viennent directement de l'utilisateur dans la réponse de getUser
 
 // Hook pour créer un utilisateur
 export function useCreateUser() {

@@ -1,12 +1,10 @@
-// src/app/(dashboard)/users/page.tsx
 'use client';
 
-import { useState } from 'react';
-import { Plus, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-
+import { Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserTable } from '@/components/users/user-table';
+import { User } from '@/types/auth';
 
 // Type local pour éviter les conflits
 interface UserData {
@@ -33,7 +31,7 @@ export default function UsersPage() {
   };
 
   const handleEditUser = (user: UserData) => {
-    router.push(`/users/${user.id}`);
+    router.push(`/users/${user.id}/edit`); // ✅ CORRECTION: Route vers /edit
   };
 
   const handleViewProfile = (user: UserData) => {

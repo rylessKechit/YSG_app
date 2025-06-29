@@ -1,19 +1,8 @@
-// src/components/users/user-table.tsx - VERSION FINALE SANS ERREURS
+// src/components/users/user-table.tsx - VERSION MISE À JOUR avec nouvelles actions
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { 
-  MoreHorizontal, 
-  Edit, 
-  Trash2, 
-  RotateCcw, 
-  Key, 
-  User, 
-  Mail, 
-  Phone,
-  Building,
-  CheckCircle,
-  XCircle,
   Search,
   Download
 } from 'lucide-react';
@@ -26,16 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -49,10 +29,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 
-import { useUsers, useDeleteUser, useReactivateUser, useResetPassword, useBulkAction } from '@/hooks/api/useUsers';
+import { useUsers, useBulkAction } from '@/hooks/api/useUsers';
 import { UserFilters } from '@/lib/api/users';
+import { UserActions } from './user-actions';
+import { User } from '@/types/auth';
 
-// Types locaux pour éviter les conflits
+// Types locaux
 interface UserData {
   id: string;
   email: string;
@@ -70,11 +52,11 @@ interface UserData {
 }
 
 interface UserTableProps {
-  onEditUser: (user: UserData) => void;
-  onViewProfile: (user: UserData) => void;
+  onEditUser?: (user: UserData) => void;
+  onViewProfile?: (user: UserData) => void;
 }
 
-// 🔧 Hook personnalisé pour le debouncing
+// Hook personnalisé pour le debouncing
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
@@ -92,62 +74,74 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
-  // 🔧 États locaux séparés pour l'input et les filtres API
-  const [searchInput, setSearchInput] = useState(''); // État local pour l'input
+  // États locaux
+  const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState<UserFilters>({
     page: 1,
     limit: 20,
     search: '',
     status: 'all',
-    sort: 'createdAt',
-    order: 'desc'
+    sort: 'role', // ✅ CORRECTION: Tri par rôle par défaut
+    order: 'asc'  // ✅ CORRECTION: asc pour avoir admin avant preparateur
   });
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
 
-  // 🔧 Débouncer la recherche pour éviter trop d'appels API
-  const debouncedSearchInput = useDebounce(searchInput, 500); // 500ms de délai
+  // Débouncer la recherche
+  const debouncedSearchInput = useDebounce(searchInput, 500);
 
-  // 🔧 Mettre à jour les filtres seulement quand la recherche debouncée change
+  // Mettre à jour les filtres
   useEffect(() => {
     setFilters(prev => ({ 
       ...prev, 
       search: debouncedSearchInput, 
-      page: 1 // Reset à la page 1 lors d'une nouvelle recherche
+      page: 1
     }));
   }, [debouncedSearchInput]);
 
   // Hooks API
   const { data: usersData, isLoading, error, refetch } = useUsers(filters);
-  const deleteUser = useDeleteUser();
-  const reactivateUser = useReactivateUser();
-  const resetPassword = useResetPassword();
   const bulkAction = useBulkAction();
 
-  // 🔧 Extraction des données avec gestion des types corrects
+  // Extraction des données avec tri prioritaire par rôle
   const { users, pagination, stats } = useMemo(() => {
-    // Si pas de données, retourner des valeurs par défaut
     if (!usersData?.data) {
       return { 
         users: [] as UserData[], 
-        pagination: null as any, 
-        stats: null as any 
+        pagination: null, 
+        stats: null 
       };
     }
     
-    // ✅ SOLUTION : Cast explicite du type pour éviter l'erreur TypeScript
-    // usersData.data peut être de type UserListData, on le force
-    const data = usersData.data as any;
+    const responseData = usersData.data;
+    let sortedUsers = responseData.users || [];
+    
+    // ✅ CORRECTION: Tri additionnel côté client pour garantir admin > preparateur
+    if (filters.sort === 'role') {
+      sortedUsers = [...sortedUsers].sort((a, b) => {
+        // Admins en premier (admin = 0, preparateur = 1)
+        const roleOrder = { admin: 0, preparateur: 1 };
+        const aOrder = roleOrder[a.role as keyof typeof roleOrder] || 2;
+        const bOrder = roleOrder[b.role as keyof typeof roleOrder] || 2;
+        
+        if (aOrder !== bOrder) {
+          return filters.order === 'asc' ? aOrder - bOrder : bOrder - aOrder;
+        }
+        
+        // Si même rôle, trier par nom
+        return a.firstName.localeCompare(b.firstName);
+      });
+    }
     
     return {
-      users: (data?.users || []) as UserData[],
-      pagination: data?.pagination || null,
-      stats: data?.stats || null
+      users: sortedUsers,
+      pagination: responseData.pagination || null,
+      stats: responseData.stats || null
     };
-  }, [usersData]);
+  }, [usersData, filters.sort, filters.order]);
 
-  // 🔧 Handlers optimisés avec useCallback
-  const handleSearchInputChange = useCallback((value: string) => {
-    setSearchInput(value); // Mise à jour immédiate de l'input
+  // Handlers optimisés
+  const handleSearchInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchInput(e.target.value);
   }, []);
 
   const handleFilterChange = useCallback((key: keyof UserFilters, value: any) => {
@@ -188,67 +182,87 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
     bulkAction.mutate({
       action: action as any,
       userIds: Array.from(selectedUsers)
+    }, {
+      onSuccess: () => {
+        setSelectedUsers(new Set()); // Clear selection
+        refetch(); // Refresh data
+      }
     });
-  }, [selectedUsers, bulkAction]);
+  }, [selectedUsers, bulkAction, refetch]);
 
   const exportUsers = useCallback(() => {
-    // Implémentation export
     console.log('Export des utilisateurs...');
   }, []);
 
-  // 🔧 Fonctions utilitaires memoized
+  // Fonctions utilitaires memoized
   const getUserInitials = useCallback((user: UserData) => {
     return `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase();
   }, []);
 
   const getRoleBadge = useCallback((role: string) => {
     return (
-      <Badge variant={role === 'admin' ? 'default' : 'secondary'}>
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+        role === 'admin' 
+          ? 'bg-purple-100 text-purple-700' 
+          : 'bg-blue-100 text-blue-700'
+      }`}>
         {role === 'admin' ? 'Administrateur' : 'Préparateur'}
-      </Badge>
+      </span>
     );
   }, []);
 
-  const getStatusBadge = useCallback((isActive: boolean) => {
+  const getStatusText = useCallback((isActive?: boolean) => {
     return (
-      <Badge variant={isActive ? 'default' : 'destructive'} className="flex items-center gap-1">
-        {isActive ? (
-          <>
-            <CheckCircle className="w-3 h-3" />
-            Actif
-          </>
-        ) : (
-          <>
-            <XCircle className="w-3 h-3" />
-            Inactif
-          </>
-        )}
-      </Badge>
+      <span className={isActive ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+        {isActive ? 'Actif' : 'Inactif'}
+      </span>
     );
   }, []);
 
   const formatLastLogin = useCallback((lastLogin?: string) => {
-    if (!lastLogin) return <span className="text-gray-400">Jamais</span>;
+    if (!lastLogin) return 'Jamais';
     
     const date = new Date(lastLogin);
     const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
     
-    if (diffInHours < 1) {
-      return <span className="text-green-600">À l'instant</span>;
-    } else if (diffInHours < 24) {
-      return <span className="text-blue-600">Il y a {Math.floor(diffInHours)}h</span>;
-    } else {
-      return <span className="text-gray-600">{date.toLocaleDateString('fr-FR')}</span>;
-    }
+    if (diffInHours < 1) return 'Il y a moins d\'1h';
+    if (diffInHours < 24) return `Il y a ${diffInHours}h`;
+    if (diffInHours < 48) return 'Hier';
+    
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
   }, []);
 
+  // Pagination calculée
+  const paginationData = useMemo(() => {
+    if (!pagination) return null;
+    
+    const totalPages = pagination.pages || pagination.totalPages || 1;
+    const currentPage = pagination.page || 1;
+    
+    return {
+      totalPages,
+      currentPage,
+      total: pagination.total,
+      hasNext: currentPage < totalPages,
+      hasPrev: currentPage > 1
+    };
+  }, [pagination]);
+
+  // Handler pour la création d'utilisateur - SUPPRIMÉ car géré par la page parent
+
   // Loading state
-  if (isLoading && (!users || users.length === 0)) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-32">
-        <LoadingSpinner />
-      </div>
+      <Card>
+        <CardContent className="flex items-center justify-center h-32">
+          <LoadingSpinner size="lg" />
+        </CardContent>
+      </Card>
     );
   }
 
@@ -259,9 +273,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
         <CardContent className="flex items-center justify-center h-32">
           <div className="text-center">
             <p className="text-red-600 mb-2">Erreur lors du chargement</p>
-            <Button onClick={() => refetch()} variant="outline" size="sm">
-              Réessayer
-            </Button>
+            <Button onClick={() => refetch()}>Réessayer</Button>
           </div>
         </CardContent>
       </Card>
@@ -269,18 +281,51 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header avec statistiques */}
+    <div className="space-y-6">
+      {/* Statistiques */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold">{stats.totalUsers}</div>
+              <p className="text-xs text-gray-600">Total</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-green-600">{stats.activeUsers}</div>
+              <p className="text-xs text-gray-600">Actifs</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-red-600">{stats.inactiveUsers}</div>
+              <p className="text-xs text-gray-600">Inactifs</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-blue-600">{stats.preparateurs}</div>
+              <p className="text-xs text-gray-600">Préparateurs</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-2xl font-bold text-purple-600">{stats.admins}</div>
+              <p className="text-xs text-gray-600">Admins</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Filtres et actions */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                Gestion des Utilisateurs
-              </CardTitle>
+              <CardTitle>Utilisateurs</CardTitle>
               <CardDescription>
-                {stats?.totalUsers || 0} utilisateur(s) au total
+                Gérez les comptes préparateurs et administrateurs
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -290,48 +335,50 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                     {selectedUsers.size} sélectionné(s)
                   </span>
                   <Button
-                    size="sm"
                     variant="outline"
+                    size="sm"
                     onClick={() => handleBulkAction('activate')}
+                    disabled={bulkAction.isPending}
                   >
                     Activer
                   </Button>
                   <Button
-                    size="sm"
                     variant="outline"
+                    size="sm"
                     onClick={() => handleBulkAction('deactivate')}
+                    disabled={bulkAction.isPending}
                   >
                     Désactiver
                   </Button>
                 </div>
               )}
-              <Button size="sm" variant="outline" onClick={exportUsers}>
+              <Button variant="outline" onClick={exportUsers}>
                 <Download className="w-4 h-4 mr-2" />
-                Export
+                Exporter
               </Button>
+              {/* ✅ SUPPRIMÉ: QuickCreateButton car déjà présent dans le header de la page */}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4 mb-4">
-            {/* 🔧 Input de recherche avec gestion locale */}
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+          {/* Barre de recherche et filtres */}
+          <div className="flex items-center gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Rechercher par nom, email..."
-                value={searchInput} // ✅ Utilise l'état local
-                onChange={(e) => handleSearchInputChange(e.target.value)} // ✅ Handler optimisé
+                placeholder="Rechercher par nom, prénom ou email..."
+                value={searchInput}
+                onChange={handleSearchInputChange}
                 className="pl-10"
               />
             </div>
-
-            {/* Filtres */}
-            <Select
-              value={filters.status}
-              onValueChange={(value: string) => handleFilterChange('status', value)}
+            
+            <Select 
+              value={filters.status} 
+              onValueChange={(value) => handleFilterChange('status', value)}
             >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Statut" />
+              <SelectTrigger className="w-32">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous</SelectItem>
@@ -339,27 +386,23 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                 <SelectItem value="inactive">Inactifs</SelectItem>
               </SelectContent>
             </Select>
-
-            <Select
-              value={filters.limit?.toString()}
-              onValueChange={(value: string) => handleFilterChange('limit', parseInt(value))}
+            
+            <Select 
+              value={filters.role || 'all'} 
+              onValueChange={(value) => handleFilterChange('role', value === 'all' ? undefined : value)}
             >
-              <SelectTrigger className="w-20">
+              <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="all">Tous les rôles</SelectItem>
+                <SelectItem value="admin">Administrateur</SelectItem>
+                <SelectItem value="preparateur">Préparateur</SelectItem>
               </SelectContent>
             </Select>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Tableau */}
-      <Card>
-        <CardContent className="p-0">
+          {/* Tableau */}
           <Table>
             <TableHeader>
               <TableRow>
@@ -369,7 +412,12 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                     onCheckedChange={handleSelectAll}
                   />
                 </TableHead>
-                <TableHead>Utilisateur</TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort('firstName')}
+                >
+                  Utilisateur
+                </TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-gray-50"
                   onClick={() => handleSort('email')}
@@ -378,7 +426,16 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                 </TableHead>
                 <TableHead>Téléphone</TableHead>
                 <TableHead>Agences</TableHead>
-                <TableHead>Rôle</TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-gray-50"
+                  onClick={() => handleSort('role')}
+                >
+                  Rôle {filters.sort === 'role' && (
+                    <span className="ml-1">
+                      {filters.order === 'asc' ? '↑' : '↓'}
+                    </span>
+                  )}
+                </TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-gray-50"
@@ -386,7 +443,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                 >
                   Dernière connexion
                 </TableHead>
-                <TableHead className="w-12"></TableHead>
+                <TableHead className="w-12">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -417,81 +474,42 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      {user.email}
+                      <span>{user.email}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     {user.phone ? (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        {user.phone}
-                      </div>
+                      <span>{user.phone}</span>
                     ) : (
                       <span className="text-gray-400">-</span>
                     )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Building className="w-4 h-4 text-gray-400" />
-                      {user.agencies?.length > 0 ? (
-                        <span>{user.agencies.length} agence(s)</span>
-                      ) : (
+                      {user.agencies?.length > 0 ? 
+                        user.agencies.map(agency => agency.name).join(', ') : 
                         <span className="text-gray-400">Aucune</span>
-                      )}
+                      }
                     </div>
                   </TableCell>
-                  <TableCell>{getRoleBadge(user.role)}</TableCell>
-                  <TableCell>{getStatusBadge(user.isActive || false)}</TableCell>
                   <TableCell>
-                    {formatLastLogin(user.lastLogin)}
+                    {getRoleBadge(user.role)}
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => onViewProfile(user)}>
-                          <User className="w-4 h-4 mr-2" />
-                          Voir le profil
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onEditUser(user)}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Modifier
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => resetPassword.mutate(user.id)}
-                          disabled={resetPassword.isPending}
-                        >
-                          <Key className="w-4 h-4 mr-2" />
-                          Réinitialiser mot de passe
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {user.isActive ? (
-                          <DropdownMenuItem 
-                            onClick={() => deleteUser.mutate(user.id)}
-                            disabled={deleteUser.isPending}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Désactiver
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem 
-                            onClick={() => reactivateUser.mutate(user.id)}
-                            disabled={reactivateUser.isPending}
-                            className="text-green-600"
-                          >
-                            <RotateCcw className="w-4 h-4 mr-2" />
-                            Réactiver
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {getStatusText(user.isActive)}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-gray-600">
+                      {formatLastLogin(user.lastLogin)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <UserActions
+                      user={user as User}
+                      onEdit={onEditUser}
+                      onView={onViewProfile}
+                      onUpdate={refetch}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -499,26 +517,26 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
           </Table>
 
           {/* Pagination */}
-          {pagination && (
+          {paginationData && (
             <div className="flex items-center justify-between px-6 py-4 border-t">
               <div className="text-sm text-gray-500">
-                Page {pagination.page} sur {pagination.pages || pagination.totalPages || 1} 
-                ({pagination.total} utilisateur(s) au total)
+                Page {paginationData.currentPage} sur {paginationData.totalPages} 
+                ({paginationData.total} utilisateur(s) au total)
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={pagination.page <= 1}
-                  onClick={() => handleFilterChange('page', pagination.page - 1)}
+                  disabled={!paginationData.hasPrev}
+                  onClick={() => handleFilterChange('page', paginationData.currentPage - 1)}
                 >
                   Précédent
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={pagination.page >= (pagination.pages || pagination.totalPages || 1)}
-                  onClick={() => handleFilterChange('page', pagination.page + 1)}
+                  disabled={!paginationData.hasNext}
+                  onClick={() => handleFilterChange('page', paginationData.currentPage + 1)}
                 >
                   Suivant
                 </Button>
@@ -533,23 +551,18 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
         <Card>
           <CardContent className="flex items-center justify-center h-32">
             <div className="text-center">
-              <User className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              <div className="h-12 w-12 mx-auto text-gray-400 mb-4 flex items-center justify-center">
+                <Search className="h-8 w-8" />
+              </div>
               <p className="text-gray-600">
-                {filters.search ? 'Aucun utilisateur trouvé' : 'Aucun utilisateur'}
+                {filters.search ? 
+                  'Aucun utilisateur trouvé pour cette recherche' : 
+                  'Aucun utilisateur trouvé'
+                }
               </p>
-              {filters.search && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="mt-2"
-                  onClick={() => {
-                    setSearchInput('');
-                    setFilters(prev => ({ ...prev, search: '', page: 1 }));
-                  }}
-                >
-                  Effacer la recherche
-                </Button>
-              )}
+              <p className="text-sm text-gray-500 mt-2">
+                Utilisez le bouton "Nouveau préparateur" pour créer le premier utilisateur
+              </p>
             </div>
           </CardContent>
         </Card>

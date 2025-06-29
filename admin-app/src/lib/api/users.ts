@@ -1,4 +1,4 @@
-// src/lib/api/users.ts - VERSION CORRIGÉE
+// src/lib/api/users.ts - VERSION CORRIGÉE AVEC TYPES ALIGNÉS
 import { apiClient, apiRequest, ApiResponse } from './client';
 import { User } from '@/types/auth';
 
@@ -40,14 +40,15 @@ export interface UserStats {
   lastActivity: string;
 }
 
-// 🔧 TYPES CORRIGÉS selon la documentation backend
+// ✅ TYPES CORRIGÉS selon la documentation backend
 export interface UserListData {
   users: User[];
   pagination: {
     page: number;
     limit: number;
     total: number;
-    pages: number; // Backend utilise 'pages' au lieu de 'totalPages'
+    pages: number;        // ✅ Backend utilise 'pages' comme champ principal
+    totalPages: number;   // ✅ Alias pour compatibilité avec le frontend existant
     hasNext?: boolean;
     hasPrev?: boolean;
   };
@@ -76,11 +77,34 @@ export interface BulkActionData {
   };
 }
 
+// ✅ Type guard pour valider la structure UserListData
+export function isValidUserListData(data: any): data is UserListData {
+  return (
+    data &&
+    Array.isArray(data.users) &&
+    data.pagination &&
+    typeof data.pagination.page === 'number' &&
+    typeof data.pagination.total === 'number' &&
+    (typeof data.pagination.pages === 'number' || typeof data.pagination.totalPages === 'number') &&
+    data.stats &&
+    typeof data.stats.totalUsers === 'number'
+  );
+}
+
+// ✅ Helper pour normaliser la pagination (conversion pages <-> totalPages)
+export function normalizePagination(pagination: any) {
+  return {
+    ...pagination,
+    pages: pagination.pages || pagination.totalPages || 1,
+    totalPages: pagination.totalPages || pagination.pages || 1,
+  };
+}
+
 // API Client pour les utilisateurs
 export const usersApi = {
-  // Récupérer la liste des utilisateurs avec filtres
+  // ✅ Récupérer la liste des utilisateurs avec filtres
   async getUsers(filters: UserFilters = {}): Promise<ApiResponse<UserListData>> {
-    return apiRequest(
+    const response = await apiRequest(
       () => apiClient.get<ApiResponse<UserListData>>('/admin/users', {
         params: filters
       }),
@@ -89,6 +113,13 @@ export const usersApi = {
         retryCount: 2
       }
     );
+
+    // ✅ Normaliser la pagination pour garantir la compatibilité
+    if (response.data && response.data.pagination) {
+      response.data.pagination = normalizePagination(response.data.pagination);
+    }
+
+    return response;
   },
 
   // Récupérer un utilisateur par ID
@@ -185,17 +216,8 @@ export const usersApi = {
     );
   },
 
-  // Récupérer les statistiques d'un utilisateur  
-  async getUserStats(id: string, period: string = 'month'): Promise<ApiResponse<UserStats>> {
-    return apiRequest(
-      () => apiClient.get<ApiResponse<UserStats>>(`/admin/users/${id}/stats`, {
-        params: { period }
-      }),
-      {
-        showErrorToast: true
-      }
-    );
-  },
+  // ✅ SUPPRIMÉ: getUserStats car l'endpoint n'existe pas 
+  // Les stats viennent directement de l'utilisateur
 
   // Export des utilisateurs
   async exportUsers(filters: UserFilters = {}, format: 'csv' | 'excel' = 'csv'): Promise<Blob> {
