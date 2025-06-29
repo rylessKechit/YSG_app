@@ -9,13 +9,15 @@ import {
   ArrowLeft,
   Calendar,
   Clock,
-  User,
+  User as UserIcon,
   Building,
   Save,
   AlertCircle,
   CheckCircle,
   Loader2,
-  Copy
+  Copy,
+  FileText,
+  AlertTriangle
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -46,8 +48,10 @@ import { useUsers } from '@/hooks/api/useUsers';
 import { useAgencies } from '@/hooks/api/useAgencies';
 import { useCreateSchedule, useValidateSchedule } from '@/hooks/api/useSchedules';
 import { ScheduleCreateData } from '@/types/schedule';
+import { User } from '@/types/auth';
+import { Agency } from '@/types/agency';
 
-// Schéma de validation
+// ✅ Schéma de validation corrigé et complet
 const createScheduleSchema = z.object({
   userId: z.string().min(1, 'Veuillez sélectionner un préparateur'),
   agencyId: z.string().min(1, 'Veuillez sélectionner une agence'),
@@ -56,69 +60,63 @@ const createScheduleSchema = z.object({
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Format HH:MM requis'),
   breakStart: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Format HH:MM requis').optional().or(z.literal('')),
   breakEnd: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Format HH:MM requis').optional().or(z.literal('')),
-  notes: z.string().optional()
+  notes: z.string().max(500, 'Maximum 500 caractères').optional()
 }).refine((data) => {
-  // Validation: l'heure de fin doit être après l'heure de début
-  const start = timeToMinutes(data.startTime);
-  const end = timeToMinutes(data.endTime);
+  // Validation: heure de fin après heure de début
+  const start = new Date(`2000-01-01T${data.startTime}:00`);
+  const end = new Date(`2000-01-01T${data.endTime}:00`);
   return end > start;
 }, {
-  message: "L'heure de fin doit être après l'heure de début",
+  message: 'L\'heure de fin doit être après l\'heure de début',
   path: ['endTime']
 }).refine((data) => {
-  // Validation: si pause définie, elle doit être cohérente
-  if (data.breakStart && data.breakEnd) {
-    const breakStart = timeToMinutes(data.breakStart);
-    const breakEnd = timeToMinutes(data.breakEnd);
-    const start = timeToMinutes(data.startTime);
-    const end = timeToMinutes(data.endTime);
-    
-    return breakStart >= start && breakEnd <= end && breakEnd > breakStart;
-  }
-  return true;
+  // Validation: pause cohérente si définie
+  if (!data.breakStart || !data.breakEnd) return true;
+  
+  const breakStart = new Date(`2000-01-01T${data.breakStart}:00`);
+  const breakEnd = new Date(`2000-01-01T${data.breakEnd}:00`);
+  const workStart = new Date(`2000-01-01T${data.startTime}:00`);
+  const workEnd = new Date(`2000-01-01T${data.endTime}:00`);
+  
+  return breakStart >= workStart && 
+         breakEnd <= workEnd && 
+         breakEnd > breakStart;
 }, {
-  message: "Les heures de pause doivent être dans les heures de travail",
+  message: 'Les horaires de pause doivent être cohérents avec les horaires de travail',
   path: ['breakEnd']
 });
 
-type CreateScheduleForm = z.infer<typeof createScheduleSchema>;
+type CreateScheduleFormData = z.infer<typeof createScheduleSchema>;
 
-// Fonction utilitaire pour convertir HH:MM en minutes
-function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number);
-  return hours * 60 + minutes;
-}
-
-// Fonction utilitaire pour calculer la durée
-function calculateDuration(startTime: string, endTime: string, breakStart?: string, breakEnd?: string): string {
-  const start = timeToMinutes(startTime);
-  const end = timeToMinutes(endTime);
-  let duration = end - start;
-  
-  if (breakStart && breakEnd) {
-    const breakDuration = timeToMinutes(breakEnd) - timeToMinutes(breakStart);
-    duration -= breakDuration;
-  }
-  
-  const hours = Math.floor(duration / 60);
-  const minutes = duration % 60;
-  return `${hours}h${minutes > 0 ? ` ${minutes}min` : ''}`;
+// ✅ Interface pour les conflits de validation
+interface ValidationConflict {
+  type: 'overlap' | 'user_busy' | 'agency_limit' | 'business_hours';
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  details?: string;
 }
 
 export default function CreateSchedulePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // États locaux
+  // ✅ États locaux avec types corrects
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationConflicts, setValidationConflicts] = useState<ValidationConflict[]>([]);
   const [isDuplicate, setIsDuplicate] = useState(false);
 
-  // Hooks API
-  const { data: usersData, isLoading: isLoadingUsers } = useUsers({ limit: 100 });
-  const { data: agenciesData, isLoading: isLoadingAgencies } = useAgencies({ limit: 100 });
-  const createSchedule = useCreateSchedule();
+  // ✅ Hooks API avec gestion d'erreur
+  const { data: usersData, isLoading: usersLoading, error: usersError } = useUsers({ limit: 100 });
+  const { data: agenciesData, isLoading: agenciesLoading, error: agenciesError } = useAgencies({ limit: 100 });
+  const createScheduleMutation = useCreateSchedule();
+  const validateScheduleMutation = useValidateSchedule();
 
-  // Formulaire
-  const form = useForm<CreateScheduleForm>({
+  // ✅ Extraction sécurisée des données avec types corrects
+  const users: User[] = usersData?.data?.users || [];
+  const agencies: Agency[] = agenciesData?.data?.agencies || [];
+
+  // ✅ Form avec valeurs par défaut des paramètres URL
+  const form = useForm<CreateScheduleFormData>({
     resolver: zodResolver(createScheduleSchema),
     defaultValues: {
       userId: '',
@@ -126,58 +124,75 @@ export default function CreateSchedulePage() {
       date: '',
       startTime: '08:00',
       endTime: '17:00',
-      breakStart: '12:00',
-      breakEnd: '13:00',
+      breakStart: '',
+      breakEnd: '',
       notes: ''
     }
   });
 
-  const watchedFields = form.watch();
-
-  // ✅ VALIDATION OPTIMISÉE - Plus de boucle infinie !
-  const validation = useValidationOptimized(watchedFields, {
-    debounceMs: 800, // Attendre 800ms avant de valider
-    autoValidate: true,
-    validateOnMount: false
-  });
-
-  // Pré-remplir depuis les paramètres URL
+  // ✅ Effet pour remplir le formulaire depuis les paramètres URL
   useEffect(() => {
-    const date = searchParams.get('date');
-    const userId = searchParams.get('userId');
-    const agencyId = searchParams.get('agencyId');
-    const duplicate = searchParams.get('duplicate');
-    const startTime = searchParams.get('startTime');
-    const endTime = searchParams.get('endTime');
-    const breakStart = searchParams.get('breakStart');
-    const breakEnd = searchParams.get('breakEnd');
-
-    if (date) form.setValue('date', date);
-    if (userId) form.setValue('userId', userId);
-    if (agencyId) form.setValue('agencyId', agencyId);
-    if (startTime) form.setValue('startTime', startTime);
-    if (endTime) form.setValue('endTime', endTime);
-    if (breakStart) form.setValue('breakStart', breakStart);
-    if (breakEnd) form.setValue('breakEnd', breakEnd);
+    const urlParams = Object.fromEntries(searchParams.entries());
     
-    if (duplicate === 'true') {
+    if (urlParams.duplicate === 'true') {
       setIsDuplicate(true);
+    }
+
+    // Remplir les champs du formulaire avec les paramètres URL
+    Object.entries(urlParams).forEach(([key, value]) => {
+      if (key in form.getValues() && value) {
+        form.setValue(key as keyof CreateScheduleFormData, value);
+      }
+    });
+
+    // Date par défaut si non spécifiée
+    if (!urlParams.date) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      form.setValue('date', tomorrow.toISOString().split('T')[0]);
     }
   }, [searchParams, form]);
 
-  // Validation en temps réel des conflits - SUPPRIMÉ car géré par le hook optimisé
-  // Plus besoin de ce useEffect problématique !
+  // ✅ Validation en temps réel avec debounce
+  useEffect(() => {
+    const subscription = form.watch(async (values) => {
+      // Valider seulement si les champs requis sont remplis
+      if (values.userId && values.agencyId && values.date && values.startTime && values.endTime) {
+        setIsValidating(true);
+        
+        try {
+          const scheduleData: ScheduleCreateData = {
+            userId: values.userId,
+            agencyId: values.agencyId,
+            date: values.date,
+            startTime: values.startTime,
+            endTime: values.endTime,
+            breakStart: values.breakStart || undefined,
+            breakEnd: values.breakEnd || undefined,
+            notes: values.notes || undefined
+          };
 
-  // Soumission du formulaire
-  const onSubmit = async (data: CreateScheduleForm) => {
-    // Validation finale avant soumission
-    const isValid = await validation.validateNow(data);
-    
-    if (!isValid) {
-      toast.error('Veuillez corriger les erreurs avant de continuer');
-      return;
-    }
+          const validation = await validateScheduleMutation.mutateAsync(scheduleData);
+          
+          if (validation.data?.conflicts) {
+            setValidationConflicts(validation.data.conflicts);
+          } else {
+            setValidationConflicts([]);
+          }
+        } catch (error) {
+          console.warn('Erreur de validation:', error);
+          setValidationConflicts([]);
+        } finally {
+          setIsValidating(false);
+        }
+      }
+    });
 
+    return () => subscription.unsubscribe();
+  }, [form, validateScheduleMutation]);
+
+  // ✅ Fonction de soumission avec gestion d'erreur complète
+  const onSubmit = async (data: CreateScheduleFormData) => {
     try {
       const scheduleData: ScheduleCreateData = {
         userId: data.userId,
@@ -190,70 +205,114 @@ export default function CreateSchedulePage() {
         notes: data.notes || undefined
       };
 
-      await createSchedule.mutateAsync(scheduleData);
-      router.push('/schedules');
-    } catch (error) {
-      // Erreur gérée par le hook
+      await createScheduleMutation.mutateAsync(scheduleData);
+      
+      router.push('/schedules?success=created');
+    } catch (error: any) {
+      console.error('Erreur création planning:', error);
+      
+      // Gestion spécifique des erreurs backend
+      if (error.response?.data?.errors) {
+        error.response.data.errors.forEach((err: any) => {
+          form.setError(err.field as keyof CreateScheduleFormData, {
+            message: err.message
+          });
+        });
+      }
     }
   };
 
-  // Handlers
-  const handleBack = () => {
-    router.back();
-  };
-
-  const handleCopyTomorrow = () => {
-    const currentDate = form.getValues('date');
-    if (currentDate) {
-      const tomorrow = new Date(currentDate);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      form.setValue('date', tomorrow.toISOString().split('T')[0]);
+  // ✅ Fonction utilitaire pour calculer la durée
+  const calculateDuration = (startTime: string, endTime: string, breakStart?: string, breakEnd?: string): string => {
+    if (!startTime || !endTime) return '0h00';
+    
+    const start = new Date(`2000-01-01T${startTime}:00`);
+    const end = new Date(`2000-01-01T${endTime}:00`);
+    let duration = (end.getTime() - start.getTime()) / (1000 * 60); // en minutes
+    
+    // Soustraire la pause si définie
+    if (breakStart && breakEnd) {
+      const bStart = new Date(`2000-01-01T${breakStart}:00`);
+      const bEnd = new Date(`2000-01-01T${breakEnd}:00`);
+      const breakDuration = (bEnd.getTime() - bStart.getTime()) / (1000 * 60);
+      if (breakDuration > 0) {
+        duration -= breakDuration;
+      }
     }
+    
+    const hours = Math.floor(duration / 60);
+    const minutes = duration % 60;
+    return `${hours}h${minutes.toString().padStart(2, '0')}`;
   };
 
-  // Loading state
-  if (isLoadingUsers || isLoadingAgencies) {
+  // ✅ Affichage des états de chargement
+  if (usersLoading || agenciesLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <LoadingSpinner size="lg" />
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-2xl font-bold">Nouveau planning</h1>
+        </div>
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <LoadingSpinner className="h-8 w-8" />
+            <span className="ml-2">Chargement des données...</span>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  const users = usersData?.data?.users || [];
-  const agencies = agenciesData?.data?.agencies || [];
-  const formData = form.getValues();
+  // ✅ Affichage des erreurs de chargement
+  if (usersError || agenciesError) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-2xl font-bold">Nouveau planning</h1>
+        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Erreur lors du chargement des données. Veuillez rafraîchir la page.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={handleBack}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Retour
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">
-            {isDuplicate ? 'Dupliquer un planning' : 'Nouveau planning'}
-          </h1>
-          <p className="text-gray-600">
-            {isDuplicate ? 'Créer un planning basé sur un planning existant' : 'Créer un nouveau planning pour un préparateur'}
-          </p>
+      {/* ✅ Header avec navigation */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">
+              {isDuplicate ? 'Dupliquer un planning' : 'Nouveau planning'}
+            </h1>
+            <p className="text-gray-600">
+              Créer un nouveau planning pour un préparateur
+            </p>
+          </div>
         </div>
+        
+        {isDuplicate && (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <Copy className="h-3 w-3" />
+            Duplication
+          </Badge>
+        )}
       </div>
 
-      {/* Duplicate notice */}
-      {isDuplicate && (
-        <Alert>
-          <Copy className="h-4 w-4" />
-          <AlertDescription>
-            Vous dupliquez un planning existant. Modifiez les informations selon vos besoins.
-          </AlertDescription>
-        </Alert>
-      )}
-
+      {/* ✅ Formulaire principal */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Formulaire principal */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
@@ -262,20 +321,23 @@ export default function CreateSchedulePage() {
                 Informations du planning
               </CardTitle>
               <CardDescription>
-                Définissez les détails du planning pour le préparateur
+                Définissez les détails du planning de travail
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  {/* Préparateur et Agence */}
+                  {/* ✅ Sélection utilisateur et agence */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="userId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Préparateur</FormLabel>
+                          <FormLabel className="flex items-center gap-2">
+                            <UserIcon className="h-4 w-4" />
+                            Préparateur
+                          </FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -286,11 +348,9 @@ export default function CreateSchedulePage() {
                               {users.map((user) => (
                                 <SelectItem key={user.id} value={user.id}>
                                   <div className="flex items-center gap-2">
-                                    <User className="h-4 w-4" />
-                                    <span>{user.firstName} {user.lastName}</span>
-                                    <Badge variant="outline" className="ml-2">
-                                      {user.agencies?.length || 0} agence(s)
-                                    </Badge>
+                                    <div className="h-2 w-2 rounded-full bg-green-500" />
+                                    {user.firstName} {user.lastName}
+                                    <span className="text-sm text-gray-500">({user.email})</span>
                                   </div>
                                 </SelectItem>
                               ))}
@@ -306,7 +366,10 @@ export default function CreateSchedulePage() {
                       name="agencyId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Agence</FormLabel>
+                          <FormLabel className="flex items-center gap-2">
+                            <Building className="h-4 w-4" />
+                            Agence
+                          </FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -318,10 +381,12 @@ export default function CreateSchedulePage() {
                                 <SelectItem key={agency.id} value={agency.id}>
                                   <div className="flex items-center gap-2">
                                     <Building className="h-4 w-4" />
-                                    <div>
-                                      <div className="font-medium">{agency.name}</div>
-                                      <div className="text-sm text-gray-500">{agency.code} - {agency.client}</div>
-                                    </div>
+                                    {agency.name}
+                                    {agency.code && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {agency.code}
+                                      </Badge>
+                                    )}
                                   </div>
                                 </SelectItem>
                               ))}
@@ -333,37 +398,39 @@ export default function CreateSchedulePage() {
                     />
                   </div>
 
-                  {/* Date */}
+                  {/* ✅ Date */}
                   <FormField
                     control={form.control}
                     name="date"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Date</FormLabel>
-                        <div className="flex gap-2">
-                          <FormControl>
-                            <Input type="date" {...field} />
-                          </FormControl>
-                          {field.value && (
-                            <Button type="button" variant="outline" size="sm" onClick={handleCopyTomorrow}>
-                              <Copy className="h-4 w-4 mr-2" />
-                              Demain
-                            </Button>
-                          )}
-                        </div>
+                        <FormLabel className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4" />
+                          Date
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="date" 
+                            {...field}
+                            min={new Date().toISOString().split('T')[0]}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Sélectionnez la date du planning de travail
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  {/* Heures de travail */}
+                  {/* ✅ Horaires de travail */}
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium flex items-center gap-2">
-                      <Clock className="h-5 w-5" />
-                      Heures de travail
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      <h3 className="font-medium">Horaires de travail</h3>
+                    </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="startTime"
@@ -392,23 +459,13 @@ export default function CreateSchedulePage() {
                         )}
                       />
                     </div>
-
-                    {/* Affichage de la durée */}
-                    {formData.startTime && formData.endTime && (
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <div className="text-sm text-gray-600">Durée totale</div>
-                        <div className="font-medium">
-                          {calculateDuration(formData.startTime, formData.endTime, formData.breakStart, formData.breakEnd)}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Pause déjeuner */}
+                  {/* ✅ Horaires de pause (optionnel) */}
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Pause déjeuner (optionnel)</h3>
+                    <h3 className="font-medium">Pause (optionnel)</h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="breakStart"
@@ -418,9 +475,6 @@ export default function CreateSchedulePage() {
                             <FormControl>
                               <Input type="time" {...field} />
                             </FormControl>
-                            <FormDescription>
-                              Laisser vide si pas de pause
-                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -442,38 +496,52 @@ export default function CreateSchedulePage() {
                     </div>
                   </div>
 
-                  {/* Notes */}
+                  {/* ✅ Notes */}
                   <FormField
                     control={form.control}
                     name="notes"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Notes (optionnel)</FormLabel>
+                        <FormLabel className="flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Notes (optionnel)
+                        </FormLabel>
                         <FormControl>
-                          <Textarea
-                            placeholder="Instructions particulières, matériel spécifique, etc."
+                          <Textarea 
+                            placeholder="Ajoutez des notes ou instructions spéciales..."
+                            className="resize-none"
+                            rows={3}
                             {...field}
                           />
                         </FormControl>
                         <FormDescription>
-                          Informations supplémentaires pour le préparateur
+                          Maximum 500 caractères
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  {/* Actions */}
-                  <div className="flex gap-3 pt-6">
-                    <Button type="submit" disabled={createSchedule.isPending}>
-                      {createSchedule.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {/* ✅ Boutons d'action */}
+                  <div className="flex items-center gap-3 pt-4">
+                    <Button 
+                      type="submit" 
+                      disabled={createScheduleMutation.isPending}
+                      className="flex items-center gap-2"
+                    >
+                      {createScheduleMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <Save className="h-4 w-4 mr-2" />
+                        <Save className="h-4 w-4" />
                       )}
-                      Créer le planning
+                      {createScheduleMutation.isPending ? 'Création...' : 'Créer le planning'}
                     </Button>
-                    <Button type="button" variant="outline" onClick={handleBack}>
+                    
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => router.back()}
+                    >
                       Annuler
                     </Button>
                   </div>
@@ -483,99 +551,94 @@ export default function CreateSchedulePage() {
           </Card>
         </div>
 
-        {/* Sidebar - Validation et aperçu */}
+        {/* ✅ Sidebar avec résumé et validation */}
         <div className="space-y-6">
-          {/* Validation des conflits */}
+          {/* Résumé du planning */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                {isValidating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : conflicts.length > 0 ? (
-                  <AlertCircle className="h-4 w-4 text-red-500" />
-                ) : (
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                )}
-                Validation
-              </CardTitle>
+              <CardTitle className="text-lg">Résumé</CardTitle>
             </CardHeader>
-            <CardContent>
-              {isValidating ? (
-                <div className="text-sm text-gray-600">
-                  Vérification des conflits...
+            <CardContent className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Durée totale:</span>
+                <span className="font-medium">
+                  {calculateDuration(
+                    form.watch('startTime'),
+                    form.watch('endTime'),
+                    form.watch('breakStart'),
+                    form.watch('breakEnd')
+                  )}
+                </span>
+              </div>
+              
+              {form.watch('startTime') && form.watch('endTime') && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Horaires:</span>
+                  <span className="font-medium">
+                    {form.watch('startTime')} - {form.watch('endTime')}
+                  </span>
                 </div>
-              ) : conflicts.length > 0 ? (
-                <div className="space-y-2">
-                  {conflicts.map((conflict, index) => (
-                    <Alert key={index} variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        {conflict.message}
-                      </AlertDescription>
-                    </Alert>
-                  ))}
-                </div>
-              ) : watchedFields.every(field => field) ? (
-                <Alert>
-                  <CheckCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Aucun conflit détecté
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <div className="text-sm text-gray-600">
-                  Remplissez tous les champs pour valider
+              )}
+              
+              {form.watch('breakStart') && form.watch('breakEnd') && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Pause:</span>
+                  <span className="font-medium">
+                    {form.watch('breakStart')} - {form.watch('breakEnd')}
+                  </span>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Aperçu */}
-          {watchedFields.every(field => field) && (
+          {/* ✅ Validation et conflits */}
+          {isValidating && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Vérification des conflits...
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {validationConflicts.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Aperçu</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                  Conflits détectés
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div>
-                  <div className="text-sm text-gray-600">Préparateur</div>
-                  <div className="font-medium">
-                    {users.find(u => u.id === formData.userId)?.firstName} {users.find(u => u.id === formData.userId)?.lastName}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Agence</div>
-                  <div className="font-medium">
-                    {agencies.find(a => a.id === formData.agencyId)?.name}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Date</div>
-                  <div className="font-medium">
-                    {new Date(formData.date).toLocaleDateString('fr-FR', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Horaires</div>
-                  <div className="font-medium">
-                    {formData.startTime} - {formData.endTime}
-                  </div>
-                  {formData.breakStart && formData.breakEnd && (
-                    <div className="text-sm text-gray-500">
-                      Pause: {formData.breakStart} - {formData.breakEnd}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600">Durée</div>
-                  <div className="font-medium">
-                    {calculateDuration(formData.startTime, formData.endTime, formData.breakStart, formData.breakEnd)}
-                  </div>
+                {validationConflicts.map((conflict, index) => (
+                  <Alert 
+                    key={index} 
+                    variant={conflict.severity === 'error' ? 'destructive' : 'default'}
+                  >
+                    <AlertDescription className="text-sm">
+                      {conflict.message}
+                      {conflict.details && (
+                        <div className="mt-1 text-xs opacity-75">
+                          {conflict.details}
+                        </div>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Message de succès si pas de conflits */}
+          {!isValidating && validationConflicts.length === 0 && 
+           form.watch('userId') && form.watch('agencyId') && form.watch('date') && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <CheckCircle className="h-4 w-4" />
+                  Aucun conflit détecté
                 </div>
               </CardContent>
             </Card>
