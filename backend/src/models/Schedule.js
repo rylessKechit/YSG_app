@@ -1,3 +1,4 @@
+// backend/src/models/Schedule.js - VERSION CORRIGÉE POUR PLANNINGS JOUR MÊME
 const mongoose = require('mongoose');
 const { DATE_FORMATS } = require('../utils/constants');
 
@@ -19,11 +20,16 @@ const scheduleSchema = new mongoose.Schema({
     required: [true, 'La date est requise'],
     validate: {
       validator: function(value) {
-        // La date ne peut pas être dans le passé (sauf pour modification)
+        // ✅ CORRECTION: Permettre les plannings à partir d'aujourd'hui (pas seulement demain)
         if (this.isNew) {
           const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          return value >= today;
+          today.setHours(0, 0, 0, 0); // Début de la journée
+          
+          const planningDate = new Date(value);
+          planningDate.setHours(0, 0, 0, 0);
+          
+          // ✅ Permettre aujourd'hui ET le futur (>= au lieu de >)
+          return planningDate >= today;
         }
         return true;
       },
@@ -138,154 +144,100 @@ scheduleSchema.pre('save', function(next) {
     
     // Vérifier que les pauses sont dans les heures de travail
     if (breakStartMinutes < startMinutes || breakEndMinutes > endMinutes) {
-      return next(new Error('Les pauses doivent être comprises dans les heures de travail'));
+      return next(new Error('Les pauses doivent être dans les heures de travail'));
     }
   }
 
-  next();
-});
-
-// Mettre à jour le timestamp
-scheduleSchema.pre('save', function(next) {
-  if (this.isModified() && !this.isNew) {
-    this.updatedAt = Date.now();
-  }
+  this.updatedAt = new Date();
   next();
 });
 
 // ===== MÉTHODES D'INSTANCE =====
 
-// Convertir une heure en minutes
-scheduleSchema.methods.timeToMinutes = function(timeStr) {
-  const [hours, minutes] = timeStr.split(':').map(Number);
+// Convertir une heure au format HH:mm en minutes depuis minuit
+scheduleSchema.methods.timeToMinutes = function(timeString) {
+  if (!timeString) return 0;
+  const [hours, minutes] = timeString.split(':').map(Number);
   return hours * 60 + minutes;
 };
 
-// Convertir des minutes en heure
-scheduleSchema.methods.minutesToTime = function(minutes) {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-};
-
-// Calculer la durée totale de travail
-scheduleSchema.methods.getTotalWorkingMinutes = function() {
+// Calculer la durée totale en minutes
+scheduleSchema.methods.getTotalMinutes = function() {
   const startMinutes = this.timeToMinutes(this.startTime);
   const endMinutes = this.timeToMinutes(this.endTime);
   let totalMinutes = endMinutes - startMinutes;
-  
+
   // Soustraire les pauses
   if (this.breakStart && this.breakEnd) {
     const breakStartMinutes = this.timeToMinutes(this.breakStart);
     const breakEndMinutes = this.timeToMinutes(this.breakEnd);
     totalMinutes -= (breakEndMinutes - breakStartMinutes);
   }
-  
-  return totalMinutes;
+
+  return Math.max(0, totalMinutes);
 };
 
-// Vérifier si une heure est dans les heures de travail
-scheduleSchema.methods.isWorkingTime = function(timeStr) {
-  const checkMinutes = this.timeToMinutes(timeStr);
-  const startMinutes = this.timeToMinutes(this.startTime);
-  const endMinutes = this.timeToMinutes(this.endTime);
-  
-  // Si c'est pendant la pause, ce n'est pas du temps de travail
-  if (this.breakStart && this.breakEnd) {
-    const breakStartMinutes = this.timeToMinutes(this.breakStart);
-    const breakEndMinutes = this.timeToMinutes(this.breakEnd);
-    
-    if (checkMinutes >= breakStartMinutes && checkMinutes <= breakEndMinutes) {
-      return false;
-    }
-  }
-  
-  return checkMinutes >= startMinutes && checkMinutes <= endMinutes;
-};
-
-// Obtenir le planning formaté
-scheduleSchema.methods.getFormattedSchedule = function() {
-  const workingMinutes = this.getTotalWorkingMinutes();
-  const workingHours = Math.floor(workingMinutes / 60);
-  const remainingMinutes = workingMinutes % 60;
-  
+// Obtenir un résumé formaté
+scheduleSchema.methods.getSummary = function() {
   return {
-    date: this.date.toLocaleDateString('fr-FR'),
-    startTime: this.startTime,
-    endTime: this.endTime,
-    breakStart: this.breakStart,
-    breakEnd: this.breakEnd,
-    totalWorkingTime: `${workingHours}h${remainingMinutes.toString().padStart(2, '0')}`,
-    totalMinutes: workingMinutes
+    id: this._id,
+    date: this.date.toISOString().split('T')[0],
+    timeRange: `${this.startTime} - ${this.endTime}`,
+    duration: `${Math.floor(this.getTotalMinutes() / 60)}h${(this.getTotalMinutes() % 60).toString().padStart(2, '0')}`,
+    hasBreak: !!(this.breakStart && this.breakEnd),
+    breakRange: (this.breakStart && this.breakEnd) ? `${this.breakStart} - ${this.breakEnd}` : null,
+    status: this.status
   };
+};
+
+// ✅ NOUVELLE MÉTHODE: Vérifier si le planning est créable aujourd'hui
+scheduleSchema.methods.canBeCreatedToday = function() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const planningDate = new Date(this.date);
+  planningDate.setHours(0, 0, 0, 0);
+  
+  return planningDate >= today;
+};
+
+// ✅ NOUVELLE MÉTHODE: Vérifier si le planning peut être modifié
+scheduleSchema.methods.canBeModified = function() {
+  const now = new Date();
+  const planningDateTime = new Date(this.date);
+  
+  // Ajouter l'heure de début au planning
+  const [hours, minutes] = this.startTime.split(':');
+  planningDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+  
+  // Permettre modification jusqu'à 1h avant le début
+  const cutoffTime = new Date(planningDateTime.getTime() - (60 * 60 * 1000));
+  
+  return now < cutoffTime && this.status === 'active';
 };
 
 // ===== MÉTHODES STATIQUES =====
 
-// Trouver les plannings d'une période
-scheduleSchema.statics.findByDateRange = function(startDate, endDate, filters = {}) {
-  const query = {
-    date: {
-      $gte: startDate,
-      $lte: endDate
-    },
-    status: 'active',
-    ...filters
-  };
+// Trouver les plannings d'aujourd'hui
+scheduleSchema.statics.findTodaySchedules = function() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   
-  return this.find(query)
-    .populate('user', 'firstName lastName email')
-    .populate('agency', 'name code client')
-    .populate('createdBy', 'firstName lastName')
-    .sort({ date: 1, startTime: 1 });
-};
-
-// Trouver les plannings d'un utilisateur pour une semaine
-scheduleSchema.statics.findUserWeekSchedule = function(userId, weekStart) {
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
   
   return this.find({
-    user: userId,
-    date: {
-      $gte: weekStart,
-      $lte: weekEnd
-    },
+    date: { $gte: today, $lt: tomorrow },
     status: 'active'
-  })
-  .populate('agency', 'name code client')
-  .sort({ date: 1 });
+  }).populate('user', 'firstName lastName email').populate('agency', 'name code');
 };
 
-// Trouver les conflits de planning pour un utilisateur
-scheduleSchema.statics.findConflicts = function(userId, date, startTime, endTime, excludeId = null) {
+// Trouver les conflits pour un utilisateur à une date donnée
+scheduleSchema.statics.findConflicts = function(userId, date, excludeId = null) {
   const query = {
     user: userId,
-    date: date,
-    status: 'active',
-    $or: [
-      // Nouveau planning commence pendant un planning existant
-      {
-        $and: [
-          { startTime: { $lte: startTime } },
-          { endTime: { $gt: startTime } }
-        ]
-      },
-      // Nouveau planning finit pendant un planning existant
-      {
-        $and: [
-          { startTime: { $lt: endTime } },
-          { endTime: { $gte: endTime } }
-        ]
-      },
-      // Nouveau planning englobe un planning existant
-      {
-        $and: [
-          { startTime: { $gte: startTime } },
-          { endTime: { $lte: endTime } }
-        ]
-      }
-    ]
+    date: new Date(date),
+    status: 'active'
   };
   
   if (excludeId) {
@@ -295,25 +247,38 @@ scheduleSchema.statics.findConflicts = function(userId, date, startTime, endTime
   return this.find(query);
 };
 
-// Obtenir les statistiques de planning
-scheduleSchema.statics.getStats = function(filters = {}) {
-  const matchQuery = { status: 'active', ...filters };
+// ✅ NOUVELLE MÉTHODE STATIQUE: Créer un planning pour aujourd'hui
+scheduleSchema.statics.createTodaySchedule = function(scheduleData) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   
+  // Vérifier que la date est aujourd'hui ou dans le futur
+  const planningDate = new Date(scheduleData.date);
+  planningDate.setHours(0, 0, 0, 0);
+  
+  if (planningDate < today) {
+    throw new Error('Impossible de créer un planning dans le passé');
+  }
+  
+  return this.create(scheduleData);
+};
+
+// Obtenir les statistiques d'un utilisateur
+scheduleSchema.statics.getUserStats = function(userId, startDate, endDate) {
   return this.aggregate([
-    { $match: matchQuery },
+    {
+      $match: {
+        user: userId,
+        date: { $gte: startDate, $lte: endDate },
+        status: 'active'
+      }
+    },
     {
       $group: {
         _id: null,
         totalSchedules: { $sum: 1 },
-        uniqueUsers: { $addToSet: '$user' },
-        uniqueAgencies: { $addToSet: '$agency' }
-      }
-    },
-    {
-      $project: {
-        totalSchedules: 1,
-        uniqueUsers: { $size: '$uniqueUsers' },
-        uniqueAgencies: { $size: '$uniqueAgencies' }
+        totalMinutes: { $sum: '$totalMinutes' },
+        agencies: { $addToSet: '$agency' }
       }
     }
   ]);
@@ -321,14 +286,14 @@ scheduleSchema.statics.getStats = function(filters = {}) {
 
 // ===== VIRTUAL FIELDS =====
 
-// Durée de travail virtuelle
-scheduleSchema.virtual('workingDuration').get(function() {
-  return this.getTotalWorkingMinutes();
+// Durée totale virtuelle
+scheduleSchema.virtual('totalMinutes').get(function() {
+  return this.getTotalMinutes();
 });
 
-// Planning formaté virtuel
-scheduleSchema.virtual('formatted').get(function() {
-  return this.getFormattedSchedule();
+// Résumé virtuel
+scheduleSchema.virtual('summary').get(function() {
+  return this.getSummary();
 });
 
 // Assurer que les champs virtuels sont inclus dans JSON

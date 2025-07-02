@@ -1,15 +1,15 @@
-// backend/src/routes/admin/timesheets/stats.js - STATISTIQUES ET ANALYTICS
+// backend/src/routes/admin/timesheets/stats.js
 const express = require('express');
 const Joi = require('joi');
 const Timesheet = require('../../../models/Timesheet');
-const Schedule = require('../../../models/Schedule');
 const { validateQuery, objectId } = require('../../../middleware/validation');
+const { ERROR_MESSAGES } = require('../../../utils/constants');
 
 const router = express.Router();
 
 // ===== SCHÉMAS DE VALIDATION =====
-const statsQuerySchema = Joi.object({
-  period: Joi.string().valid('today', 'week', 'month', 'quarter', 'year', 'custom').default('week'),
+const statsFiltersSchema = Joi.object({
+  period: Joi.string().valid('today', 'week', 'month', 'quarter', 'year', 'custom').default('month'),
   startDate: Joi.date().optional(),
   endDate: Joi.date().optional(),
   agencyId: objectId.optional(),
@@ -19,65 +19,68 @@ const statsQuerySchema = Joi.object({
 
 /**
  * @route   GET /api/admin/timesheets/stats
- * @desc    Statistiques de ponctualité et performance
+ * @desc    Statistiques globales des timesheets
  * @access  Admin
  */
-router.get('/', validateQuery(statsQuerySchema), async (req, res) => {
+router.get('/', validateQuery(statsFiltersSchema), async (req, res) => {
   try {
     const { period, startDate, endDate, agencyId, userId, groupBy } = req.query;
 
-    console.log('📊 Génération statistiques timesheets:', { period, groupBy });
+    console.log('📊 Génération stats timesheets:', { period, groupBy });
 
     // Calculer les dates selon la période
-    const dateRange = calculateDateRange(period, startDate, endDate);
+    const { start, end } = calculatePeriodDates(period, startDate, endDate);
 
     // Construction des filtres
-    const matchFilters = {
-      date: { $gte: dateRange.start, $lte: dateRange.end }
+    const filters = {
+      date: { $gte: start, $lte: end }
     };
     
-    if (agencyId) matchFilters.agency = agencyId;
-    if (userId) matchFilters.user = userId;
+    if (agencyId) filters.agency = agencyId;
+    if (userId) filters.user = userId;
 
-    // Statistiques globales
-    const globalStats = await calculateGlobalStats(matchFilters);
+    // Récupérer les statistiques globales
+    const globalStats = await calculateGlobalStats(filters);
 
-    // Tendances temporelles
-    const trends = await calculateTrends(matchFilters, groupBy, dateRange);
+    // Récupérer les tendances
+    const trends = await calculateTrends(filters, groupBy, start, end);
 
-    // Top utilisateurs (meilleurs et moins bons)
-    const userStats = await calculateUserStats(matchFilters);
+    // Récupérer les stats par utilisateur
+    const userStats = await calculateUserStats(filters);
 
-    // Statistiques par agence
-    const agencyStats = await calculateAgencyStats(matchFilters);
+    // Récupérer les stats par agence
+    const agencyStats = await calculateAgencyStats(filters);
 
-    // Anomalies détectées
-    const anomalies = await detectAnomalies(matchFilters);
+    // Détecter les anomalies
+    const anomalies = await detectAnomalies(filters);
 
-    console.log('✅ Statistiques calculées');
+    console.log('✅ Stats générées:', { globalStats, trends: trends.length });
 
     res.json({
       success: true,
       data: {
         globalStats,
         trends,
-        userStats,
+        userStats: {
+          topPerformers: userStats.slice(0, 5),
+          needsImprovement: userStats.slice(-5).reverse()
+        },
         agencyStats,
         anomalies,
         period: {
           type: period,
-          start: dateRange.start,
-          end: dateRange.end,
+          start: start.toISOString(),
+          end: end.toISOString(),
           groupBy
         }
       }
     });
 
   } catch (error) {
-    console.error('❌ Erreur calcul statistiques:', error);
+    console.error('❌ Erreur génération stats:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur lors du calcul des statistiques'
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur lors de la génération des statistiques'
     });
   }
 });
@@ -87,120 +90,155 @@ router.get('/', validateQuery(statsQuerySchema), async (req, res) => {
  * @desc    Rapport détaillé de ponctualité
  * @access  Admin
  */
-router.get('/punctuality', validateQuery(statsQuerySchema), async (req, res) => {
+router.get('/punctuality', validateQuery(statsFiltersSchema), async (req, res) => {
   try {
     const { period, startDate, endDate, agencyId, userId } = req.query;
 
-    const dateRange = calculateDateRange(period, startDate, endDate);
-    const matchFilters = {
-      date: { $gte: dateRange.start, $lte: dateRange.end }
+    console.log('📊 Rapport ponctualité:', { period, agencyId, userId });
+
+    // Calculer les dates selon la période
+    const { start, end } = calculatePeriodDates(period, startDate, endDate);
+
+    // Construction des filtres
+    const filters = {
+      date: { $gte: start, $lte: end }
     };
     
-    if (agencyId) matchFilters.agency = agencyId;
-    if (userId) matchFilters.user = userId;
+    if (agencyId) filters.agency = agencyId;
+    if (userId) filters.user = userId;
 
-    // Rapport de ponctualité détaillé
-    const punctualityReport = await Timesheet.aggregate([
-      { $match: matchFilters },
-      
-      // Joindre avec les plannings pour comparaison
-      { $lookup: {
-          from: 'schedules',
-          localField: 'schedule',
-          foreignField: '_id',
-          as: 'plannedSchedule'
-      }},
-      
-      // Joindre utilisateur et agence
-      { $lookup: {
-          from: 'users',
-          localField: 'user',
-          foreignField: '_id',
-          as: 'userDetails'
-      }},
-      { $lookup: {
-          from: 'agencies',
-          localField: 'agency',
-          foreignField: '_id',
-          as: 'agencyDetails'
-      }},
-      
-      // Calculer les métriques de ponctualité
-      { $addFields: {
-          user: { $arrayElemAt: ['$userDetails', 0] },
-          agency: { $arrayElemAt: ['$agencyDetails', 0] },
-          schedule: { $arrayElemAt: ['$plannedSchedule', 0] },
-          
-          // Classification ponctualité
+    // Agrégation pour les catégories de ponctualité
+    const punctualityCategories = await Timesheet.aggregate([
+      { $match: filters },
+      {
+        $addFields: {
           punctualityCategory: {
             $switch: {
               branches: [
-                { case: { $eq: ['$status', 'disputed'] }, then: 'disputed' },
-                { case: { $not: '$startTime' }, then: 'missing' },
-                { case: { $gt: ['$delays.startDelay', 15] }, then: 'late' },
-                { case: { $gt: ['$delays.startDelay', 5] }, then: 'slight_delay' },
-                { case: { $gte: ['$delays.startDelay', 0] }, then: 'on_time' }
+                { case: { $lte: ['$delays.startDelay', 0] }, then: 'ponctuel' },
+                { case: { $lte: ['$delays.startDelay', 5] }, then: 'leger_retard' },
+                { case: { $lte: ['$delays.startDelay', 15] }, then: 'retard_moyen' },
+                { case: { $gt: ['$delays.startDelay', 15] }, then: 'retard_important' }
               ],
-              default: 'early'
+              default: 'inconnu'
             }
           }
-      }},
-      
-      // Grouper par catégorie de ponctualité
-      { $group: {
+        }
+      },
+      {
+        $group: {
           _id: '$punctualityCategory',
           count: { $sum: 1 },
           averageDelay: { $avg: '$delays.startDelay' },
           maxDelay: { $max: '$delays.startDelay' },
           users: { $addToSet: '$user' },
-          agencies: { $addToSet: '$agency' },
-          details: { $push: {
-              date: '$date',
-              user: '$user',
-              agency: '$agency',
-              startDelay: '$delays.startDelay',
-              endDelay: '$delays.endDelay'
-          }}
-      }},
-      
-      { $sort: { '_id': 1 } }
+          agencies: { $addToSet: '$agency' }
+        }
+      },
+      {
+        $project: {
+          category: '$_id',
+          count: 1,
+          averageDelay: { $round: ['$averageDelay', 1] },
+          maxDelay: 1,
+          uniqueUsers: { $size: '$users' },
+          uniqueAgencies: { $size: '$agencies' }
+        }
+      }
     ]);
 
-    // Calculer les totaux
-    const totalTimesheets = punctualityReport.reduce((sum, cat) => sum + cat.count, 0);
-    
+    // Calculer le total pour les pourcentages
+    const totalTimesheets = punctualityCategories.reduce((sum, cat) => sum + cat.count, 0);
+
+    // Ajouter les pourcentages
+    const categoriesWithPercentage = punctualityCategories.map(cat => ({
+      ...cat,
+      percentage: totalTimesheets > 0 ? Math.round((cat.count / totalTimesheets) * 100 * 100) / 100 : 0
+    }));
+
+    // Calculer les statistiques globales
+    const overallStats = await Timesheet.aggregate([
+      { $match: filters },
+      {
+        $group: {
+          _id: null,
+          totalTimesheets: { $sum: 1 },
+          onTimeCount: {
+            $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] }
+          },
+          averageDelay: { $avg: '$delays.startDelay' }
+        }
+      },
+      {
+        $project: {
+          totalTimesheets: 1,
+          punctualityRate: {
+            $round: [
+              { $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] },
+              2
+            ]
+          },
+          averageDelay: { $round: ['$averageDelay', 1] }
+        }
+      }
+    ]);
+
     const summary = {
       totalTimesheets,
-      categories: punctualityReport.map(cat => ({
-        category: cat._id,
-        count: cat.count,
-        percentage: Math.round((cat.count / totalTimesheets) * 100),
-        averageDelay: Math.round(cat.averageDelay || 0),
-        maxDelay: cat.maxDelay || 0,
-        uniqueUsers: cat.users.length,
-        uniqueAgencies: cat.agencies.length
-      })),
-      overall: {
-        punctualityRate: Math.round(
-          (punctualityReport.find(cat => cat._id === 'on_time')?.count || 0) / totalTimesheets * 100
-        ),
-        averageDelay: Math.round(
-          punctualityReport
-            .filter(cat => ['late', 'slight_delay'].includes(cat._id))
-            .reduce((sum, cat) => sum + (cat.averageDelay * cat.count), 0) /
-          punctualityReport
-            .filter(cat => ['late', 'slight_delay'].includes(cat._id))
-            .reduce((sum, cat) => sum + cat.count, 0) || 0
-        )
-      }
+      categories: categoriesWithPercentage,
+      overall: overallStats[0] || { punctualityRate: 0, averageDelay: 0 }
     };
+
+    // Détails par période si demandé
+    const details = await Timesheet.aggregate([
+      { $match: filters },
+      { $match: { 'delays.startDelay': { $gt: 5 } } }, // Seulement les retards
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: '%Y-%m-%d',
+              date: '$date'
+            }
+          },
+          count: { $sum: 1 },
+          averageDelay: { $avg: '$delays.startDelay' },
+          maxDelay: { $max: '$delays.startDelay' },
+          users: { $addToSet: '$user' },
+          agencies: { $addToSet: '$agency' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'users',
+          foreignField: '_id',
+          as: 'userDetails'
+        }
+      },
+      {
+        $lookup: {
+          from: 'agencies',
+          localField: 'agencies',
+          foreignField: '_id',
+          as: 'agencyDetails'
+        }
+      },
+      { $sort: { _id: -1 } },
+      { $limit: 10 }
+    ]);
+
+    console.log('✅ Rapport ponctualité généré');
 
     res.json({
       success: true,
       data: {
         summary,
-        details: punctualityReport,
-        period: { start: dateRange.start, end: dateRange.end }
+        details,
+        period: {
+          start: start.toISOString(),
+          end: end.toISOString()
+        }
       }
     });
 
@@ -208,231 +246,328 @@ router.get('/punctuality', validateQuery(statsQuerySchema), async (req, res) => 
     console.error('❌ Erreur rapport ponctualité:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur lors de la génération du rapport de ponctualité'
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur lors de la génération du rapport'
     });
   }
 });
 
 // ===== FONCTIONS UTILITAIRES =====
 
-function calculateDateRange(period, startDate, endDate) {
+/**
+ * Calculer les dates de début et fin selon la période
+ */
+function calculatePeriodDates(period, customStart, customEnd) {
   const now = new Date();
   let start, end;
 
-  if (period === 'custom' && startDate && endDate) {
-    start = new Date(startDate);
-    end = new Date(endDate);
-  } else {
-    switch (period) {
-      case 'today':
-        start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-        break;
-      case 'week':
-        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        end = now;
-        break;
-      case 'month':
-        start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-        end = now;
-        break;
-      case 'quarter':
-        start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-        end = now;
-        break;
-      case 'year':
-        start = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-        end = now;
-        break;
-      default:
-        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        end = now;
-    }
+  switch (period) {
+    case 'today':
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      break;
+    
+    case 'week':
+      start = new Date(now);
+      start.setDate(now.getDate() - 7);
+      end = new Date(now);
+      break;
+    
+    case 'quarter':
+      start = new Date(now);
+      start.setMonth(now.getMonth() - 3);
+      end = new Date(now);
+      break;
+    
+    case 'year':
+      start = new Date(now.getFullYear(), 0, 1);
+      end = new Date(now);
+      break;
+    
+    case 'custom':
+      start = customStart ? new Date(customStart) : new Date(now.getFullYear(), now.getMonth(), 1);
+      end = customEnd ? new Date(customEnd) : new Date(now);
+      break;
+    
+    default: // month
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now);
   }
 
   return { start, end };
 }
 
-async function calculateGlobalStats(matchFilters) {
-  const [timesheetStats, punctualityStats] = await Promise.all([
-    // Stats générales des timesheets
-    Timesheet.aggregate([
-      { $match: matchFilters },
-      { $group: {
-          _id: null,
-          totalTimesheets: { $sum: 1 },
-          completeTimesheets: { $sum: { $cond: [{ $eq: ['$status', 'complete'] }, 1, 0] } },
-          incompleteTimesheets: { $sum: { $cond: [{ $eq: ['$status', 'incomplete'] }, 1, 0] } },
-          disputedTimesheets: { $sum: { $cond: [{ $eq: ['$status', 'disputed'] }, 1, 0] } },
-          averageWorkedHours: { $avg: { $divide: ['$totalWorkedMinutes', 60] } },
-          totalWorkedHours: { $sum: { $divide: ['$totalWorkedMinutes', 60] } }
-      }}
-    ]),
-    
-    // Stats de ponctualité
-    Timesheet.aggregate([
-      { $match: matchFilters },
-      { $group: {
-          _id: null,
-          onTimeCount: { $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] } },
-          lateCount: { $sum: { $cond: [{ $gt: ['$delays.startDelay', 5] }, 1, 0] } },
-          averageDelay: { $avg: '$delays.startDelay' },
-          maxDelay: { $max: '$delays.startDelay' }
-      }}
-    ])
+/**
+ * Calculer les statistiques globales
+ */
+async function calculateGlobalStats(filters) {
+  const stats = await Timesheet.aggregate([
+    { $match: filters },
+    {
+      $group: {
+        _id: null,
+        totalTimesheets: { $sum: 1 },
+        completeTimesheets: {
+          $sum: { $cond: [{ $eq: ['$status', 'complete'] }, 1, 0] }
+        },
+        incompleteTimesheets: {
+          $sum: { $cond: [{ $eq: ['$status', 'incomplete'] }, 1, 0] }
+        },
+        disputedTimesheets: {
+          $sum: { $cond: [{ $eq: ['$status', 'disputed'] }, 1, 0] }
+        },
+        totalWorkedHours: { $sum: { $divide: ['$totalWorkedMinutes', 60] } },
+        averageWorkedHours: { $avg: { $divide: ['$totalWorkedMinutes', 60] } },
+        onTimeCount: {
+          $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] }
+        },
+        averageDelay: { $avg: '$delays.startDelay' },
+        maxDelay: { $max: '$delays.startDelay' }
+      }
+    },
+    {
+      $project: {
+        totalTimesheets: 1,
+        completeTimesheets: 1,
+        incompleteTimesheets: 1,
+        disputedTimesheets: 1,
+        completionRate: {
+          $round: [
+            { $multiply: [{ $divide: ['$completeTimesheets', '$totalTimesheets'] }, 100] },
+            2
+          ]
+        },
+        totalWorkedHours: { $round: ['$totalWorkedHours', 1] },
+        averageWorkedHours: { $round: ['$averageWorkedHours', 1] },
+        punctualityRate: {
+          $round: [
+            { $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] },
+            2
+          ]
+        },
+        averageDelay: { $round: ['$averageDelay', 1] },
+        maxDelay: 1
+      }
+    }
   ]);
 
-  const timesheet = timesheetStats[0] || {};
-  const punctuality = punctualityStats[0] || {};
-
-  return {
-    totalTimesheets: timesheet.totalTimesheets || 0,
-    completeTimesheets: timesheet.completeTimesheets || 0,
-    incompleteTimesheets: timesheet.incompleteTimesheets || 0,
-    disputedTimesheets: timesheet.disputedTimesheets || 0,
-    completionRate: timesheet.totalTimesheets > 0 ? 
-      Math.round((timesheet.completeTimesheets / timesheet.totalTimesheets) * 100) : 0,
-    averageWorkedHours: Math.round((timesheet.averageWorkedHours || 0) * 100) / 100,
-    totalWorkedHours: Math.round((timesheet.totalWorkedHours || 0) * 100) / 100,
-    punctualityRate: (timesheet.totalTimesheets > 0 && punctuality.onTimeCount) ? 
-      Math.round((punctuality.onTimeCount / timesheet.totalTimesheets) * 100) : 0,
-    averageDelay: Math.round(punctuality.averageDelay || 0),
-    maxDelay: punctuality.maxDelay || 0
+  return stats[0] || {
+    totalTimesheets: 0,
+    completeTimesheets: 0,
+    incompleteTimesheets: 0,
+    disputedTimesheets: 0,
+    completionRate: 0,
+    totalWorkedHours: 0,
+    averageWorkedHours: 0,
+    punctualityRate: 0,
+    averageDelay: 0,
+    maxDelay: 0
   };
 }
 
-async function calculateTrends(matchFilters, groupBy, dateRange) {
+/**
+ * Calculer les tendances
+ */
+async function calculateTrends(filters, groupBy, startDate, endDate) {
   let groupFormat;
   
   switch (groupBy) {
     case 'day':
-      groupFormat = { $dateToString: { format: '%Y-%m-%d', date: '$date' } };
+      groupFormat = '%Y-%m-%d';
       break;
     case 'week':
-      groupFormat = { $dateToString: { format: '%Y-W%U', date: '$date' } };
+      groupFormat = '%Y-%U';
       break;
     case 'month':
-      groupFormat = { $dateToString: { format: '%Y-%m', date: '$date' } };
+      groupFormat = '%Y-%m';
       break;
     default:
-      groupFormat = { $dateToString: { format: '%Y-%m-%d', date: '$date' } };
+      groupFormat = '%Y-%m-%d';
   }
 
   const trends = await Timesheet.aggregate([
-    { $match: matchFilters },
-    { $group: {
-        _id: groupFormat,
+    { $match: filters },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: groupFormat,
+            date: '$date'
+          }
+        },
         totalTimesheets: { $sum: 1 },
-        onTimeCount: { $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] } },
-        lateCount: { $sum: { $cond: [{ $gt: ['$delays.startDelay', 5] }, 1, 0] } },
+        onTimeCount: {
+          $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] }
+        },
         averageDelay: { $avg: '$delays.startDelay' },
         totalWorkedHours: { $sum: { $divide: ['$totalWorkedMinutes', 60] } }
-    }},
-    { $addFields: {
-        punctualityRate: { $round: [{ $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] }, 1] }
-    }},
-    { $sort: { '_id': 1 } }
+      }
+    },
+    {
+      $project: {
+        period: '$_id',
+        totalTimesheets: 1,
+        punctualityRate: {
+          $round: [
+            { $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] },
+            1
+          ]
+        },
+        averageDelay: { $round: ['$averageDelay', 1] },
+        totalWorkedHours: { $round: ['$totalWorkedHours', 1] }
+      }
+    },
+    { $sort: { period: 1 } }
   ]);
 
-  return trends.map(trend => ({
-    period: trend._id,
-    totalTimesheets: trend.totalTimesheets,
-    punctualityRate: trend.punctualityRate || 0,
-    averageDelay: Math.round(trend.averageDelay || 0),
-    totalWorkedHours: Math.round((trend.totalWorkedHours || 0) * 100) / 100
-  }));
+  return trends;
 }
 
-async function calculateUserStats(matchFilters) {
+/**
+ * Calculer les stats par utilisateur
+ */
+async function calculateUserStats(filters) {
   const userStats = await Timesheet.aggregate([
-    { $match: matchFilters },
-    { $lookup: {
-        from: 'users',
-        localField: 'user',
-        foreignField: '_id',
-        as: 'userDetails'
-    }},
-    { $group: {
+    { $match: filters },
+    {
+      $group: {
         _id: '$user',
-        user: { $first: { $arrayElemAt: ['$userDetails', 0] } },
         totalTimesheets: { $sum: 1 },
-        onTimeCount: { $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] } },
+        onTimeCount: {
+          $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] }
+        },
         averageDelay: { $avg: '$delays.startDelay' },
         totalWorkedHours: { $sum: { $divide: ['$totalWorkedMinutes', 60] } }
-    }},
-    { $addFields: {
-        punctualityRate: { $round: [{ $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] }, 1] }
-    }},
-    { $sort: { punctualityRate: -1, averageDelay: 1 } }
-  ]);
-
-  return {
-    topPerformers: userStats.slice(0, 5),
-    needsImprovement: userStats.slice(-5).reverse()
-  };
-}
-
-async function calculateAgencyStats(matchFilters) {
-  return await Timesheet.aggregate([
-    { $match: matchFilters },
-    { $lookup: {
-        from: 'agencies',
-        localField: 'agency',
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: '_id',
         foreignField: '_id',
-        as: 'agencyDetails'
-    }},
-    { $group: {
-        _id: '$agency',
-        agency: { $first: { $arrayElemAt: ['$agencyDetails', 0] } },
-        totalTimesheets: { $sum: 1 },
-        onTimeCount: { $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] } },
-        averageDelay: { $avg: '$delays.startDelay' },
-        totalWorkedHours: { $sum: { $divide: ['$totalWorkedMinutes', 60] } }
-    }},
-    { $addFields: {
-        punctualityRate: { $round: [{ $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] }, 1] }
-    }},
+        as: 'user'
+      }
+    },
+    { $unwind: '$user' },
+    {
+      $project: {
+        user: {
+          id: '$user._id',
+          firstName: '$user.firstName',
+          lastName: '$user.lastName',
+          email: '$user.email'
+        },
+        totalTimesheets: 1,
+        punctualityRate: {
+          $round: [
+            { $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] },
+            1
+          ]
+        },
+        averageDelay: { $round: ['$averageDelay', 1] },
+        totalWorkedHours: { $round: ['$totalWorkedHours', 1] }
+      }
+    },
     { $sort: { punctualityRate: -1 } }
   ]);
+
+  return userStats;
 }
 
-async function detectAnomalies(matchFilters) {
-  // Détecter les patterns suspects
-  const anomalies = [];
-
-  // Utilisateurs toujours en retard du même délai (suspect)
-  const suspiciousPatterns = await Timesheet.aggregate([
-    { $match: { ...matchFilters, 'delays.startDelay': { $gt: 0 } } },
-    { $group: {
-        _id: { user: '$user', delay: '$delays.startDelay' },
-        count: { $sum: 1 },
-        user: { $first: '$user' }
-    }},
-    { $match: { count: { $gte: 3 } } }, // Au moins 3 fois le même retard
-    { $lookup: {
-        from: 'users',
-        localField: 'user',
+/**
+ * Calculer les stats par agence
+ */
+async function calculateAgencyStats(filters) {
+  const agencyStats = await Timesheet.aggregate([
+    { $match: filters },
+    {
+      $group: {
+        _id: '$agency',
+        totalTimesheets: { $sum: 1 },
+        onTimeCount: {
+          $sum: { $cond: [{ $lte: ['$delays.startDelay', 5] }, 1, 0] }
+        },
+        averageDelay: { $avg: '$delays.startDelay' },
+        totalWorkedHours: { $sum: { $divide: ['$totalWorkedMinutes', 60] } }
+      }
+    },
+    {
+      $lookup: {
+        from: 'agencies',
+        localField: '_id',
         foreignField: '_id',
-        as: 'userDetails'
-    }},
-    { $project: {
-        user: { $arrayElemAt: ['$userDetails', 0] },
-        delay: '$_id.delay',
-        count: 1,
-        suspicionLevel: { $cond: [{ $gte: ['$count', 5] }, 'high', 'medium'] }
-    }}
+        as: 'agency'
+      }
+    },
+    { $unwind: '$agency' },
+    {
+      $project: {
+        agency: {
+          id: '$agency._id',
+          name: '$agency.name',
+          code: '$agency.code',
+          client: '$agency.client'
+        },
+        totalTimesheets: 1,
+        punctualityRate: {
+          $round: [
+            { $multiply: [{ $divide: ['$onTimeCount', '$totalTimesheets'] }, 100] },
+            1
+          ]
+        },
+        averageDelay: { $round: ['$averageDelay', 1] },
+        totalWorkedHours: { $round: ['$totalWorkedHours', 1] }
+      }
+    },
+    { $sort: { punctualityRate: -1 } }
   ]);
 
-  anomalies.push(...suspiciousPatterns.map(pattern => ({
-    type: 'consistent_delay',
-    severity: pattern.suspicionLevel,
-    user: pattern.user,
-    description: `Toujours ${pattern.delay}min de retard (${pattern.count} fois)`,
-    count: pattern.count
-  })));
+  return agencyStats;
+}
 
-  // TODO: Ajouter d'autres détections d'anomalies
-  
+/**
+ * Détecter les anomalies
+ */
+async function detectAnomalies(filters) {
+  const anomalies = [];
+
+  // Retards constants (même utilisateur en retard régulièrement)
+  const consistentLateUsers = await Timesheet.aggregate([
+    { $match: { ...filters, 'delays.startDelay': { $gt: 10 } } },
+    {
+      $group: {
+        _id: '$user',
+        lateCount: { $sum: 1 },
+        averageDelay: { $avg: '$delays.startDelay' }
+      }
+    },
+    { $match: { lateCount: { $gte: 3 } } },
+    {
+      $lookup: {
+        from: 'users',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'user'
+      }
+    },
+    { $unwind: '$user' }
+  ]);
+
+  consistentLateUsers.forEach(item => {
+    anomalies.push({
+      type: 'consistent_delay',
+      severity: item.averageDelay > 30 ? 'critical' : item.averageDelay > 15 ? 'high' : 'medium',
+      user: {
+        id: item.user._id,
+        firstName: item.user.firstName,
+        lastName: item.user.lastName
+      },
+      description: `Retards récurrents (${item.lateCount} fois, moyenne: ${Math.round(item.averageDelay)}min)`,
+      count: item.lateCount,
+      details: { averageDelay: Math.round(item.averageDelay) }
+    });
+  });
+
   return anomalies;
 }
 

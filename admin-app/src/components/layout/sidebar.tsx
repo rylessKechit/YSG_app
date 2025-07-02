@@ -1,4 +1,4 @@
-// src/components/layout/sidebar.tsx - VERSION CORRIGÉE
+// admin-app/src/components/layout/sidebar.tsx - VERSION MISE À JOUR AVEC TIMESHEETS
 'use client';
 
 import { useState } from 'react';
@@ -9,6 +9,7 @@ import {
   Users, 
   Building, 
   Calendar, 
+  Clock,  // ✅ AJOUTÉ pour Timesheets
   BarChart3, 
   Settings,
   LogOut,
@@ -27,7 +28,7 @@ interface NavItem {
   children?: NavItem[];
 }
 
-// ✅ CORRECTION: Navigation simplifiée sans dropdown pour Utilisateurs
+// ✅ NAVIGATION MISE À JOUR avec Timesheets
 const navigation: NavItem[] = [
   {
     title: 'Dashboard',
@@ -36,9 +37,8 @@ const navigation: NavItem[] = [
   },
   {
     title: 'Utilisateurs',
-    href: '/users', // ✅ LIEN DIRECT vers /users
+    href: '/users',
     icon: Users,
-    // ✅ SUPPRIMÉ: children (plus de dropdown)
   },
   {
     title: 'Agences',
@@ -49,6 +49,11 @@ const navigation: NavItem[] = [
     title: 'Planification',
     href: '/schedules',
     icon: Calendar,
+  },
+  {
+    title: 'Pointages',  // ✅ NOUVEAU
+    href: '/timesheets',
+    icon: Clock,
   },
   {
     title: 'Rapports',
@@ -93,7 +98,7 @@ export function Sidebar() {
           <Button
             variant="ghost"
             className={cn(
-              'w-full justify-start mb-1 text-sm', // ✅ CORRECTION: Taille de texte réduite
+              'w-full justify-start mb-1 text-sm',
               level > 0 && 'pl-8',
               isActive && 'bg-blue-50 text-blue-700'
             )}
@@ -108,7 +113,7 @@ export function Sidebar() {
           </Button>
           
           {isExpanded && (
-            <div className="ml-4 space-y-1">
+            <div className="ml-4 border-l border-gray-200 pl-4">
               {item.children?.map(child => renderNavItem(child, level + 1))}
             </div>
           )}
@@ -116,76 +121,67 @@ export function Sidebar() {
       );
     }
 
-    // ✅ CORRECTION: Item simple avec lien direct
     return (
       <Link key={item.title} href={item.href!}>
         <Button
           variant="ghost"
           className={cn(
-            'w-full justify-start mb-1 text-sm', // ✅ CORRECTION: Taille de texte réduite
+            'w-full justify-start mb-1 text-sm',
             level > 0 && 'pl-8',
-            isActive && 'bg-blue-50 text-blue-700'
+            isActive && 'bg-blue-50 text-blue-700 hover:bg-blue-100'
           )}
         >
           <item.icon className="mr-3 h-4 w-4" />
-          <span className="flex-1 text-left">{item.title}</span>
+          <span>{item.title}</span>
         </Button>
       </Link>
     );
   };
 
-  const handleLogout = () => {
-    logout();
-  };
-
   return (
-    <div className="flex h-full w-64 flex-col bg-white border-r border-gray-200">
-      {/* Header */}
-      <div className="flex h-16 items-center border-b border-gray-200 px-6">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded bg-blue-600 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">S</span>
-          </div>
-          <span className="font-semibold text-gray-900 text-sm"> {/* ✅ CORRECTION: Taille réduite */}
-            SIXT Admin
-          </span>
-        </div>
+    <div className="flex flex-col h-full w-64 bg-white border-r border-gray-200">
+      {/* Logo */}
+      <div className="flex items-center justify-center h-16 px-4 border-b border-gray-200">
+        <h2 className="text-xl font-bold text-gray-900">
+          Vehicle Prep Admin
+        </h2>
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 overflow-y-auto py-4 px-3">
-        <nav className="space-y-1">
-          {navigation.map(item => renderNavItem(item))}
-        </nav>
-      </div>
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navigation.map(item => renderNavItem(item))}
+      </nav>
 
-      {/* User info & Logout */}
+      {/* User section */}
       <div className="border-t border-gray-200 p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-            <span className="text-blue-600 font-medium text-xs"> {/* ✅ CORRECTION: Taille réduite */}
-              {user?.firstName?.[0]}{user?.lastName?.[0]}
-            </span>
+        {user && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm font-medium">
+                  {user.firstName?.[0]}{user.lastName?.[0]}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user.firstName} {user.lastName}
+                </p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user.role === 'admin' ? 'Administrateur' : 'Préparateur'}
+                </p>
+              </div>
+            </div>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={logout}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-gray-900 truncate"> {/* ✅ CORRECTION: Taille réduite */}
-              {user?.firstName} {user?.lastName}
-            </p>
-            <p className="text-xs text-gray-500 truncate"> {/* ✅ CORRECTION: Taille réduite */}
-              {user?.role === 'admin' ? 'Administrateur' : 'Préparateur'}
-            </p>
-          </div>
-        </div>
-        
-        <Button 
-          variant="outline" 
-          size="sm"
-          className="w-full text-xs" // ✅ CORRECTION: Taille réduite
-          onClick={handleLogout}
-        >
-          <LogOut className="mr-2 h-3 w-3" />
-          Se déconnecter
-        </Button>
+        )}
       </div>
     </div>
   );
