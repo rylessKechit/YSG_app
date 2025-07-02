@@ -95,9 +95,7 @@ try {
   console.warn('⚠️ Erreur chargement routes users:', error.message);
 }
 
-// ✅ ROUTE AGENCIES AJOUTÉE - C'ÉTAIT LE PROBLÈME !
 try {
-  // Agencies - ROUTE MANQUANTE CORRIGÉE
   app.use('/api/admin/agencies', require('./routes/admin/agencies'));
   console.log('✅ Routes agencies chargées avec succès');
 } catch (error) {
@@ -117,6 +115,13 @@ try {
 } catch (error) {
   console.error('❌ Erreur chargement routes schedules:', error.message);
   console.warn('Vérifiez que tous les fichiers de routes schedules existent');
+}
+
+try {
+  app.use('/api/admin/timesheets', require('./routes/admin/timesheets/index'));
+  console.log('✅ Routes admin timesheets chargées avec succès');
+} catch (error) {
+  console.warn('⚠️ Erreur chargement routes admin timesheets:', error);
 }
 
 try {
