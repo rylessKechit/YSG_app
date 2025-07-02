@@ -113,7 +113,7 @@ try {
   app.use('/api/admin/schedules', require('./routes/admin/schedules/schedules'));
   console.log('✅ Routes schedules chargées avec succès');
 } catch (error) {
-  console.error('❌ Erreur chargement routes schedules:', error.message);
+  console.error('❌ Erreur chargement routes schedules:', error);
   console.warn('Vérifiez que tous les fichiers de routes schedules existent');
 }
 

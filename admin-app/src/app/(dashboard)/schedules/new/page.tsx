@@ -113,7 +113,7 @@ export default function CreateSchedulePage() {
 
   // ✅ Extraction sécurisée des données avec types corrects
   const users: User[] = usersData?.data?.users || [];
-  const agencies: Agency[] = agenciesData?.data?.agencies || [];
+  const agencies: Agency[] = agenciesData?.agencies || [];
 
   // ✅ Form avec valeurs par défaut des paramètres URL
   const form = useForm<CreateScheduleFormData>({

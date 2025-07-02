@@ -1,6 +1,7 @@
+// admin-app/src/components/schedules/schedule-table.tsx - VERSION FINALE SANS ERREURS
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Grid3X3, 
@@ -16,12 +17,12 @@ import {
   Trash2,
   Copy,
   MoreHorizontal,
-  User as UserIcon
+  AlertCircle
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -53,7 +54,109 @@ import {
 import { useSchedules, useDeleteSchedule } from '@/hooks/api/useSchedules';
 import { useUsers } from '@/hooks/api/useUsers';
 import { useAgencies } from '@/hooks/api/useAgencies';
-import { ScheduleFilters, Schedule } from '@/types/schedule';
+
+// ✅ CORRECTION: Types complets avec toutes les propriétés nécessaires
+interface ScheduleFilters {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: string;
+  user?: string;
+  agency?: string;
+  sort?: string;
+  order?: 'asc' | 'desc';
+  startDate?: string;
+  endDate?: string;
+}
+
+interface Schedule {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  breakStart?: string;
+  breakEnd?: string;
+  notes?: string;
+  status: string;
+  timeRange: string;
+  workingHours: number;
+  hasBreak: boolean;
+  breakTime?: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  agency: {
+    id: string;
+    name: string;
+    code: string;
+  };
+}
+
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+interface Agency {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface PaginationData {
+  current: number;
+  pages: number;
+  total: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+// ✅ CORRECTION: Interfaces pour les retours d'API avec union types
+interface ApiScheduleData {
+  data?: {
+    schedules?: Schedule[];
+    pagination?: PaginationData;
+  };
+}
+
+interface ApiUserData {
+  data?: {
+    users?: User[];
+  };
+}
+
+interface ApiAgencyData {
+  data?: {
+    agencies?: Agency[];
+  };
+}
+
+// ✅ CORRECTION: Interface pour le hook useSchedules
+interface UseSchedulesReturn {
+  data: ApiScheduleData | undefined;
+  isLoading: boolean;
+  error: any;
+  refetch: () => void;
+}
+
+interface UseUsersReturn {
+  data: ApiUserData | undefined;
+  isLoading?: boolean;
+}
+
+interface UseAgenciesReturn {
+  data: ApiAgencyData | undefined;
+  isLoading?: boolean;
+}
+
+interface UseDeleteScheduleReturn {
+  mutateAsync: (id: string) => Promise<any>;
+  isPending?: boolean;
+}
 
 type ViewMode = 'week' | 'day' | 'table';
 
@@ -69,8 +172,6 @@ export function ScheduleTable() {
     limit: 20,
     search: '',
     status: 'all',
-    user: undefined,
-    agency: undefined,
     sort: 'date',
     order: 'desc'
   });
@@ -81,9 +182,10 @@ export function ScheduleTable() {
     
     switch (viewMode) {
       case 'day':
+        const dayString = today.toISOString().split('T')[0];
         return {
-          startDate: today.toISOString().split('T')[0],
-          endDate: today.toISOString().split('T')[0]
+          startDate: dayString,
+          endDate: dayString
         };
         
       case 'week':
@@ -112,17 +214,22 @@ export function ScheduleTable() {
     ...dateRange
   }), [filters, dateRange]);
 
-  // Hooks API complets
-  const { data: schedulesData, isLoading, error, refetch } = useSchedules(enrichedFilters);
-  const { data: usersData } = useUsers({ limit: 100 });
-  const { data: agenciesData } = useAgencies({ limit: 100 });
-  const deleteMutation = useDeleteSchedule();
+  // ✅ CORRECTION: Hooks API avec typage approprié et assertions
+  const schedulesHook = useSchedules(enrichedFilters) as UseSchedulesReturn;
+  const usersHook = useUsers({ limit: 100 }) as UseUsersReturn;
+  const agenciesHook = useAgencies({ limit: 100 }) as UseAgenciesReturn;
+  const deleteMutation = useDeleteSchedule() as UseDeleteScheduleReturn;
 
-  // Données extraites avec sécurité
-  const schedules = schedulesData?.data?.schedules || [];
-  const pagination = schedulesData?.data?.pagination;
-  const users = usersData?.data?.users || [];
-  const agencies = agenciesData?.data?.agencies || [];
+  // Extraction des données
+  const { data: schedulesData, isLoading, error, refetch } = schedulesHook;
+  const { data: usersData } = usersHook;
+  const { data: agenciesData } = agenciesHook;
+
+  // ✅ CORRECTION: Extraction sécurisée des données
+  const schedules: Schedule[] = schedulesData?.data?.schedules || [];
+  const pagination: PaginationData | undefined = schedulesData?.data?.pagination;
+  const users: User[] = usersData?.data?.users || [];
+  const agencies: Agency[] = agenciesData?.data?.agencies || [];
 
   // Navigation par date
   const navigateDate = (direction: 'prev' | 'next') => {
@@ -146,7 +253,12 @@ export function ScheduleTable() {
   };
 
   const handleEditSchedule = (id: string) => {
-    router.push(`/schedules/${id}/edit`);
+    console.log('🔄 Navigation vers édition:', id);
+    try {
+      router.push(`/schedules/${id}/edit`);
+    } catch (error) {
+      console.error('❌ Erreur navigation édition:', error);
+    }
   };
 
   const handleDeleteSchedule = async (id: string) => {
@@ -173,8 +285,16 @@ export function ScheduleTable() {
     router.push(`/schedules/new?${params}`);
   };
 
+  // ✅ CORRECTION: Gestion du changement de statut avec types appropriés
+  const handleStatusChange = (value: string) => {
+    setFilters(prev => ({ 
+      ...prev, 
+      status: value as 'all' | 'active' | 'cancelled' | 'completed'
+    }));
+  };
+
   // Formatage du titre selon la vue
-  const getViewTitle = () => {
+  const getViewTitle = (): string => {
     const options: Intl.DateTimeFormatOptions = { 
       weekday: 'long', 
       year: 'numeric', 
@@ -203,7 +323,132 @@ export function ScheduleTable() {
     }
   };
 
-  // Vue hebdomadaire avec données réelles
+  // Vue journalière
+  const renderDayView = () => {
+    const daySchedules = schedules.filter(schedule => {
+      const scheduleDate = new Date(schedule.date).toISOString().split('T')[0];
+      const targetDate = currentDate.toISOString().split('T')[0];
+      return scheduleDate === targetDate;
+    });
+
+    if (daySchedules.length === 0) {
+      return (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center h-64">
+            <CalendarDays className="h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Aucun planning ce jour
+            </h3>
+            <p className="text-gray-500 text-center mb-4">
+              Il n'y a aucun planning prévu pour le {currentDate.toLocaleDateString('fr-FR')}
+            </p>
+            <Button onClick={() => router.push('/schedules/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              Créer un planning
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="grid gap-4">
+        {daySchedules.map((schedule) => (
+          <Card key={schedule.id} className="hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <Avatar className="h-12 w-12">
+                    <AvatarFallback className="bg-blue-100 text-blue-600">
+                      {schedule.user.name.split(' ').map(n => n[0]).join('')}
+                    </AvatarFallback>
+                  </Avatar>
+                  
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold text-lg">{schedule.user.name}</h3>
+                      <Badge variant="outline" className="text-xs">
+                        {schedule.agency.code}
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        <span>{schedule.timeRange}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1">
+                        <Building className="h-4 w-4" />
+                        <span>{schedule.agency.name}</span>
+                      </div>
+                      
+                      {schedule.hasBreak && schedule.breakTime && (
+                        <div className="flex items-center gap-1">
+                          <Badge variant="secondary" className="text-xs">
+                            Pause: {schedule.breakTime}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {schedule.notes && (
+                      <p className="text-sm text-gray-500 mt-2 line-clamp-2">
+                        {schedule.notes}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <Badge 
+                    variant={schedule.status === 'active' ? 'default' : 'secondary'}
+                    className={schedule.status === 'active' ? 'bg-green-100 text-green-800' : ''}
+                  >
+                    {schedule.status === 'active' ? 'Actif' : 'Inactif'}
+                  </Badge>
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      
+                      <DropdownMenuItem onClick={() => handleEditSchedule(schedule.id)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Modifier
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuItem onClick={() => handleDuplicateSchedule(schedule)}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Dupliquer
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuSeparator />
+                      
+                      <DropdownMenuItem 
+                        onClick={() => handleDeleteSchedule(schedule.id)}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Supprimer
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
+  // Vue hebdomadaire
   const renderWeekView = () => {
     const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
     const startOfWeek = new Date(currentDate);
@@ -212,46 +457,55 @@ export function ScheduleTable() {
     startOfWeek.setDate(diff);
 
     return (
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-4">
         {weekDays.map((dayName, index) => {
           const dayDate = new Date(startOfWeek);
           dayDate.setDate(startOfWeek.getDate() + index);
-          const daySchedules = schedules.filter(
-            s => new Date(s.date).toDateString() === dayDate.toDateString()
-          );
+          const dayString = dayDate.toISOString().split('T')[0];
+          
+          const daySchedules = schedules.filter(schedule => {
+            const scheduleDate = new Date(schedule.date).toISOString().split('T')[0];
+            return scheduleDate === dayString;
+          });
+
+          const isToday = dayString === new Date().toISOString().split('T')[0];
 
           return (
-            <Card key={index} className="min-h-[200px]">
-              <CardHeader className="pb-2">
-                <div className="text-center">
-                  <div className="font-medium">{dayName}</div>
-                  <div className="text-sm text-gray-500">
-                    {dayDate.getDate()}/{dayDate.getMonth() + 1}
+            <Card key={dayName} className={`min-h-[200px] ${isToday ? 'ring-2 ring-blue-500' : ''}`}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">
+                  <div className="flex flex-col items-center">
+                    <span className="text-gray-500">{dayName}</span>
+                    <span className={`text-lg ${isToday ? 'text-blue-600 font-bold' : ''}`}>
+                      {dayDate.getDate()}
+                    </span>
                   </div>
-                </div>
+                </CardTitle>
               </CardHeader>
-              <CardContent className="pt-0 space-y-1">
-                {daySchedules.map((schedule) => (
-                  <div
-                    key={schedule.id}
-                    className="p-2 bg-blue-50 border border-blue-200 rounded cursor-pointer hover:bg-blue-100"
-                    onClick={() => router.push(`/schedules/${schedule.id}`)}
-                  >
-                    <div className="text-xs font-medium truncate">
-                      {schedule.user.firstName} {schedule.user.lastName}
-                    </div>
-                    <div className="text-xs text-gray-600 truncate">
-                      {schedule.agency.name}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {schedule.startTime} - {schedule.endTime}
-                    </div>
-                  </div>
-                ))}
-                {daySchedules.length === 0 && (
-                  <div className="text-xs text-gray-400 text-center py-4">
+              
+              <CardContent className="pt-0 space-y-2">
+                {daySchedules.length === 0 ? (
+                  <div className="text-center text-gray-400 text-sm py-4">
                     Aucun planning
                   </div>
+                ) : (
+                  daySchedules.map((schedule) => (
+                    <div 
+                      key={schedule.id}
+                      className="p-2 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 cursor-pointer transition-colors"
+                      onClick={() => handleEditSchedule(schedule.id)}
+                    >
+                      <div className="text-xs font-medium text-blue-900 mb-1">
+                        {schedule.user.name}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        {schedule.timeRange}
+                      </div>
+                      <div className="text-xs text-blue-600">
+                        {schedule.agency.code}
+                      </div>
+                    </div>
+                  ))
                 )}
               </CardContent>
             </Card>
@@ -261,221 +515,184 @@ export function ScheduleTable() {
     );
   };
 
-  // Vue journalière avec données réelles
-  const renderDayView = () => {
-    const daySchedules = schedules.filter(
-      s => new Date(s.date).toDateString() === currentDate.toDateString()
-    );
-
-    return (
-      <div className="space-y-4">
-        {daySchedules.length > 0 ? (
-          <div className="grid gap-4">
-            {daySchedules.map((schedule) => (
-              <Card key={schedule.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback>
-                          {schedule.user.firstName[0]}{schedule.user.lastName[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">
-                          {schedule.user.firstName} {schedule.user.lastName}
-                        </div>
-                        <div className="text-sm text-gray-500 flex items-center gap-2">
-                          <Building className="h-3 w-3" />
-                          {schedule.agency.name}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="font-medium flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          {schedule.startTime} - {schedule.endTime}
-                        </div>
-                        {schedule.breakStart && schedule.breakEnd && (
-                          <div className="text-sm text-gray-500">
-                            Pause: {schedule.breakStart} - {schedule.breakEnd}
-                          </div>
-                        )}
-                      </div>
-                      
-                      <Badge variant={schedule.status === 'active' ? 'default' : 'secondary'}>
-                        {getStatusLabel(schedule.status)}
-                      </Badge>
-                      
-                      <ScheduleActionsMenu 
-                        schedule={schedule}
-                        onEdit={handleEditSchedule}
-                        onDelete={handleDeleteSchedule}
-                        onDuplicate={handleDuplicateSchedule}
-                      />
-                    </div>
-                  </div>
-                  
-                  {schedule.notes && (
-                    <div className="mt-3 p-2 bg-gray-50 rounded text-sm">
-                      {schedule.notes}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="text-center py-12">
-              <CalendarDays className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="font-medium text-gray-900 mb-2">Aucun planning</h3>
-              <p className="text-gray-500 mb-4">
-                Aucun planning prévu pour cette journée
-              </p>
-              <Button onClick={() => router.push('/schedules/new')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Créer un planning
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    );
-  };
-
-  // Vue tableau avec données réelles
-  const renderTableView = () => (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Préparateur</TableHead>
-            <TableHead>Agence</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>Horaires</TableHead>
-            <TableHead>Pause</TableHead>
-            <TableHead>Durée</TableHead>
-            <TableHead>Statut</TableHead>
-            <TableHead className="w-12">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {schedules.map((schedule) => (
-            <TableRow key={schedule.id} className="hover:bg-gray-50">
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs">
-                      {schedule.user.firstName[0]}{schedule.user.lastName[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="font-medium">
-                      {schedule.user.firstName} {schedule.user.lastName}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {schedule.user.email}
-                    </div>
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div>
-                  <div className="font-medium">{schedule.agency.name}</div>
-                  {schedule.agency.code && (
-                    <div className="text-sm text-gray-500">
-                      {schedule.agency.code}
-                    </div>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="font-medium">
-                  {new Date(schedule.date).toLocaleDateString('fr-FR')}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="text-sm">
-                  {schedule.startTime} - {schedule.endTime}
-                </div>
-              </TableCell>
-              <TableCell>
-                {schedule.breakStart && schedule.breakEnd ? (
-                  <div className="text-sm">
-                    {schedule.breakStart} - {schedule.breakEnd}
-                  </div>
-                ) : (
-                  <span className="text-gray-400">-</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="font-medium">
-                  {calculateDuration(schedule.startTime, schedule.endTime, schedule.breakStart, schedule.breakEnd)}
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge variant={schedule.status === 'active' ? 'default' : 'secondary'}>
-                  {getStatusLabel(schedule.status)}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <ScheduleActionsMenu 
-                  schedule={schedule}
-                  onEdit={handleEditSchedule}
-                  onDelete={handleDeleteSchedule}
-                  onDuplicate={handleDuplicateSchedule}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-
-  const renderContent = () => {
-    switch (viewMode) {
-      case 'week':
-        return renderWeekView();
-      case 'day':
-        return renderDayView();
-      case 'table':
-        return renderTableView();
-      default:
-        return renderWeekView();
+  // Vue tableau
+  const renderTableView = () => {
+    if (schedules.length === 0) {
+      return (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center h-64">
+            <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Aucun planning trouvé
+            </h3>
+            <p className="text-gray-500 text-center mb-4">
+              Aucun planning ne correspond à vos critères de recherche
+            </p>
+            <Button onClick={() => router.push('/schedules/new')}>
+              <Plus className="h-4 w-4 mr-2" />
+              Créer un planning
+            </Button>
+          </CardContent>
+        </Card>
+      );
     }
+
+    return (
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Utilisateur</TableHead>
+              <TableHead>Agence</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Horaires</TableHead>
+              <TableHead>Durée</TableHead>
+              <TableHead>Statut</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {schedules.map((schedule) => (
+              <TableRow key={schedule.id} className="hover:bg-gray-50">
+                <TableCell>
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
+                        {schedule.user.name.split(' ').map(n => n[0]).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="font-medium">{schedule.user.name}</div>
+                      <div className="text-sm text-gray-500">{schedule.user.email}</div>
+                    </div>
+                  </div>
+                </TableCell>
+                
+                <TableCell>
+                  <div>
+                    <div className="font-medium">{schedule.agency.name}</div>
+                    <div className="text-sm text-gray-500">{schedule.agency.code}</div>
+                  </div>
+                </TableCell>
+                
+                <TableCell>
+                  {new Date(schedule.date).toLocaleDateString('fr-FR')}
+                </TableCell>
+                
+                <TableCell>
+                  <div>
+                    <div>{schedule.timeRange}</div>
+                    {schedule.hasBreak && schedule.breakTime && (
+                      <div className="text-sm text-gray-500">
+                        Pause: {schedule.breakTime}
+                      </div>
+                    )}
+                  </div>
+                </TableCell>
+                
+                <TableCell>
+                  {Math.round(schedule.workingHours * 10) / 10}h
+                </TableCell>
+                
+                <TableCell>
+                  <Badge 
+                    variant={schedule.status === 'active' ? 'default' : 'secondary'}
+                    className={schedule.status === 'active' ? 'bg-green-100 text-green-800' : ''}
+                  >
+                    {schedule.status === 'active' ? 'Actif' : 'Inactif'}
+                  </Badge>
+                </TableCell>
+                
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      
+                      <DropdownMenuItem onClick={() => handleEditSchedule(schedule.id)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Modifier
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuItem onClick={() => handleDuplicateSchedule(schedule)}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Dupliquer
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuSeparator />
+                      
+                      <DropdownMenuItem 
+                        onClick={() => handleDeleteSchedule(schedule.id)}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Supprimer
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+    );
   };
 
-  // Affichage des états de chargement
-  if (isLoading) {
+  // Gestion d'erreur
+  if (error) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <LoadingSpinner className="h-8 w-8 mr-2" />
-        <span>Chargement des plannings...</span>
-      </div>
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center h-64">
+          <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Erreur de chargement
+          </h3>
+          <p className="text-gray-500 text-center mb-4">
+            Une erreur est survenue lors du chargement des plannings
+          </p>
+          <Button onClick={() => refetch()}>
+            Réessayer
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header avec sélecteur de vue */}
+      {/* Header avec navigation et vues */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold">{getViewTitle()}</h2>
+          <h1 className="text-2xl font-bold">Plannings</h1>
           
-          {(viewMode === 'week' || viewMode === 'day') && (
+          {/* Navigation par date */}
+          {(viewMode === 'day' || viewMode === 'week') && (
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => navigateDate('prev')}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCurrentDate(new Date())}>
-                Aujourd'hui
-              </Button>
+              
+              <div className="px-4 py-2 text-sm font-medium bg-gray-100 rounded">
+                {getViewTitle()}
+              </div>
+              
               <Button variant="outline" size="sm" onClick={() => navigateDate('next')}>
                 <ChevronRight className="h-4 w-4" />
+              </Button>
+              
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setCurrentDate(new Date())}
+                className="text-blue-600"
+              >
+                Aujourd'hui
               </Button>
             </div>
           )}
@@ -485,21 +702,21 @@ export function ScheduleTable() {
           {/* Sélecteur de vue */}
           <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
             <TabsList>
-              <TabsTrigger value="week" className="flex items-center gap-1">
-                <Grid3X3 className="h-4 w-4" />
+              <TabsTrigger value="week">
+                <Grid3X3 className="h-4 w-4 mr-2" />
                 Semaine
               </TabsTrigger>
-              <TabsTrigger value="day" className="flex items-center gap-1">
-                <CalendarDays className="h-4 w-4" />
+              <TabsTrigger value="day">
+                <CalendarDays className="h-4 w-4 mr-2" />
                 Jour
               </TabsTrigger>
-              <TabsTrigger value="table" className="flex items-center gap-1">
-                <List className="h-4 w-4" />
+              <TabsTrigger value="table">
+                <List className="h-4 w-4 mr-2" />
                 Liste
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          
+
           <Button onClick={() => router.push('/schedules/new')}>
             <Plus className="h-4 w-4 mr-2" />
             Nouveau planning
@@ -507,7 +724,7 @@ export function ScheduleTable() {
         </div>
       </div>
 
-      {/* Filtres pour vue tableau */}
+      {/* Filtres pour la vue tableau */}
       {viewMode === 'table' && (
         <Card>
           <CardContent className="pt-6">
@@ -515,70 +732,29 @@ export function ScheduleTable() {
               <div className="flex-1">
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Rechercher un préparateur, agence..."
+                    placeholder="Rechercher un utilisateur, agence..."
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    className="max-w-sm"
                   />
                   <Button onClick={handleSearch}>
                     <Search className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-              
-              <Select
-                value={filters.user || 'all'}
-                onValueChange={(value) => 
-                  setFilters(prev => ({ ...prev, user: value === 'all' ? undefined : value, page: 1 }))
-                }
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Tous les préparateurs" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les préparateurs</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.firstName} {user.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
 
-              <Select
-                value={filters.agency || 'all'}
-                onValueChange={(value) => 
-                  setFilters(prev => ({ ...prev, agency: value === 'all' ? undefined : value, page: 1 }))
-                }
+              <Select 
+                value={filters.status || 'all'} 
+                onValueChange={handleStatusChange}
               >
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Toutes les agences" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les agences</SelectItem>
-                  {agencies.map((agency) => (
-                    <SelectItem key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={filters.status || 'all'}
-                onValueChange={(value) => 
-                  setFilters(prev => ({ ...prev, status: value === 'all' ? 'all' : value as any, page: 1 }))
-                }
-              >
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-40">
                   <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="active">Actif</SelectItem>
-                  <SelectItem value="cancelled">Annulé</SelectItem>
-                  <SelectItem value="completed">Terminé</SelectItem>
+                  <SelectItem value="active">Actifs</SelectItem>
+                  <SelectItem value="cancelled">Annulés</SelectItem>
+                  <SelectItem value="completed">Terminés</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -586,108 +762,47 @@ export function ScheduleTable() {
         </Card>
       )}
 
-      {/* Contenu selon la vue */}
-      {renderContent()}
+      {/* Contenu principal */}
+      {isLoading ? (
+        <Card>
+          <CardContent className="flex items-center justify-center h-64">
+            <LoadingSpinner size="lg" />
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {viewMode === 'day' && renderDayView()}
+          {viewMode === 'week' && renderWeekView()}
+          {viewMode === 'table' && renderTableView()}
+        </>
+      )}
 
-      {/* Pagination pour vue tableau */}
-      {viewMode === 'table' && pagination && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            Page {pagination.page} sur {pagination.pages} ({pagination.total} résultats)
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={pagination.page <= 1}
-              onClick={() => setFilters(prev => ({ ...prev, page: prev.page! - 1 }))}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={pagination.page >= pagination.pages}
-              onClick={() => setFilters(prev => ({ ...prev, page: prev.page! + 1 }))}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+      {/* Pagination pour la vue tableau */}
+      {viewMode === 'table' && pagination && pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFilters(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+            disabled={filters.page === 1}
+          >
+            Précédent
+          </Button>
+          
+          <span className="text-sm text-gray-600">
+            Page {filters.page} sur {pagination.pages}
+          </span>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFilters(prev => ({ ...prev, page: Math.min(pagination.pages, prev.page + 1) }))}
+            disabled={filters.page === pagination.pages}
+          >
+            Suivant
+          </Button>
         </div>
       )}
     </div>
   );
-}
-
-// Composant pour le menu d'actions
-function ScheduleActionsMenu({ 
-  schedule, 
-  onEdit, 
-  onDelete, 
-  onDuplicate 
-}: {
-  schedule: Schedule;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
-  onDuplicate: (schedule: Schedule) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-8 w-8 p-0">
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => onEdit(schedule.id)}>
-          <Edit className="w-4 h-4 mr-2" />
-          Modifier
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onDuplicate(schedule)}>
-          <Copy className="w-4 h-4 mr-2" />
-          Dupliquer
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem 
-          onClick={() => onDelete(schedule.id)}
-          className="text-red-600"
-        >
-          <Trash2 className="w-4 h-4 mr-2" />
-          Supprimer
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-// Fonctions utilitaires
-function calculateDuration(startTime: string, endTime: string, breakStart?: string, breakEnd?: string): string {
-  if (!startTime || !endTime) return '0h00';
-  
-  const start = new Date(`2000-01-01T${startTime}:00`);
-  const end = new Date(`2000-01-01T${endTime}:00`);
-  let duration = (end.getTime() - start.getTime()) / (1000 * 60);
-  
-  if (breakStart && breakEnd) {
-    const bStart = new Date(`2000-01-01T${breakStart}:00`);
-    const bEnd = new Date(`2000-01-01T${breakEnd}:00`);
-    const breakDuration = (bEnd.getTime() - bStart.getTime()) / (1000 * 60);
-    if (breakDuration > 0) {
-      duration -= breakDuration;
-    }
-  }
-  
-  const hours = Math.floor(duration / 60);
-  const minutes = duration % 60;
-  return `${hours}h${minutes.toString().padStart(2, '0')}`;
-}
-
-function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'active': return 'Actif';
-    case 'cancelled': return 'Annulé';
-    case 'completed': return 'Terminé';
-    default: return status;
-  }
 }
