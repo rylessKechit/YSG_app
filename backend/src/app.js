@@ -171,7 +171,7 @@ try {
   app.use('/api/profile', require('./routes/preparateur/profile'));
   console.log('✅ Routes préparateur chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Certaines routes préparateur non trouvées, seront ajoutées plus tard');
+  console.warn(error);
 }
 
 // ===== GESTION DES ERREURS =====

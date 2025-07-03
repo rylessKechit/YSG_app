@@ -1,20 +1,124 @@
+// ===== CORRECTION COMPLÈTE - backend/src/routes/preparateur/timesheets.js =====
 const express = require('express');
 const Timesheet = require('../../models/Timesheet');
 const Schedule = require('../../models/Schedule');
-const { auth, checkAgencyAccess } = require('../../middleware/auth');
-const { preparateurAuth } = require('../../middleware/adminAuth');
-const { validateBody, validateQuery } = require('../../middleware/validation');
-const { timesheetSchemas, querySchemas } = require('../../middleware/validation');
-const { SUCCESS_MESSAGES, ERROR_MESSAGES, TIME_LIMITS } = require('../../utils/constants');
+const { auth } = require('../../middleware/auth');
+const { ERROR_MESSAGES, SUCCESS_MESSAGES, USER_ROLES } = require('../../utils/constants');
+const Joi = require('joi');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
-// Toutes les routes nécessitent une authentification préparateur
-router.use(auth, preparateurAuth);
+// ===== SCHÉMAS DE VALIDATION INTÉGRÉS =====
+const objectId = Joi.string().custom((value, helpers) => {
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    return helpers.error('any.invalid');
+  }
+  return value;
+}, 'ObjectId validation').messages({
+  'any.invalid': 'ID invalide'
+});
+
+const timesheetSchemas = {
+  clockIn: Joi.object({
+    agencyId: objectId.required()
+  }),
+
+  clockOut: Joi.object({
+    agencyId: objectId.required()
+  }),
+
+  breakAction: Joi.object({
+    agencyId: objectId.required()
+  })
+};
+
+// ===== MIDDLEWARE INTÉGRÉS =====
+
+// Middleware d'authentification pour toutes les routes
+router.use(auth);
+
+// Middleware de validation du body
+const validateBody = (schema) => {
+  return (req, res, next) => {
+    try {
+      const { error, value } = schema.validate(req.body, {
+        abortEarly: false,
+        stripUnknown: true,
+        convert: true
+      });
+
+      if (error) {
+        const errorMessages = error.details.map(detail => ({
+          field: detail.path.join('.'),
+          message: detail.message
+        }));
+
+        return res.status(400).json({
+          success: false,
+          message: 'Données invalides',
+          errors: errorMessages
+        });
+      }
+
+      req.body = value;
+      next();
+
+    } catch (validationError) {
+      console.error('Erreur validation:', validationError);
+      res.status(500).json({
+        success: false,
+        message: 'Erreur de validation'
+      });
+    }
+  };
+};
+
+// Middleware de vérification d'accès à l'agence
+const checkAgencyAccess = (req, res, next) => {
+  try {
+    const agencyId = req.params.agencyId || req.body.agencyId || req.query.agencyId;
+    
+    if (!agencyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID d\'agence requis'
+      });
+    }
+
+    // Les admins ont accès à toutes les agences
+    if (req.user.role === 'admin') {
+      return next();
+    }
+
+    // Vérifier que le préparateur a accès à cette agence
+    const hasAccess = req.user.agencies.some(
+      agency => agency._id.toString() === agencyId.toString()
+    );
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'Accès refusé à cette agence'
+      });
+    }
+
+    next();
+
+  } catch (error) {
+    console.error('Erreur vérification agence:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur de vérification d\'accès'
+    });
+  }
+};
+
+// ===== ROUTES =====
 
 /**
  * @route   POST /api/timesheets/clock-in
- * @desc    Pointer le début de service
+ * @desc    Pointer l'arrivée
  * @access  Preparateur
  */
 router.post('/clock-in', validateBody(timesheetSchemas.clockIn), checkAgencyAccess, async (req, res) => {
@@ -22,100 +126,81 @@ router.post('/clock-in', validateBody(timesheetSchemas.clockIn), checkAgencyAcce
     const { agencyId } = req.body;
     const userId = req.user.userId;
     
+    console.log('🔄 Clock-in pour user:', userId, 'agence:', agencyId);
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Vérifier s'il y a déjà un pointage aujourd'hui pour cette agence
-    let timesheet = await Timesheet.findOne({
+    // Vérifier s'il y a déjà un pointage aujourd'hui
+    const existingTimesheet = await Timesheet.findOne({
       user: userId,
       agency: agencyId,
       date: today
     });
     
-    if (timesheet && timesheet.startTime) {
+    if (existingTimesheet && existingTimesheet.startTime) {
       return res.status(400).json({
         success: false,
-        message: ERROR_MESSAGES.ALREADY_CLOCKED_IN
+        message: 'Vous avez déjà pointé votre arrivée aujourd\'hui'
       });
     }
 
-    // Récupérer le planning prévu pour calculer le retard
-    const schedule = await Schedule.findOne({
-      user: userId,
-      agency: agencyId,
-      date: today,
-      status: 'active'
-    });
-
     const clockInTime = new Date();
-    let startDelay = 0;
-
-    if (schedule) {
-      const [hours, minutes] = schedule.startTime.split(':');
-      const scheduledStart = new Date(today);
-      scheduledStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-      
-      // Calculer le retard (en minutes, minimum 0)
-      startDelay = Math.max(0, Math.floor((clockInTime - scheduledStart) / (1000 * 60)));
-    }
-
-    if (timesheet) {
+    
+    let timesheet;
+    if (existingTimesheet) {
       // Mettre à jour le timesheet existant
-      timesheet.startTime = clockInTime;
-      timesheet.schedule = schedule?._id;
-      timesheet.delays.startDelay = startDelay;
+      existingTimesheet.startTime = clockInTime;
+      timesheet = await existingTimesheet.save();
     } else {
       // Créer un nouveau timesheet
       timesheet = new Timesheet({
         user: userId,
         agency: agencyId,
         date: today,
-        startTime: clockInTime,
-        schedule: schedule?._id,
-        delays: { startDelay }
+        startTime: clockInTime
       });
+      await timesheet.save();
     }
-
-    await timesheet.save();
 
     // Charger les relations pour la réponse
     await timesheet.populate('agency', 'name code client');
 
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.CLOCK_IN_SUCCESS,
+      message: 'Arrivée pointée avec succès',
       data: {
         timesheet: {
           id: timesheet._id,
           agency: timesheet.agency,
           date: timesheet.date,
           startTime: timesheet.startTime,
-          delay: startDelay > 0 ? startDelay : null,
-          delayMessage: startDelay > 0 ? `${startDelay} minutes de retard` : null,
           status: timesheet.status
         }
       }
     });
 
   } catch (error) {
-    console.error('Erreur pointage début:', error);
+    console.error('❌ Erreur clock-in:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Erreur lors du pointage d\'arrivée',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
 /**
  * @route   POST /api/timesheets/clock-out
- * @desc    Pointer la fin de service
+ * @desc    Pointer le départ
  * @access  Preparateur
  */
 router.post('/clock-out', validateBody(timesheetSchemas.clockOut), checkAgencyAccess, async (req, res) => {
   try {
     const { agencyId, notes } = req.body;
     const userId = req.user.userId;
+    
+    console.log('🔄 Clock-out pour user:', userId, 'agence:', agencyId);
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -129,14 +214,14 @@ router.post('/clock-out', validateBody(timesheetSchemas.clockOut), checkAgencyAc
     if (!timesheet || !timesheet.startTime) {
       return res.status(400).json({
         success: false,
-        message: ERROR_MESSAGES.NOT_CLOCKED_IN
+        message: 'Vous devez d\'abord pointer votre arrivée'
       });
     }
     
     if (timesheet.endTime) {
       return res.status(400).json({
         success: false,
-        message: ERROR_MESSAGES.ALREADY_CLOCKED_OUT
+        message: 'Vous avez déjà pointé votre départ aujourd\'hui'
       });
     }
 
@@ -149,12 +234,9 @@ router.post('/clock-out', validateBody(timesheetSchemas.clockOut), checkAgencyAc
     // Charger les relations pour la réponse
     await timesheet.populate('agency', 'name code client');
 
-    const totalHours = Math.floor(timesheet.totalWorkedMinutes / 60);
-    const totalMinutes = timesheet.totalWorkedMinutes % 60;
-
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.CLOCK_OUT_SUCCESS,
+      message: 'Départ pointé avec succès',
       data: {
         timesheet: {
           id: timesheet._id,
@@ -162,19 +244,17 @@ router.post('/clock-out', validateBody(timesheetSchemas.clockOut), checkAgencyAc
           date: timesheet.date,
           startTime: timesheet.startTime,
           endTime: timesheet.endTime,
-          totalWorkedTime: `${totalHours}h${totalMinutes.toString().padStart(2, '0')}`,
-          totalWorkedMinutes: timesheet.totalWorkedMinutes,
-          status: timesheet.status,
-          summary: timesheet.summary
+          status: timesheet.status
         }
       }
     });
 
   } catch (error) {
-    console.error('Erreur pointage fin:', error);
+    console.error('❌ Erreur clock-out:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: 'Erreur lors du pointage de départ',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -186,8 +266,10 @@ router.post('/clock-out', validateBody(timesheetSchemas.clockOut), checkAgencyAc
  */
 router.post('/break-start', validateBody(timesheetSchemas.breakAction), checkAgencyAccess, async (req, res) => {
   try {
-    const { agencyId } = req.body;
+    const { agencyId, reason } = req.body;
     const userId = req.user.userId;
+    
+    console.log('🔄 Break-start pour user:', userId, 'agence:', agencyId);
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -201,33 +283,49 @@ router.post('/break-start', validateBody(timesheetSchemas.breakAction), checkAge
     if (!timesheet || !timesheet.startTime) {
       return res.status(400).json({
         success: false,
-        message: ERROR_MESSAGES.NOT_CLOCKED_IN
+        message: 'Vous devez d\'abord pointer votre arrivée'
       });
     }
     
-    if (timesheet.breakStart) {
+    if (timesheet.breakStart && !timesheet.breakEnd) {
       return res.status(400).json({
         success: false,
-        message: ERROR_MESSAGES.BREAK_ALREADY_STARTED
+        message: 'Vous êtes déjà en pause'
+      });
+    }
+
+    if (timesheet.endTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Impossible de prendre une pause après avoir pointé le départ'
       });
     }
 
     timesheet.breakStart = new Date();
     await timesheet.save();
 
+    // Charger les relations pour la réponse
+    await timesheet.populate('agency', 'name code client');
+
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.BREAK_START_SUCCESS,
+      message: 'Pause commencée avec succès',
       data: {
-        breakStart: timesheet.breakStart
+        timesheet: {
+          id: timesheet._id,
+          agency: timesheet.agency,
+          breakStart: timesheet.breakStart,
+          reason: reason || 'lunch'
+        }
       }
     });
 
   } catch (error) {
-    console.error('Erreur début pause:', error);
+    console.error('❌ Erreur break-start:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: 'Erreur lors du début de pause',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -242,6 +340,8 @@ router.post('/break-end', validateBody(timesheetSchemas.breakAction), checkAgenc
     const { agencyId } = req.body;
     const userId = req.user.userId;
     
+    console.log('🔄 Break-end pour user:', userId, 'agence:', agencyId);
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -254,7 +354,7 @@ router.post('/break-end', validateBody(timesheetSchemas.breakAction), checkAgenc
     if (!timesheet || !timesheet.breakStart) {
       return res.status(400).json({
         success: false,
-        message: ERROR_MESSAGES.BREAK_NOT_STARTED
+        message: 'Vous devez d\'abord commencer une pause'
       });
     }
     
@@ -268,23 +368,32 @@ router.post('/break-end', validateBody(timesheetSchemas.breakAction), checkAgenc
     timesheet.breakEnd = new Date();
     await timesheet.save();
 
+    // Calculer la durée de pause
     const breakDuration = Math.floor((timesheet.breakEnd - timesheet.breakStart) / (1000 * 60));
+
+    // Charger les relations pour la réponse
+    await timesheet.populate('agency', 'name code client');
 
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.BREAK_END_SUCCESS,
+      message: 'Pause terminée avec succès',
       data: {
-        breakEnd: timesheet.breakEnd,
-        breakDuration: `${breakDuration} minutes`,
-        breakDurationMinutes: breakDuration
+        timesheet: {
+          id: timesheet._id,
+          agency: timesheet.agency,
+          breakStart: timesheet.breakStart,
+          breakEnd: timesheet.breakEnd,
+          breakDuration: `${breakDuration} minutes`
+        }
       }
     });
 
   } catch (error) {
-    console.error('Erreur fin pause:', error);
+    console.error('❌ Erreur break-end:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: 'Erreur lors de la fin de pause',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -299,6 +408,8 @@ router.get('/today-status', async (req, res) => {
     const { agencyId } = req.query;
     const userId = req.user.userId;
     
+    console.log('🔄 Today-status pour user:', userId, 'agence:', agencyId);
+    
     if (!agencyId) {
       return res.status(400).json({
         success: false,
@@ -311,10 +422,10 @@ router.get('/today-status', async (req, res) => {
       agency => agency._id.toString() === agencyId.toString()
     );
 
-    if (!hasAccess) {
+    if (!hasAccess && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
-        message: ERROR_MESSAGES.ACCESS_DENIED
+        message: 'Accès refusé à cette agence'
       });
     }
 
@@ -382,6 +493,7 @@ router.get('/today-status', async (req, res) => {
           isClockedIn: !!timesheet?.startTime && !timesheet?.endTime,
           isClockedOut: !!timesheet?.endTime,
           isOnBreak: !!timesheet?.breakStart && !timesheet?.breakEnd,
+          isNotStarted: !timesheet?.startTime,
           currentWorkedMinutes,
           currentWorkedTime: currentWorkedMinutes > 0 ? 
             `${Math.floor(currentWorkedMinutes / 60)}h${(currentWorkedMinutes % 60).toString().padStart(2, '0')}` : null
@@ -390,10 +502,11 @@ router.get('/today-status', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erreur statut jour:', error);
+    console.error('❌ Erreur today-status:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: 'Erreur lors de la récupération du statut',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -403,9 +516,9 @@ router.get('/today-status', async (req, res) => {
  * @desc    Obtenir l'historique des pointages
  * @access  Preparateur
  */
-router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas.dateRange)), async (req, res) => {
+router.get('/history', async (req, res) => {
   try {
-    const { page, limit, startDate, endDate, agencyId } = req.query;
+    const { page = 1, limit = 20, startDate, endDate, agencyId } = req.query;
     const userId = req.user.userId;
 
     // Dates par défaut (30 derniers jours)
@@ -425,10 +538,10 @@ router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas
         agency => agency._id.toString() === agencyId.toString()
       );
 
-      if (!hasAccess) {
+      if (!hasAccess && req.user.role !== 'admin') {
         return res.status(403).json({
           success: false,
-          message: ERROR_MESSAGES.ACCESS_DENIED
+          message: 'Accès refusé à cette agence'
         });
       }
 
@@ -476,8 +589,8 @@ router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas
           agencyId
         },
         pagination: {
-          page,
-          limit,
+          page: parseInt(page),
+          limit: parseInt(limit),
           totalCount,
           totalPages,
           hasNextPage: page < totalPages,
@@ -487,10 +600,11 @@ router.get('/history', validateQuery(querySchemas.pagination.concat(querySchemas
     });
 
   } catch (error) {
-    console.error('Erreur historique pointages:', error);
+    console.error('❌ Erreur history:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: 'Erreur lors de la récupération de l\'historique',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

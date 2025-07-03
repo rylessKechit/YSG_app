@@ -1,9 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { useEffect } from 'react'; // CORRIGÉ: Import React useEffect
 import { apiClient } from '../api/client';
 
-// CORRIGÉ: Interfaces complètes
+// Types pour le store Auth
 interface Agency {
   id: string;
   name: string;
@@ -11,7 +10,7 @@ interface Agency {
   client: string;
   isDefault?: boolean;
   isActive: boolean;
-  createdAt: Date;
+  createdAt: string;
 }
 
 interface UserStats {
@@ -33,22 +32,17 @@ interface User {
   role: 'preparateur' | 'superviseur' | 'admin';
   agencies: Agency[];
   stats?: UserStats;
-  lastLogin?: Date;
-  createdAt: Date;
-  updatedAt?: Date;
+  lastLogin?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 interface AuthState {
-  // Données utilisateur
   user: User | null;
   token: string | null;
-  
-  // États
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  
-  // Tentatives de connexion
   loginAttempts: number;
   lastLoginAttempt: Date | null;
 }
@@ -59,27 +53,20 @@ interface LoginFormData {
 }
 
 interface AuthStore extends AuthState {
-  // Actions d'authentification
   login: (credentials: LoginFormData) => Promise<void>;
   logout: () => void;
   refreshAuth: () => Promise<void>;
-  
-  // Actions utilisateur
   updateUser: (userData: Partial<User>) => void;
-  
-  // Gestion des erreurs
   clearError: () => void;
-  
-  // Utilitaires
   checkTokenExpiry: () => boolean;
   resetLoginAttempts: () => void;
 }
 
-// CORRIGÉ: Vraie API utilisant le client API configuré
+// API pour l'authentification
 const authApi = {
   login: async (credentials: LoginFormData) => {
     try {
-      console.log('🔑 Tentative de connexion avec API réelle...', credentials.email);
+      console.log('🔑 Tentative de connexion...', credentials.email);
       
       const response = await apiClient.post('/auth/login', {
         email: credentials.email,
@@ -88,68 +75,79 @@ const authApi = {
 
       console.log('✅ Réponse API login:', response.data);
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Erreur de connexion');
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Erreur de connexion');
       }
 
       return {
         user: response.data.data.user,
         token: response.data.data.token
       };
-    } catch (error: any) {
-      console.error('❌ Erreur API login:', error.response?.data || error.message);
-      
-      // Extraire le message d'erreur du backend
-      const errorMessage = error.response?.data?.message || 
-                          error.message || 
-                          'Erreur de connexion';
-      
-      throw new Error(errorMessage);
-    }
-  },
-  
-  getProfile: async (token: string) => {
-    try {
-      const response = await apiClient.get('/auth/me', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Erreur récupération profil');
+    } catch (error: any) {
+      console.error('❌ Erreur login API:', error);
+      
+      if (error.response?.status === 401) {
+        throw new Error('Email ou mot de passe incorrect');
+      } else if (error.response?.status === 403) {
+        throw new Error('Compte désactivé. Contactez votre administrateur.');
+      } else if (error.response?.status >= 500) {
+        throw new Error('Erreur serveur. Veuillez réessayer.');
       }
-
-      return response.data.data.user;
-    } catch (error: any) {
-      console.error('❌ Erreur API getProfile:', error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || 'Erreur récupération profil');
+      
+      throw new Error(error.response?.data?.message || 'Erreur de connexion');
     }
   },
 
   refreshToken: async (token: string) => {
     try {
+      console.log('🔄 Rafraîchissement du token...');
+      
       const response = await apiClient.post('/auth/refresh', {}, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
 
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Erreur rafraîchissement token');
+      if (!response.data?.success) {
+        throw new Error('Token invalide');
       }
 
       return {
-        token: response.data.data.token,
-        user: response.data.data.user
+        user: response.data.data.user,
+        token: response.data.data.token
       };
+
     } catch (error: any) {
-      console.error('❌ Erreur API refreshToken:', error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || 'Erreur rafraîchissement token');
+      console.error('❌ Erreur refresh token:', error);
+      throw new Error('Session expirée');
+    }
+  },
+
+  getProfile: async (token: string) => {
+    try {
+      console.log('👤 Récupération du profil...');
+      
+      const response = await apiClient.get('/auth/me', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (!response.data?.success) {
+        throw new Error('Erreur récupération profil');
+      }
+
+      return response.data.data.user;
+
+    } catch (error: any) {
+      console.error('❌ Erreur get profile:', error);
+      throw new Error('Erreur récupération profil');
     }
   }
 };
 
+// Store Zustand
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
@@ -162,68 +160,65 @@ export const useAuthStore = create<AuthStore>()(
       loginAttempts: 0,
       lastLoginAttempt: null,
 
-      // Connexion avec vraie API
+      // Connexion
       login: async (credentials: LoginFormData) => {
-        const state = get();
-        
-        // Vérifier les tentatives de connexion (protection brute force)
-        if (state.loginAttempts >= 5) {
-          const timeSinceLastAttempt = state.lastLoginAttempt 
-            ? Date.now() - state.lastLoginAttempt.getTime()
-            : 0;
-          
-          if (timeSinceLastAttempt < 15 * 60 * 1000) { // 15 minutes
-            set({ error: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' });
-            return;
-          } else {
-            set({ loginAttempts: 0 });
-          }
-        }
-
-        set({ 
-          isLoading: true, 
-          error: null,
-          loginAttempts: state.loginAttempts + 1,
-          lastLoginAttempt: new Date()
-        });
+        set({ isLoading: true, error: null });
 
         try {
-          // CORRIGÉ: Utiliser la vraie API
-          const response = await authApi.login(credentials);
+          // Vérifier les tentatives de connexion
+          const { loginAttempts, lastLoginAttempt } = get();
+          const now = new Date();
           
-          // Configurer le token pour les futures requêtes
-          if (response.token) {
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
+          if (loginAttempts >= 5 && lastLoginAttempt) {
+            const timeDiff = now.getTime() - lastLoginAttempt.getTime();
+            if (timeDiff < 15 * 60 * 1000) { // 15 minutes
+              throw new Error('Trop de tentatives de connexion. Réessayez dans 15 minutes.');
+            } else {
+              // Reset des tentatives après 15 minutes
+              set({ loginAttempts: 0, lastLoginAttempt: null });
+            }
           }
-          
+
+          console.log('🔐 Connexion en cours...');
+          const { user, token } = await authApi.login(credentials);
+
+          // Configurer le token pour les requêtes suivantes
+          apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
           set({
-            user: response.user,
-            token: response.token,
+            user,
+            token,
             isAuthenticated: true,
             isLoading: false,
             error: null,
-            loginAttempts: 0, // Reset sur succès
+            loginAttempts: 0,
             lastLoginAttempt: null
           });
 
-          console.log('✅ Connexion réussie:', response.user.firstName);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Erreur de connexion';
+          console.log('✅ Connexion réussie:', user);
+
+        } catch (error: any) {
+          console.error('❌ Erreur connexion:', error);
+          
           set({
             user: null,
             token: null,
             isAuthenticated: false,
             isLoading: false,
-            error: errorMessage
+            error: error.message,
+            loginAttempts: get().loginAttempts + 1,
+            lastLoginAttempt: new Date()
           });
-          console.error('❌ Erreur connexion:', errorMessage);
+
           throw error;
         }
       },
 
       // Déconnexion
       logout: () => {
-        // Supprimer le token des headers par défaut
+        console.log('🚪 Déconnexion...');
+        
+        // Nettoyer le token des headers
         delete apiClient.defaults.headers.common['Authorization'];
         
         set({
@@ -235,7 +230,8 @@ export const useAuthStore = create<AuthStore>()(
           loginAttempts: 0,
           lastLoginAttempt: null
         });
-        console.log('🔐 Déconnexion effectuée');
+
+        console.log('✅ Déconnexion réussie');
       },
 
       // Rafraîchir l'authentification
@@ -243,45 +239,45 @@ export const useAuthStore = create<AuthStore>()(
         const { token } = get();
         
         if (!token) {
-          get().logout();
-          return;
+          throw new Error('Aucun token disponible');
         }
 
-        set({ isLoading: true });
+        set({ isLoading: true, error: null });
 
         try {
-          const response = await authApi.refreshToken(token);
-          
-          // Mettre à jour le token dans les headers
-          if (response.token) {
-            apiClient.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
-          }
-          
+          console.log('🔄 Rafraîchissement de l\'authentification...');
+          const { user, token: newToken } = await authApi.refreshToken(token);
+
+          // Mettre à jour le token
+          apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+
           set({
-            token: response.token,
-            user: response.user,
+            user,
+            token: newToken,
+            isAuthenticated: true,
             isLoading: false,
             error: null
           });
 
-          console.log('🔄 Token rafraîchi avec succès');
-        } catch (error) {
-          console.error('❌ Erreur rafraîchissement token:', error);
+          console.log('✅ Authentification rafraîchie');
+
+        } catch (error: any) {
+          console.error('❌ Erreur rafraîchissement auth:', error);
+          
+          // Déconnecter en cas d'erreur
           get().logout();
+          throw error;
         }
       },
 
-      // Mettre à jour les données utilisateur
+      // Mettre à jour l'utilisateur
       updateUser: (userData: Partial<User>) => {
-        const { user } = get();
-        if (user) {
+        const currentUser = get().user;
+        if (currentUser) {
           set({
-            user: {
-              ...user,
-              ...userData,
-              updatedAt: new Date()
-            }
+            user: { ...currentUser, ...userData }
           });
+          console.log('✅ Utilisateur mis à jour:', userData);
         }
       },
 
@@ -293,32 +289,34 @@ export const useAuthStore = create<AuthStore>()(
       // Vérifier l'expiration du token
       checkTokenExpiry: () => {
         const { token } = get();
-        if (!token) return false;
+        
+        if (!token) {
+          return false;
+        }
 
         try {
           // Décoder le JWT pour vérifier l'expiration
           const payload = JSON.parse(atob(token.split('.')[1]));
-          const currentTime = Date.now() / 1000;
+          const now = Date.now() / 1000;
           
-          if (payload.exp < currentTime) {
-            console.log('🔑 Token expiré');
-            get().refreshAuth();
+          if (payload.exp < now) {
+            console.warn('⚠️ Token expiré');
+            get().logout();
             return false;
           }
           
           return true;
         } catch (error) {
           console.error('❌ Erreur vérification token:', error);
+          get().logout();
           return false;
         }
       },
 
       // Reset des tentatives de connexion
       resetLoginAttempts: () => {
-        set({ 
-          loginAttempts: 0, 
-          lastLoginAttempt: null 
-        });
+        set({ loginAttempts: 0, lastLoginAttempt: null });
+        console.log('🔄 Tentatives de connexion réinitialisées');
       }
     }),
     {
@@ -326,38 +324,22 @@ export const useAuthStore = create<AuthStore>()(
       partialize: (state) => ({
         user: state.user,
         token: state.token,
-        isAuthenticated: state.isAuthenticated,
-        loginAttempts: state.loginAttempts,
-        lastLoginAttempt: state.lastLoginAttempt
+        isAuthenticated: state.isAuthenticated
       }),
       onRehydrateStorage: () => (state) => {
-        // Restaurer le token dans les headers après rechargement
-        if (state?.token) {
+        if (state?.token && state?.isAuthenticated) {
+          // Restaurer le token dans les headers
           apiClient.defaults.headers.common['Authorization'] = `Bearer ${state.token}`;
+          
+          // Vérifier l'expiration du token
+          if (!state.checkTokenExpiry()) {
+            console.warn('⚠️ Token expiré lors de la réhydratation');
+            state.logout();
+          } else {
+            console.log('✅ Authentification restaurée depuis le localStorage');
+          }
         }
       }
     }
   )
 );
-
-// CORRIGÉ: Hook pour initialiser l'authentification avec import correct
-export const useAuthInit = () => {
-  const { token, user, isAuthenticated, checkTokenExpiry, logout } = useAuthStore();
-
-  // CORRIGÉ: Utilisation correcte de useEffect
-  useEffect(() => {
-    if (token && user && isAuthenticated) {
-      // Restaurer le token dans les headers
-      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      // Vérifier l'expiration
-      const isValid = checkTokenExpiry();
-      if (!isValid) {
-        logout();
-      }
-    }
-  }, [token, user, isAuthenticated, checkTokenExpiry, logout]);
-};
-
-// Export des types pour utilisation ailleurs
-export type { User, Agency, UserStats, AuthStore, LoginFormData };
