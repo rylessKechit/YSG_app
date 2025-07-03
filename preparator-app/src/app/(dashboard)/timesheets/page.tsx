@@ -30,7 +30,7 @@ export default function TimesheetsPage() {
   const [showHistory, setShowHistory] = useState(false);
   const router = useRouter();
 
-  // CORRIGÉ: Fonction pour obtenir l'agence par défaut
+  // Fonction pour obtenir l'agence par défaut
   const getDefaultAgencyId = (): string => {
     const defaultAgency = user?.agencies?.find((a: any) => a.isDefault) || user?.agencies?.[0];
     return defaultAgency?.id || '';
@@ -77,46 +77,6 @@ export default function TimesheetsPage() {
     }
   };
 
-  const getStatusInfo = (status: TimesheetStatus) => {
-    switch (status.currentStatus) {
-      case 'not_started':
-        return { 
-          label: 'Pas encore pointé', 
-          color: 'text-gray-600', 
-          bgColor: 'bg-gray-100',
-          icon: Clock 
-        };
-      case 'working':
-        return { 
-          label: 'En service', 
-          color: 'text-green-600', 
-          bgColor: 'bg-green-100',
-          icon: Play 
-        };
-      case 'on_break':
-        return { 
-          label: 'En pause', 
-          color: 'text-orange-600', 
-          bgColor: 'bg-orange-100',
-          icon: Coffee 
-        };
-      case 'finished':
-        return { 
-          label: 'Service terminé', 
-          color: 'text-blue-600', 
-          bgColor: 'bg-blue-100',
-          icon: Square 
-        };
-      default:
-        return { 
-          label: 'Statut inconnu', 
-          color: 'text-gray-600', 
-          bgColor: 'bg-gray-100',
-          icon: Clock 
-        };
-    }
-  };
-
   const formatTime = (minutes: number) => {
     if (!minutes || minutes === 0) return '0min';
     const hours = Math.floor(minutes / 60);
@@ -124,10 +84,68 @@ export default function TimesheetsPage() {
     return hours > 0 ? `${hours}h${mins}min` : `${mins}min`;
   };
 
-  const canClockIn = todayStatus?.currentStatus === 'not_started';
-  const canClockOut = todayStatus?.currentStatus === 'working' || todayStatus?.currentStatus === 'on_break';
-  const canStartBreak = todayStatus?.currentStatus === 'working';
-  const canEndBreak = todayStatus?.currentStatus === 'on_break';
+  // CORRIGÉ: Logique de statut basée sur la vraie structure du backend
+  const getStatusInfo = () => {
+    if (!todayStatus) {
+      return {
+        label: 'Chargement...',
+        color: 'text-gray-600',
+        bgColor: 'bg-gray-100'
+      };
+    }
+
+    if (todayStatus.isNotStarted) {
+      return {
+        label: 'Pas encore pointé',
+        color: 'text-gray-600',
+        bgColor: 'bg-gray-100'
+      };
+    }
+
+    if (todayStatus.isOnBreak) {
+      return {
+        label: 'En pause',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100'
+      };
+    }
+
+    if (todayStatus.isClockedOut) {
+      return {
+        label: 'Service terminé',
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-100'
+      };
+    }
+
+    if (todayStatus.isClockedIn) {
+      return {
+        label: 'En service',
+        color: 'text-green-600',
+        bgColor: 'bg-green-100'
+      };
+    }
+
+    return {
+      label: 'Statut inconnu',
+      color: 'text-gray-600',
+      bgColor: 'bg-gray-100'
+    };
+  };
+
+  // CORRIGÉ: Conditions d'activation des boutons basées sur les vrais flags du backend
+  const canClockIn = todayStatus?.isNotStarted || false;
+  const canClockOut = todayStatus?.isClockedIn || todayStatus?.isOnBreak || false;
+  const canStartBreak = todayStatus?.isClockedIn && !todayStatus?.isOnBreak || false;
+  const canEndBreak = todayStatus?.isOnBreak || false;
+
+  console.log('🔍 Debug statut:', {
+    todayStatus,
+    canClockIn,
+    canClockOut,
+    canStartBreak,
+    canEndBreak
+  });
 
   if (isLoading && !todayStatus) {
     return (
@@ -166,7 +184,7 @@ export default function TimesheetsPage() {
     );
   }
 
-  const statusInfo = todayStatus ? getStatusInfo(todayStatus) : null;
+  const statusInfo = getStatusInfo();
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -195,110 +213,107 @@ export default function TimesheetsPage() {
 
       {/* Statut actuel */}
       <div className="bg-white mx-4 mt-4 p-6 rounded-lg shadow-sm">
-        {statusInfo && (
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center">
-              <statusInfo.icon className="w-6 h-6 mr-3 text-gray-400" />
-              <h2 className="text-lg font-semibold text-gray-900">Statut actuel</h2>
-            </div>
-            <div className={`px-3 py-1 rounded-full text-sm font-medium ${statusInfo.color} ${statusInfo.bgColor}`}>
-              {statusInfo.label}
-            </div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <Clock className="w-6 h-6 mr-3 text-gray-400" />
+            <h2 className="text-lg font-semibold text-gray-900">Statut actuel</h2>
           </div>
-        )}
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${statusInfo.color} ${statusInfo.bgColor}`}>
+            {statusInfo.label}
+          </div>
+        </div>
 
-        {todayStatus && (
-          <>
-            {/* Métriques de temps */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">
-                  {formatTime(todayStatus.totalWorkedMinutes)}
-                </div>
-                <div className="text-xs text-gray-600">Temps travaillé</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">
-                  {formatTime(todayStatus.breakDurationMinutes)}
-                </div>
-                <div className="text-xs text-gray-600">Temps de pause</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {todayStatus.startTime ? 
-                    format(new Date(todayStatus.startTime), 'HH:mm') : 
-                    '--:--'
-                  }
-                </div>
-                <div className="text-xs text-gray-600">Arrivée</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-red-600">
-                  {todayStatus.endTime ? 
-                    format(new Date(todayStatus.endTime), 'HH:mm') : 
-                    '--:--'
-                  }
-                </div>
-                <div className="text-xs text-gray-600">Départ</div>
-              </div>
+        {/* Métriques de temps */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {todayStatus?.currentWorkedTime || formatTime(todayStatus?.currentWorkedMinutes || 0)}
             </div>
-
-            {/* Boutons d'actions */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <button
-                onClick={() => handleAction('clock-in', () => clockIn(getDefaultAgencyId()))}
-                disabled={!canClockIn || actionLoading === 'clock-in'}
-                className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
-                  canClockIn && actionLoading !== 'clock-in' 
-                    ? 'bg-green-600 text-white hover:bg-green-700' 
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                <Play className="w-5 h-5 mr-2" />
-                {actionLoading === 'clock-in' ? 'En cours...' : 'Arrivée'}
-              </button>
-
-              <button
-                onClick={() => handleAction('clock-out', () => clockOut(getDefaultAgencyId()))}
-                disabled={!canClockOut || actionLoading === 'clock-out'}
-                className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
-                  canClockOut && actionLoading !== 'clock-out' 
-                    ? 'bg-red-600 text-white hover:bg-red-700' 
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                <Square className="w-5 h-5 mr-2" />
-                {actionLoading === 'clock-out' ? 'En cours...' : 'Départ'}
-              </button>
-
-              <button
-                onClick={() => handleAction('break-start', () => startBreak(getDefaultAgencyId()))}
-                disabled={!canStartBreak || actionLoading === 'break-start'}
-                className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
-                  canStartBreak && actionLoading !== 'break-start' 
-                    ? 'bg-orange-600 text-white hover:bg-orange-700' 
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                <Coffee className="w-5 h-5 mr-2" />
-                {actionLoading === 'break-start' ? 'En cours...' : 'Pause'}
-              </button>
-
-              <button
-                onClick={() => handleAction('break-end', () => endBreak(getDefaultAgencyId()))}
-                disabled={!canEndBreak || actionLoading === 'break-end'}
-                className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
-                  canEndBreak && actionLoading !== 'break-end' 
-                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                <Play className="w-5 h-5 mr-2" />
-                {actionLoading === 'break-end' ? 'En cours...' : 'Reprendre'}
-              </button>
+            <div className="text-xs text-gray-600">Temps travaillé</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">
+              {todayStatus?.timesheet?.breakStart && todayStatus?.timesheet?.breakEnd ? 
+                formatTime(Math.floor((new Date(todayStatus.timesheet.breakEnd).getTime() - new Date(todayStatus.timesheet.breakStart).getTime()) / (1000 * 60))) :
+                '0min'
+              }
             </div>
-          </>
-        )}
+            <div className="text-xs text-gray-600">Temps de pause</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-600">
+              {todayStatus?.timesheet?.startTime ? 
+                format(new Date(todayStatus.timesheet.startTime), 'HH:mm') : 
+                '--:--'
+              }
+            </div>
+            <div className="text-xs text-gray-600">Arrivée</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-red-600">
+              {todayStatus?.timesheet?.endTime ? 
+                format(new Date(todayStatus.timesheet.endTime), 'HH:mm') : 
+                '--:--'
+              }
+            </div>
+            <div className="text-xs text-gray-600">Départ</div>
+          </div>
+        </div>
+
+        {/* Boutons d'actions */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <button
+            onClick={() => handleAction('clock-in', () => clockIn(getDefaultAgencyId()))}
+            disabled={!canClockIn || actionLoading === 'clock-in'}
+            className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
+              canClockIn && actionLoading !== 'clock-in' 
+                ? 'bg-green-600 text-white hover:bg-green-700' 
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            <Play className="w-5 h-5 mr-2" />
+            {actionLoading === 'clock-in' ? 'En cours...' : 'Arrivée'}
+          </button>
+
+          <button
+            onClick={() => handleAction('clock-out', () => clockOut(getDefaultAgencyId()))}
+            disabled={!canClockOut || actionLoading === 'clock-out'}
+            className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
+              canClockOut && actionLoading !== 'clock-out' 
+                ? 'bg-red-600 text-white hover:bg-red-700' 
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            <Square className="w-5 h-5 mr-2" />
+            {actionLoading === 'clock-out' ? 'En cours...' : 'Départ'}
+          </button>
+
+          <button
+            onClick={() => handleAction('break-start', () => startBreak(getDefaultAgencyId()))}
+            disabled={!canStartBreak || actionLoading === 'break-start'}
+            className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
+              canStartBreak && actionLoading !== 'break-start' 
+                ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            <Coffee className="w-5 h-5 mr-2" />
+            {actionLoading === 'break-start' ? 'En cours...' : 'Pause'}
+          </button>
+
+          <button
+            onClick={() => handleAction('break-end', () => endBreak(getDefaultAgencyId()))}
+            disabled={!canEndBreak || actionLoading === 'break-end'}
+            className={`flex items-center justify-center p-4 rounded-lg font-medium transition-colors ${
+              canEndBreak && actionLoading !== 'break-end' 
+                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            <Play className="w-5 h-5 mr-2" />
+            {actionLoading === 'break-end' ? 'En cours...' : 'Reprendre'}
+          </button>
+        </div>
       </div>
 
       {/* Historique toggle */}

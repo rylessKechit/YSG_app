@@ -1,26 +1,33 @@
-// Types pour le système de pointage
+// Types pour le système de pointage - CORRIGÉ selon le vrai backend
 
 export interface TimesheetStatus {
-  // Statut actuel
-  currentStatus: 'not_started' | 'working' | 'on_break' | 'finished';
+  // Structure VRAIE retournée par le backend
+  timesheet: {
+    id?: string;
+    agency: {
+      id: string;
+      name: string;
+      code: string;
+    } | null;
+    date: string;
+    startTime: string | null;
+    endTime: string | null;
+    breakStart: string | null;
+    breakEnd: string | null;
+    totalWorkedMinutes: number;
+    status: string;
+    delays?: {
+      startDelay: number;
+    };
+  } | null;
   
-  // Horaires du jour
-  startTime: string | null;
-  endTime: string | null;
-  breakStart: string | null;
-  breakEnd: string | null;
-  
-  // Temps calculés
-  totalWorkedMinutes: number;
-  breakDurationMinutes: number;
-  
-  // Métadonnées
-  date: string;
-  agency?: {
-    id: string;
-    name: string;
-    code: string;
-  };
+  // Statuts calculés par le backend
+  isNotStarted: boolean;
+  isClockedIn: boolean;
+  isClockedOut: boolean;
+  isOnBreak: boolean;
+  currentWorkedMinutes: number;
+  currentWorkedTime: string | null;
 }
 
 export interface TimesheetEntry {
@@ -58,7 +65,7 @@ export interface TimesheetEntry {
   updatedAt: string;
 }
 
-// Types pour les actions API - CORRIGÉ: ajout agencyId
+// Types pour les actions API
 export interface ClockInData {
   agencyId?: string;
   timestamp?: string;
