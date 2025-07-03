@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { timesheetApi, handleApiError } from '../api';
-import { TimesheetStatus, TimesheetEntry } from '../types/timesheet';
+import { TimesheetStatus, TimesheetEntry, TimesheetHistoryParams } from '../types/timesheet';
 
 interface TimesheetState {
   // Données
@@ -14,19 +14,19 @@ interface TimesheetState {
 }
 
 interface TimesheetStore extends TimesheetState {
-  // Actions principales
-  getTodayStatus: () => Promise<void>;
-  clockIn: () => Promise<void>;
-  clockOut: (notes?: string) => Promise<void>;
-  startBreak: () => Promise<void>;
-  endBreak: () => Promise<void>;
+  // Actions principales - CORRIGÉ: getTodayStatus prend agencyId
+  getTodayStatus: (agencyId: string) => Promise<void>;
+  clockIn: (agencyId: string) => Promise<void>;
+  clockOut: (agencyId: string, notes?: string) => Promise<void>;
+  startBreak: (agencyId: string) => Promise<void>;
+  endBreak: (agencyId: string) => Promise<void>;
   
   // Historique
-  getHistory: (params?: { startDate?: string; endDate?: string }) => Promise<void>;
+  getHistory: (params?: TimesheetHistoryParams) => Promise<void>;
   
   // Utilitaires
   clearError: () => void;
-  refreshStatus: () => Promise<void>;
+  refreshStatus: (agencyId: string) => Promise<void>;
 }
 
 export const useTimesheetStore = create<TimesheetStore>()(
@@ -38,12 +38,13 @@ export const useTimesheetStore = create<TimesheetStore>()(
       isLoading: false,
       error: null,
 
-      // Récupérer le statut du jour
-      getTodayStatus: async () => {
+      // CORRIGÉ: Récupérer le statut du jour avec agencyId
+      getTodayStatus: async (agencyId: string) => {
         set({ isLoading: true, error: null });
         
         try {
-          const status = await timesheetApi.getTodayStatus();
+          console.log('🔄 Récupération statut avec agencyId:', agencyId);
+          const status = await timesheetApi.getTodayStatus(agencyId);
           set({ 
             todayStatus: status,
             isLoading: false 
@@ -60,14 +61,14 @@ export const useTimesheetStore = create<TimesheetStore>()(
       },
 
       // Pointer l'arrivée
-      clockIn: async () => {
+      clockIn: async (agencyId: string) => {
         set({ isLoading: true, error: null });
         
         try {
-          await timesheetApi.clockIn();
+          await timesheetApi.clockIn(agencyId);
           
           // Rafraîchir le statut après pointage
-          await get().getTodayStatus();
+          await get().getTodayStatus(agencyId);
           
           console.log('✅ Pointage arrivée réussi');
         } catch (error) {
@@ -82,14 +83,14 @@ export const useTimesheetStore = create<TimesheetStore>()(
       },
 
       // Pointer le départ
-      clockOut: async (notes?: string) => {
+      clockOut: async (agencyId: string, notes?: string) => {
         set({ isLoading: true, error: null });
         
         try {
-          await timesheetApi.clockOut(notes);
+          await timesheetApi.clockOut(agencyId, notes);
           
           // Rafraîchir le statut après pointage
-          await get().getTodayStatus();
+          await get().getTodayStatus(agencyId);
           
           console.log('✅ Pointage départ réussi');
         } catch (error) {
@@ -103,17 +104,17 @@ export const useTimesheetStore = create<TimesheetStore>()(
         }
       },
 
-      // Commencer une pause
-      startBreak: async () => {
+      // Commencer la pause
+      startBreak: async (agencyId: string) => {
         set({ isLoading: true, error: null });
         
         try {
-          await timesheetApi.startBreak();
+          await timesheetApi.startBreak(agencyId);
           
           // Rafraîchir le statut après pointage
-          await get().getTodayStatus();
+          await get().getTodayStatus(agencyId);
           
-          console.log('✅ Pause commencée');
+          console.log('✅ Début pause réussi');
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
@@ -125,17 +126,17 @@ export const useTimesheetStore = create<TimesheetStore>()(
         }
       },
 
-      // Terminer une pause
-      endBreak: async () => {
+      // Terminer la pause
+      endBreak: async (agencyId: string) => {
         set({ isLoading: true, error: null });
         
         try {
-          await timesheetApi.endBreak();
+          await timesheetApi.endBreak(agencyId);
           
           // Rafraîchir le statut après pointage
-          await get().getTodayStatus();
+          await get().getTodayStatus(agencyId);
           
-          console.log('✅ Pause terminée');
+          console.log('✅ Fin pause réussie');
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
@@ -148,34 +149,43 @@ export const useTimesheetStore = create<TimesheetStore>()(
       },
 
       // Récupérer l'historique
-      getHistory: async (params?: { startDate?: string; endDate?: string }) => {
-        set({ error: null });
+      getHistory: async (params?: TimesheetHistoryParams) => {
+        set({ isLoading: true, error: null });
         
         try {
           const history = await timesheetApi.getHistory(params);
-          set({ history });
-          console.log('✅ Historique récupéré:', history.length, 'entrées');
+          set({ 
+            history,
+            isLoading: false 
+          });
+          console.log('✅ Historique récupéré:', history);
         } catch (error) {
           const errorMessage = handleApiError(error);
-          set({ error: errorMessage });
+          set({ 
+            history: null,
+            isLoading: false, 
+            error: errorMessage 
+          });
           console.error('❌ Erreur récupération historique:', errorMessage);
         }
       },
 
-      // Effacer l'erreur
-      clearError: () => set({ error: null }),
+      // Nettoyer les erreurs
+      clearError: () => {
+        set({ error: null });
+      },
 
       // Rafraîchir le statut
-      refreshStatus: async () => {
-        await get().getTodayStatus();
+      refreshStatus: async (agencyId: string) => {
+        await get().getTodayStatus(agencyId);
       }
     }),
     {
       name: 'timesheet-store',
       partialize: (state) => ({
-        // Persister seulement les données utiles
         todayStatus: state.todayStatus,
-      }),
+        history: state.history
+      })
     }
   )
 );

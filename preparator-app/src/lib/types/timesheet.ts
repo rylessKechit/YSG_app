@@ -58,8 +58,9 @@ export interface TimesheetEntry {
   updatedAt: string;
 }
 
-// Types pour les actions API
+// Types pour les actions API - CORRIGÉ: ajout agencyId
 export interface ClockInData {
+  agencyId?: string;
   timestamp?: string;
   location?: {
     latitude: number;
@@ -68,6 +69,7 @@ export interface ClockInData {
 }
 
 export interface ClockOutData {
+  agencyId?: string;
   timestamp?: string;
   notes?: string;
   location?: {
@@ -77,6 +79,7 @@ export interface ClockOutData {
 }
 
 export interface BreakData {
+  agencyId?: string;
   timestamp?: string;
   type?: 'start' | 'end';
 }

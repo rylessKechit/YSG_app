@@ -9,24 +9,28 @@ import {
 } from '../types/timesheet';
 
 export const timesheetApi = {
-  // Récupérer le statut du jour
-  getTodayStatus: async (): Promise<TimesheetStatus> => {
-    const response = await apiClient.get('/timesheets/today-status');
+  // CORRIGÉ: Récupérer le statut du jour avec agencyId en query param
+  getTodayStatus: async (agencyId: string): Promise<TimesheetStatus> => {
+    const response = await apiClient.get('/timesheets/today-status', {
+      params: { agencyId }
+    });
     return response.data.data;
   },
 
-  // Pointer l'arrivée
-  clockIn: async (data?: ClockInData): Promise<void> => {
+  // Pointer l'arrivée - backend attend agencyId dans body
+  clockIn: async (agencyId: string, data?: ClockInData): Promise<void> => {
     const response = await apiClient.post('/timesheets/clock-in', {
+      agencyId,
       timestamp: data?.timestamp || new Date().toISOString(),
       location: data?.location
     });
     return response.data;
   },
 
-  // Pointer le départ
-  clockOut: async (notes?: string, data?: ClockOutData): Promise<void> => {
+  // Pointer le départ - backend attend agencyId dans body
+  clockOut: async (agencyId: string, notes?: string, data?: ClockOutData): Promise<void> => {
     const response = await apiClient.post('/timesheets/clock-out', {
+      agencyId,
       timestamp: data?.timestamp || new Date().toISOString(),
       notes: notes,
       location: data?.location
@@ -34,17 +38,19 @@ export const timesheetApi = {
     return response.data;
   },
 
-  // Commencer une pause
-  startBreak: async (data?: BreakData): Promise<void> => {
+  // Commencer une pause - backend attend agencyId dans body
+  startBreak: async (agencyId: string, data?: BreakData): Promise<void> => {
     const response = await apiClient.post('/timesheets/break-start', {
+      agencyId,
       timestamp: data?.timestamp || new Date().toISOString()
     });
     return response.data;
   },
 
-  // Terminer une pause
-  endBreak: async (data?: BreakData): Promise<void> => {
+  // Terminer une pause - backend attend agencyId dans body
+  endBreak: async (agencyId: string, data?: BreakData): Promise<void> => {
     const response = await apiClient.post('/timesheets/break-end', {
+      agencyId,
       timestamp: data?.timestamp || new Date().toISOString()
     });
     return response.data;

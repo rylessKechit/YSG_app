@@ -1,6 +1,10 @@
-// src/lib/stores/schedule.ts
 import { create } from 'zustand';
-import { scheduleApi, timesheetApi, handleApiError } from '../api/client';
+import { timesheetApi, handleApiError } from '../api';
+import { TimesheetStatus } from '../types/timesheet';
+
+// CORRIGÉ: Création d'un scheduleApi temporaire ou utilisation directe
+// Si scheduleApi n'existe pas, on peut utiliser profileApi
+import { profileApi } from '../api/profileApi';
 
 interface ScheduleState {
   // Planning du jour
@@ -8,7 +12,7 @@ interface ScheduleState {
   weekSchedule: any[] | null;
   
   // Statut pointage
-  todayStatus: any | null;
+  todayStatus: TimesheetStatus | null;
   
   // États de chargement
   isLoadingSchedule: boolean;
@@ -21,12 +25,12 @@ interface ScheduleStore extends ScheduleState {
   getTodaySchedule: () => Promise<void>;
   getWeekSchedule: (date?: string) => Promise<void>;
   
-  // Actions pointage
+  // Actions pointage - CORRIGÉ: ajout paramètre agencyId
   getTodayStatus: () => Promise<void>;
   clockIn: (agencyId: string) => Promise<void>;
-  clockOut: (notes?: string) => Promise<void>;
-  startBreak: () => Promise<void>;
-  endBreak: () => Promise<void>;
+  clockOut: (agencyId: string, notes?: string) => Promise<void>;
+  startBreak: (agencyId: string) => Promise<void>;
+  endBreak: (agencyId: string) => Promise<void>;
   
   // Utilitaires
   clearError: () => void;
@@ -47,7 +51,10 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     set({ isLoadingSchedule: true, error: null });
     
     try {
-      const schedule = await scheduleApi.getTodaySchedule();
+      // CORRIGÉ: Utilisation de profileApi en attendant scheduleApi
+      const dashboardData = await profileApi.getDashboard();
+      const schedule = dashboardData.today.schedule;
+      
       set({ 
         todaySchedule: schedule,
         isLoadingSchedule: false 
@@ -69,9 +76,9 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     set({ isLoadingSchedule: true, error: null });
     
     try {
-      const weekData = await scheduleApi.getWeekSchedule(date);
+      const weekData = await profileApi.getWeekSchedule(date);
       set({ 
-        weekSchedule: weekData.weekSchedule,
+        weekSchedule: weekData.weekSchedule || weekData,
         isLoadingSchedule: false 
       });
       console.log('✅ Planning semaine récupéré');
@@ -108,12 +115,12 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     }
   },
 
-  // Pointer l'arrivée
+  // Pointer l'arrivée - CORRIGÉ: ajout paramètre agencyId
   clockIn: async (agencyId: string) => {
     set({ isLoadingStatus: true, error: null });
     
     try {
-      const result = await timesheetApi.clockIn(agencyId);
+      await timesheetApi.clockIn(agencyId);
       
       // Rafraîchir le statut après pointage
       await get().getTodayStatus();
@@ -130,12 +137,12 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     }
   },
 
-  // Pointer le départ
-  clockOut: async (notes?: string) => {
+  // Pointer le départ - CORRIGÉ: ajout paramètre agencyId
+  clockOut: async (agencyId: string, notes?: string) => {
     set({ isLoadingStatus: true, error: null });
     
     try {
-      await timesheetApi.clockOut(notes);
+      await timesheetApi.clockOut(agencyId, notes);
       
       // Rafraîchir le statut après pointage
       await get().getTodayStatus();
@@ -152,12 +159,12 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     }
   },
 
-  // Commencer la pause
-  startBreak: async () => {
+  // Commencer la pause - CORRIGÉ: ajout paramètre agencyId
+  startBreak: async (agencyId: string) => {
     set({ isLoadingStatus: true, error: null });
     
     try {
-      await timesheetApi.startBreak();
+      await timesheetApi.startBreak(agencyId);
       
       // Rafraîchir le statut après pointage
       await get().getTodayStatus();
@@ -174,12 +181,12 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     }
   },
 
-  // Terminer la pause
-  endBreak: async () => {
+  // Terminer la pause - CORRIGÉ: ajout paramètre agencyId
+  endBreak: async (agencyId: string) => {
     set({ isLoadingStatus: true, error: null });
     
     try {
-      await timesheetApi.endBreak();
+      await timesheetApi.endBreak(agencyId);
       
       // Rafraîchir le statut après pointage
       await get().getTodayStatus();

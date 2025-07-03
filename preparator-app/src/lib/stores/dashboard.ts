@@ -1,21 +1,120 @@
-// src/lib/stores/dashboard.ts
 import { create } from 'zustand';
 import { profileApi, timesheetApi, handleApiError } from '../api';
 
+// CORRIGÉ: Types basés sur la vraie structure de l'API backend
+export interface DashboardData {
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: string;
+    agencies: Array<{
+      id: string;
+      name: string;
+      code: string;
+      client: string;
+      isDefault?: boolean;
+    }>;
+    stats?: {
+      totalPreparations: number;
+      onTimeRate: number;
+      averageTime: number;
+      lastCalculated: string | null;
+    };
+  };
+  today: {
+    // Planning d'aujourd'hui - structure correcte selon l'API
+    schedule: {
+      id: string;
+      agency: {
+        id: string;
+        name: string;
+        code: string;
+        client: string;
+      };
+      startTime: string;
+      endTime: string;
+      breakStart?: string;
+      breakEnd?: string;
+      notes?: string;
+      workingDuration: number;
+      formatted: any;
+    } | null;
+    
+    // Timesheet d'aujourd'hui
+    timesheet: {
+      id?: string;
+      agency: {
+        id: string;
+        name: string;
+        code: string;
+        client: string;
+      };
+      startTime: string | null;
+      endTime: string | null;
+      breakStart: string | null;
+      breakEnd: string | null;
+      delays: {
+        startDelay: number;
+      };
+      totalWorkedMinutes: number;
+      status: 'incomplete' | 'complete' | 'pending';
+    } | null;
+    
+    // Préparation en cours
+    currentPreparation: {
+      id: string;
+      vehicle: {
+        licensePlate: string;
+        brand: string;
+        model: string;
+      };
+      agency: {
+        id: string;
+        name: string;
+        code: string;
+      };
+      startTime: string;
+      currentDuration: number;
+      progress: number;
+    } | null;
+    
+    // Statut actuel calculé
+    currentStatus: string;
+  };
+  weekStats: {
+    period: {
+      start: Date;
+      end: Date;
+    };
+    preparations: number;
+    onTimePreparations: number;
+    punctualDays: number;
+    onTimeRate: number;
+    punctualityRate: number;
+  };
+  recentActivity: Array<{
+    id: string;
+    vehicle: any;
+    agency: any;
+    date: Date;
+    duration: number;
+    isOnTime: boolean;
+    status: string;
+    completedSteps: number;
+    totalSteps: number;
+  }>;
+}
+
 interface DashboardState {
-  // Données du dashboard
-  dashboardData: any | null;
-  
-  // États de chargement
+  dashboardData: DashboardData | null;
   isLoading: boolean;
   error: string | null;
-  
-  // Agence sélectionnée pour les actions
   selectedAgencyId: string | null;
 }
 
 interface DashboardStore extends DashboardState {
-  // Actions
   loadDashboard: () => Promise<void>;
   clockIn: (agencyId: string) => Promise<void>;
   clockOut: (agencyId: string, notes?: string) => Promise<void>;
@@ -26,20 +125,21 @@ interface DashboardStore extends DashboardState {
 }
 
 export const useDashboardStore = create<DashboardStore>((set, get) => ({
-  // État initial
   dashboardData: null,
   isLoading: false,
   error: null,
   selectedAgencyId: null,
 
-  // Charger toutes les données du dashboard
   loadDashboard: async () => {
     set({ isLoading: true, error: null });
     
     try {
-      const data = await profileApi.getDashboard();
+      console.log('🔄 Chargement dashboard depuis /api/profile/dashboard...');
       
-      // Extraire l'agence par défaut si disponible
+      const data = await profileApi.getDashboard();
+      console.log('📄 Données dashboard reçues:', data);
+      
+      // Extraire l'agence par défaut
       const defaultAgency = data.user?.agencies?.find((a: any) => a.isDefault) || data.user?.agencies?.[0];
       
       set({ 
@@ -48,7 +148,19 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         isLoading: false 
       });
       
-      console.log('✅ Dashboard chargé:', data);
+      console.log('✅ Dashboard chargé avec succès');
+      
+      // Log spécifique pour le planning
+      if (data.today?.schedule) {
+        console.log('📅 Planning trouvé:', {
+          agence: data.today.schedule.agency.name,
+          horaires: `${data.today.schedule.startTime} - ${data.today.schedule.endTime}`,
+          pause: data.today.schedule.breakStart ? `${data.today.schedule.breakStart} - ${data.today.schedule.breakEnd}` : 'Aucune'
+        });
+      } else {
+        console.log('📅 Aucun planning trouvé pour aujourd\'hui');
+      }
+      
     } catch (error) {
       const errorMessage = handleApiError(error);
       set({ 
@@ -60,16 +172,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  // Pointer l'arrivée
   clockIn: async (agencyId: string) => {
     set({ isLoading: true, error: null });
     
     try {
       await timesheetApi.clockIn(agencyId);
-      
-      // Recharger le dashboard après le pointage
       await get().loadDashboard();
-      
       console.log('✅ Pointage arrivée réussi');
     } catch (error) {
       const errorMessage = handleApiError(error);
@@ -82,16 +190,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  // Pointer le départ
   clockOut: async (agencyId: string, notes?: string) => {
     set({ isLoading: true, error: null });
     
     try {
       await timesheetApi.clockOut(agencyId, notes);
-      
-      // Recharger le dashboard après le pointage
       await get().loadDashboard();
-      
       console.log('✅ Pointage départ réussi');
     } catch (error) {
       const errorMessage = handleApiError(error);
@@ -104,16 +208,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  // Commencer la pause
   startBreak: async (agencyId: string) => {
     set({ isLoading: true, error: null });
     
     try {
       await timesheetApi.startBreak(agencyId);
-      
-      // Recharger le dashboard après le pointage
       await get().loadDashboard();
-      
       console.log('✅ Début pause réussi');
     } catch (error) {
       const errorMessage = handleApiError(error);
@@ -126,16 +226,12 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  // Terminer la pause
   endBreak: async (agencyId: string) => {
     set({ isLoading: true, error: null });
     
     try {
       await timesheetApi.endBreak(agencyId);
-      
-      // Recharger le dashboard après le pointage
       await get().loadDashboard();
-      
       console.log('✅ Fin pause réussie');
     } catch (error) {
       const errorMessage = handleApiError(error);
@@ -148,12 +244,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
 
-  // Définir l'agence sélectionnée
   setSelectedAgency: (agencyId: string) => {
     set({ selectedAgencyId: agencyId });
   },
 
-  // Nettoyer les erreurs
   clearError: () => {
     set({ error: null });
   }

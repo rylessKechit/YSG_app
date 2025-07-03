@@ -1,83 +1,137 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-
-export interface Notification {
-  id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-  title: string;
-  message?: string;
-  duration?: number;
-}
+import { Notification, ThemeMode } from '../types';
 
 interface AppState {
+  // Thème
+  theme: ThemeMode;
+  
   // Notifications
   notifications: Notification[];
   
-  // États globaux
+  // État de connexion
   isOnline: boolean;
-  lastSync: string | null;
   
-  // Configuration
-  theme: 'light' | 'dark';
-  language: 'fr' | 'en';
+  // État global de chargement
+  isLoading: boolean;
+  
+  // Erreur globale
+  error: string | null;
+  
+  // Paramètres utilisateur
+  userPreferences: {
+    language: 'fr' | 'en';
+    autoRefresh: boolean;
+    soundEnabled: boolean;
+  };
 }
 
 interface AppStore extends AppState {
+  // Actions thème
+  setTheme: (theme: ThemeMode) => void;
+  
   // Actions notifications
-  addNotification: (notification: Omit<Notification, 'id'>) => void;
+  addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => void;
   removeNotification: (id: string) => void;
-  clearNotifications: () => void;
+  markNotificationAsRead: (id: string) => void;
+  clearAllNotifications: () => void;
   
-  // Actions états
-  setOnlineStatus: (online: boolean) => void;
-  updateLastSync: () => void;
+  // Actions état réseau
+  setOnlineStatus: (isOnline: boolean) => void;
   
-  // Actions configuration
-  setTheme: (theme: 'light' | 'dark') => void;
-  setLanguage: (language: 'fr' | 'en') => void;
+  // Actions chargement global
+  setLoading: (isLoading: boolean) => void;
+  
+  // Actions erreur globale
+  setError: (error: string | null) => void;
+  clearError: () => void;
+  
+  // Actions préférences
+  updateUserPreferences: (preferences: Partial<AppState['userPreferences']>) => void;
 }
 
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
       // État initial
+      theme: 'system',
       notifications: [],
       isOnline: true,
-      lastSync: null,
-      theme: 'light',
-      language: 'fr',
+      isLoading: false,
+      error: null,
+      userPreferences: {
+        language: 'fr',
+        autoRefresh: true,
+        soundEnabled: true,
+      },
 
-      // Ajouter une notification
+      // Actions thème
+      setTheme: (theme: ThemeMode) => {
+        set({ theme });
+        
+        // Appliquer le thème au DOM
+        if (typeof window !== 'undefined') {
+          const root = window.document.documentElement;
+          
+          if (theme === 'dark') {
+            root.classList.add('dark');
+          } else if (theme === 'light') {
+            root.classList.remove('dark');
+          } else {
+            // Système - détecter la préférence du système
+            const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (systemPrefersDark) {
+              root.classList.add('dark');
+            } else {
+              root.classList.remove('dark');
+            }
+          }
+        }
+      },
+
+      // Actions notifications
       addNotification: (notification) => {
-        const id = `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const newNotification = {
+        const newNotification: Notification = {
           ...notification,
-          id,
-          duration: notification.duration || 5000 // 5 secondes par défaut
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          createdAt: new Date(),
         };
         
         set((state) => ({
-          notifications: [...state.notifications, newNotification]
+          notifications: [newNotification, ...state.notifications].slice(0, 10) // Limiter à 10 notifications
         }));
+        
+        // Auto-remove après durée si spécifiée
+        if (notification.duration && notification.duration > 0) {
+          setTimeout(() => {
+            get().removeNotification(newNotification.id);
+          }, notification.duration);
+        }
       },
 
-      // Supprimer une notification
-      removeNotification: (id) => {
+      removeNotification: (id: string) => {
         set((state) => ({
-          notifications: state.notifications.filter(n => n.id !== id)
+          notifications: state.notifications.filter(notification => notification.id !== id)
         }));
       },
 
-      // Vider toutes les notifications
-      clearNotifications: () => {
+      markNotificationAsRead: (id: string) => {
+        set((state) => ({
+          notifications: state.notifications.map(notification =>
+            notification.id === id ? { ...notification, read: true } : notification
+          )
+        }));
+      },
+
+      clearAllNotifications: () => {
         set({ notifications: [] });
       },
 
-      // Mettre à jour le statut en ligne
-      setOnlineStatus: (online) => {
-        set({ isOnline: online });
+      // Actions état réseau
+      setOnlineStatus: (isOnline: boolean) => {
+        set({ isOnline });
         
-        if (online) {
+        if (isOnline) {
           get().addNotification({
             type: 'success',
             title: 'Connexion rétablie',
@@ -87,40 +141,55 @@ export const useAppStore = create<AppStore>()(
         } else {
           get().addNotification({
             type: 'warning',
-            title: 'Connexion perdue',
-            message: 'Vous êtes hors ligne. Certaines fonctions peuvent être limitées.',
+            title: 'Hors ligne',
+            message: 'Vérifiez votre connexion internet',
             duration: 5000
           });
         }
       },
 
-      // Mettre à jour la dernière synchronisation
-      updateLastSync: () => {
-        set({ lastSync: new Date().toISOString() });
+      // Actions chargement global
+      setLoading: (isLoading: boolean) => {
+        set({ isLoading });
       },
 
-      // Changer le thème
-      setTheme: (theme) => {
-        set({ theme });
+      // Actions erreur globale
+      setError: (error: string | null) => {
+        set({ error });
         
-        // Appliquer le thème à l'élément root
-        if (typeof window !== 'undefined') {
-          document.documentElement.classList.toggle('dark', theme === 'dark');
+        if (error) {
+          get().addNotification({
+            type: 'error',
+            title: 'Erreur',
+            message: error,
+            duration: 5000
+          });
         }
       },
 
-      // Changer la langue
-      setLanguage: (language) => {
-        set({ language });
+      clearError: () => {
+        set({ error: null });
+      },
+
+      // Actions préférences
+      updateUserPreferences: (preferences) => {
+        set((state) => ({
+          userPreferences: {
+            ...state.userPreferences,
+            ...preferences
+          }
+        }));
       }
     }),
     {
       name: 'app-store',
       partialize: (state) => ({
         theme: state.theme,
-        language: state.language,
-        lastSync: state.lastSync
-      }),
+        userPreferences: state.userPreferences
+      })
     }
   )
 );
+
+// Export du type Notification pour les autres composants
+export type { Notification } from '../types';

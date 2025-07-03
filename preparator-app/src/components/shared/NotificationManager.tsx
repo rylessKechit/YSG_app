@@ -2,7 +2,25 @@
 
 import React, { useEffect } from 'react';
 import { X, CheckCircle, AlertCircle, XCircle, Info } from 'lucide-react';
-import { useAppStore, Notification } from '@/lib/stores/app';
+import { useAppStore } from '@/lib/stores/app';
+
+// CORRIGÉ: Définition du type Notification
+interface Notification {
+  id: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  title: string;
+  message: string;
+  duration?: number;
+  read?: boolean;
+  actions?: NotificationAction[];
+  createdAt: Date;
+}
+
+interface NotificationAction {
+  label: string;
+  action: () => void;
+  variant?: 'default' | 'destructive';
+}
 
 export function NotificationManager() {
   const { notifications, removeNotification } = useAppStore();
@@ -55,7 +73,7 @@ export function NotificationManager() {
 interface NotificationItemProps {
   notification: Notification;
   onRemove: (id: string) => void;
-  getIcon: (type: string) => JSX.Element;
+  getIcon: (type: string) => React.JSX.Element;
   getStyles: (type: string) => string;
 }
 
@@ -87,59 +105,40 @@ function NotificationItem({ notification, onRemove, getIcon, getStyles }: Notifi
         </div>
         
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">
-            {notification.title}
-          </p>
-          {notification.message && (
-            <p className="text-sm opacity-90 mt-1">
-              {notification.message}
-            </p>
+          <p className="text-sm font-medium">{notification.title}</p>
+          <p className="text-sm mt-1 opacity-90">{notification.message}</p>
+          
+          {notification.actions && notification.actions.length > 0 && (
+            <div className="mt-3 flex space-x-2">
+              {notification.actions.map((action, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    action.action();
+                    onRemove(notification.id);
+                  }}
+                  className={`
+                    px-3 py-1 rounded text-xs font-medium transition-colors
+                    ${action.variant === 'destructive' 
+                      ? 'bg-red-600 text-white hover:bg-red-700' 
+                      : 'bg-white/20 hover:bg-white/30'
+                    }
+                  `}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
           )}
         </div>
         
         <button
           onClick={() => onRemove(notification.id)}
-          className="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600 transition-colors"
-          aria-label="Fermer la notification"
+          className="flex-shrink-0 p-1 rounded-full hover:bg-white/20 transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
-      
-      {/* Barre de progression pour la durée */}
-      {notification.duration && notification.duration > 0 && (
-        <div className="mt-3 w-full bg-gray-200 rounded-full h-1 overflow-hidden">
-          <div 
-            className="h-full bg-current opacity-30 transition-all linear"
-            style={{
-              animation: `shrink ${notification.duration}ms linear forwards`
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }
-
-// Styles CSS pour les animations (à ajouter dans globals.css)
-const styles = `
-  @keyframes slideInFromRight {
-    from {
-      transform: translateX(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-  
-  @keyframes shrink {
-    from {
-      width: 100%;
-    }
-    to {
-      width: 0%;
-    }
-  }
-`;

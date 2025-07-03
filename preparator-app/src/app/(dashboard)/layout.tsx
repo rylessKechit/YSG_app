@@ -3,32 +3,32 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/auth';
-import { Header } from '@/components/layout/Header';
-import { BottomNavigation } from '@/components/layout/BottomNavigation';
 
-export default function DashboardLayout({
-  children,
-}: {
+interface DashboardLayoutProps {
   children: React.ReactNode;
-}) {
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { isAuthenticated, token, user, isLoading } = useAuthStore();
   const router = useRouter();
-  const { isAuthenticated, isLoading, initializeAuth } = useAuthStore();
 
-  // Initialiser l'authentification au montage du composant
+  // Vérifier l'authentification et rediriger si nécessaire
   useEffect(() => {
-    initializeAuth();
-  }, []); // Une seule fois au montage
-
-  // Rediriger vers login si pas authentifié ET pas en cours de chargement
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      console.log('🔄 Redirection vers login - non authentifié');
-      router.replace('/login');
+    if (!isLoading && (!token || !isAuthenticated || !user)) {
+      console.log('🔒 Non authentifié, redirection vers /login');
+      router.push('/login');
+      return;
     }
-  }, [isAuthenticated, isLoading, router]);
 
-  // Afficher un loader pendant l'initialisation/vérification
-  if (isLoading) {
+    if (token && isAuthenticated) {
+      const { apiClient } = require('@/lib/api/client');
+      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      console.log('✅ Token restauré dans les headers');
+    }
+  }, [isAuthenticated, token, user, isLoading, router]);
+
+  // Afficher un loader pendant la vérification
+  if (isLoading || (!isAuthenticated && token)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center space-y-4">
@@ -39,25 +39,11 @@ export default function DashboardLayout({
     );
   }
 
-  // Ne pas afficher le contenu si pas authentifié
-  if (!isAuthenticated) {
+  // Si pas authentifié, ne rien afficher (redirection en cours)
+  if (!isAuthenticated || !user) {
     return null;
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header avec menu hamburger */}
-      <Header />
-      
-      {/* Contenu principal avec padding pour header et navigation */}
-      <main className="pt-16 pb-20 px-4">
-        <div className="max-w-md mx-auto">
-          {children}
-        </div>
-      </main>
-      
-      {/* Navigation en bas */}
-      <BottomNavigation />
-    </div>
-  );
+  // Afficher le contenu sans wrapper supplémentaire
+  return <>{children}</>;
 }

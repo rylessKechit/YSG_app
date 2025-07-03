@@ -1,4 +1,3 @@
-// ===== @/lib/types/index.ts =====
 // Types principaux de l'application
 
 export interface User {
@@ -6,14 +5,11 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  fullName: string;
-  role: 'preparateur' | 'admin';
+  role: 'preparateur' | 'superviseur' | 'admin';
   agencies: Agency[];
-  stats: UserStats;
-  lastLogin?: Date;
-  phone?: string;
-  isActive: boolean;
+  stats?: UserStats;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Agency {
@@ -22,106 +18,28 @@ export interface Agency {
   code: string;
   client: string;
   address?: string;
-  workingHours?: {
-    start: string;
-    end: string;
-  };
-  contact?: {
-    phone?: string;
-    email?: string;
-  };
+  city?: string;
+  postalCode?: string;
   isDefault?: boolean;
   isActive: boolean;
+  createdAt: Date;
 }
 
 export interface UserStats {
   totalPreparations: number;
-  averageTime: number; // en minutes
-  onTimeRate: number; // pourcentage
-  lastCalculated: Date;
-}
-
-export interface Schedule {
-  id: string;
-  user: string;
-  agency: Agency;
-  date: Date;
-  startTime: string; // "08:00"
-  endTime: string; // "17:00"
-  breakStart?: string;
-  breakEnd?: string;
-  workingDuration: number; // en minutes
-  notes?: string;
-  status: 'active' | 'cancelled' | 'completed';
-}
-
-export interface Timesheet {
-  id: string;
-  agency: Agency;
-  date: Date;
-  startTime?: Date;
-  endTime?: Date;
-  breakStart?: Date;
-  breakEnd?: Date;
-  totalWorkedMinutes?: number;
-  totalBreakMinutes?: number;
-  delays: {
-    startDelay: number;
-    endDelay?: number;
-    breakStartDelay?: number;
-    breakEndDelay?: number;
-  };
-  alertsSent: {
-    lateStart: boolean;
-    lateEnd: boolean;
-    longBreak: boolean;
-    missingClockOut: boolean;
-  };
-  status: 'incomplete' | 'complete' | 'validated' | 'disputed';
-  notes?: string;
-  schedule?: string; // ID du planning
-  summary?: TimesheetSummary;
-}
-
-export interface TimesheetSummary {
-  date: string;
-  startTime?: string;
-  endTime?: string;
-  breakStart?: string;
-  breakEnd?: string;
-  totalWorked: string;
-  totalBreak: string;
-  startDelay?: string;
-  status: string;
-  issues: string[];
-}
-
-export interface TimesheetStatus {
-  date: Date;
-  agency?: Agency;
-  schedule?: {
-    startTime: string;
-    endTime: string;
-    breakStart?: string;
-    breakEnd?: string;
-    workingDuration: number;
-  };
-  timesheet?: Timesheet;
-  currentStatus: {
-    isClockedIn: boolean;
-    isClockedOut: boolean;
-    isOnBreak: boolean;
-    hasPreparationInProgress: boolean;
-    currentWorkedMinutes: number;
-    currentWorkedTime?: string;
-  };
+  onTimeRate: number;
+  averageTime: number;
+  lastCalculated: string | null;
+  thisWeekPreparations: number;
+  thisMonthPreparations: number;
+  qualityScore: number;
 }
 
 export interface Vehicle {
+  id?: string;
   licensePlate: string;
   brand: string;
   model: string;
-  fullName?: string;
   color?: string;
   year?: number;
   fuelType?: 'essence' | 'diesel' | 'electrique' | 'hybride' | 'autre';
@@ -229,107 +147,80 @@ export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
   message?: string;
-  errors?: Array<{
-    field: string;
-    message: string;
-  }>;
+  errors?: string[];
 }
 
-export interface PaginatedResponse<T> extends ApiResponse<{
-  items: T[];
-  pagination: PaginationInfo;
-}> {}
-
-export interface PaginationInfo {
-  page: number;
-  limit: number;
-  totalCount: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
-}
-
-// Types pour les stores Zustand
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
-}
-
-export interface TimesheetState {
-  todayStatus: TimesheetStatus | null;
-  history: Timesheet[];
-  isLoading: boolean;
-  error: string | null;
-  lastSync: Date | null;
-}
-
+// Types pour les états des stores
 export interface PreparationState {
+  // Préparations
   currentPreparation: Preparation | null;
-  userAgencies: Agency[];
-  history: Preparation[];
+  preparationHistory: Preparation[] | null;
+  
+  // Agences utilisateur
+  userAgencies: Agency[] | null;
+  
+  // Statistiques
+  stats: any | null;
+  
+  // États
   isLoading: boolean;
   error: string | null;
-  lastSync: Date | null;
 }
 
-// Types pour les statistiques et rapports
-export interface PersonalStats {
-  period: {
-    startDate: Date;
-    endDate: Date;
-  };
-  periodStats: {
-    totalPreparations: number;
-    averageTime: number;
-    onTimeRate: number;
-    minTime: number;
-    maxTime: number;
-    totalIssues: number;
-    issueRate: number;
-  };
-  overallStats: UserStats;
-  topVehicles: VehicleStats[];
-}
-
-export interface VehicleStats {
-  licensePlate: string;
-  brand: string;
-  model: string;
-  fullName: string;
+// Types pour les statistiques utilisateur
+export interface PerformanceMetrics {
   totalPreparations: number;
   averageTime: number;
-  lastPreparation: Date;
+  onTimeRate: number;
+  qualityScore: number;
+  weeklyStats: {
+    week: string;
+    preparations: number;
+    averageTime: number;
+  }[];
+  monthlyStats: {
+    month: string;
+    preparations: number;
+    averageTime: number;
+  }[];
+}
+
+// Types pour les horaires
+export interface Schedule {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  agency: Agency;
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 }
 
 export interface WeekSchedule {
-  weekStart: Date;
-  weekSchedule: DaySchedule[];
-  weekTotals: {
-    totalDays: number;
-    totalMinutes: number;
-    totalHours: number;
-  };
+  week: string;
+  schedules: Schedule[];
 }
 
-export interface DaySchedule {
-  date: Date;
-  dayName: string;
-  dayShort: string;
-  isToday: boolean;
-  schedule?: {
-    id: string;
-    agency: Agency;
-    startTime: string;
-    endTime: string;
-    breakStart?: string;
-    breakEnd?: string;
-    notes?: string;
-    workingDuration: number;
-    formatted: any;
-  };
+// Types pour les données du dashboard
+export interface DashboardSummary {
+  todayPreparations: number;
+  weekPreparations: number;
+  monthPreparations: number;
+  averageTimeToday: number;
+  onTimeRateWeek: number;
+  currentStreak: number;
+}
+
+// Types pour les timesheet (import depuis timesheet.ts)
+export interface TimesheetData {
+  id: string;
+  agency: Agency;
+  startTime: string;
+  endTime: string;
+  breakStart?: string;
+  breakEnd?: string;
+  notes?: string;
+  workingDuration: number;
+  formatted: any;
 }
 
 export interface Achievement {
@@ -376,14 +267,14 @@ export interface HistoryFilters {
   search?: string;
 }
 
-// Types pour les notifications
+// Types pour les notifications - CORRIGÉ: Définition complète
 export interface Notification {
   id: string;
   type: 'info' | 'success' | 'warning' | 'error';
   title: string;
   message: string;
   duration?: number;
-  read?: boolean; // ← Ajoutez cette ligne
+  read?: boolean;
   actions?: NotificationAction[];
   createdAt: Date;
 }
@@ -428,43 +319,9 @@ export type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
 
+export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
 export type RequiredFields<T, K extends keyof T> = T & Required<Pick<T, K>>;
 
-export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-// Constantes pour les types
-export const STEP_TYPES = [
-  'exterior',
-  'interior', 
-  'fuel',
-  'tires_fluids',
-  'special_wash',
-  'parking'
-] as const;
-
-export const STEP_LABELS: Record<PreparationStep['type'], string> = {
-  exterior: 'Préparation extérieure',
-  interior: 'Préparation intérieure', 
-  fuel: 'Mise à niveau essence',
-  tires_fluids: 'Pression pneus + lave-glace',
-  special_wash: 'Lavage spécial',
-  parking: 'Stationnement'
-};
-
-export const ISSUE_TYPES = [
-  'damage',
-  'missing_key',
-  'fuel_problem', 
-  'cleanliness',
-  'mechanical',
-  'other'
-] as const;
-
-export const ISSUE_LABELS: Record<Issue['type'], string> = {
-  damage: 'Dommage',
-  missing_key: 'Clé manquante',
-  fuel_problem: 'Problème carburant',
-  cleanliness: 'Propreté',
-  mechanical: 'Mécanique',
-  other: 'Autre'
-};
+// Export des types depuis les sous-modules
+export * from './timesheet';
