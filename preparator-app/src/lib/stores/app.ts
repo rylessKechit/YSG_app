@@ -1,130 +1,126 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AppState, ThemeMode, Notification } from '../types';
 
-interface AppStore extends AppState {
-  // Navigation
-  currentTab: string;
-  setCurrentTab: (tab: string) => void;
-  
+export interface Notification {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message?: string;
+  duration?: number;
+}
+
+interface AppState {
   // Notifications
   notifications: Notification[];
-  addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => void;
+  
+  // États globaux
+  isOnline: boolean;
+  lastSync: string | null;
+  
+  // Configuration
+  theme: 'light' | 'dark';
+  language: 'fr' | 'en';
+}
+
+interface AppStore extends AppState {
+  // Actions notifications
+  addNotification: (notification: Omit<Notification, 'id'>) => void;
   removeNotification: (id: string) => void;
   clearNotifications: () => void;
   
-  // État de l'app
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
-  setOnline: (online: boolean) => void;
-  setTheme: (theme: ThemeMode) => void;
+  // Actions états
+  setOnlineStatus: (online: boolean) => void;
+  updateLastSync: () => void;
   
-  // PWA
-  isPWA: boolean;
-  setIsPWA: (isPWA: boolean) => void;
-  deferredPrompt: any;
-  setDeferredPrompt: (prompt: any) => void;
+  // Actions configuration
+  setTheme: (theme: 'light' | 'dark') => void;
+  setLanguage: (language: 'fr' | 'en') => void;
 }
 
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
       // État initial
-      isLoading: false,
-      error: null,
-      isOnline: true,
-      theme: 'system',
-      currentTab: 'dashboard',
       notifications: [],
-      isPWA: false,
-      deferredPrompt: null,
+      isOnline: true,
+      lastSync: null,
+      theme: 'light',
+      language: 'fr',
 
-      // Navigation
-      setCurrentTab: (tab: string) => {
-        set({ currentTab: tab });
-      },
-
-      // Notifications
+      // Ajouter une notification
       addNotification: (notification) => {
-        const newNotification: Notification = {
-          id: Math.random().toString(36).substr(2, 9),
-          createdAt: new Date(),
-          ...notification
+        const id = `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const newNotification = {
+          ...notification,
+          id,
+          duration: notification.duration || 5000 // 5 secondes par défaut
         };
-
-        set(state => ({
+        
+        set((state) => ({
           notifications: [...state.notifications, newNotification]
         }));
-
-        // Auto-remove après duration
-        if (notification.duration && notification.duration > 0) {
-          setTimeout(() => {
-            get().removeNotification(newNotification.id);
-          }, notification.duration);
-        }
       },
 
-      removeNotification: (id: string) => {
-        set(state => ({
+      // Supprimer une notification
+      removeNotification: (id) => {
+        set((state) => ({
           notifications: state.notifications.filter(n => n.id !== id)
         }));
       },
 
+      // Vider toutes les notifications
       clearNotifications: () => {
         set({ notifications: [] });
       },
 
-      // État de l'app
-      setLoading: (loading: boolean) => {
-        set({ isLoading: loading });
-      },
-
-      setError: (error: string | null) => {
-        set({ error });
-      },
-
-      setOnline: (online: boolean) => {
+      // Mettre à jour le statut en ligne
+      setOnlineStatus: (online) => {
         set({ isOnline: online });
-      },
-
-      setTheme: (theme: ThemeMode) => {
-        set({ theme });
         
-        // Appliquer le thème au DOM
-        if (typeof window !== 'undefined') {
-          const root = window.document.documentElement;
-          
-          if (theme === 'dark') {
-            root.classList.add('dark');
-          } else if (theme === 'light') {
-            root.classList.remove('dark');
-          } else {
-            // System preference
-            const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            if (isDark) {
-              root.classList.add('dark');
-            } else {
-              root.classList.remove('dark');
-            }
-          }
+        if (online) {
+          get().addNotification({
+            type: 'success',
+            title: 'Connexion rétablie',
+            message: 'Vous êtes de nouveau en ligne',
+            duration: 3000
+          });
+        } else {
+          get().addNotification({
+            type: 'warning',
+            title: 'Connexion perdue',
+            message: 'Vous êtes hors ligne. Certaines fonctions peuvent être limitées.',
+            duration: 5000
+          });
         }
       },
 
-      // PWA
-      setIsPWA: (isPWA: boolean) => {
-        set({ isPWA });
+      // Mettre à jour la dernière synchronisation
+      updateLastSync: () => {
+        set({ lastSync: new Date().toISOString() });
       },
 
-      setDeferredPrompt: (prompt: any) => {
-        set({ deferredPrompt: prompt });
+      // Changer le thème
+      setTheme: (theme) => {
+        set({ theme });
+        
+        // Appliquer le thème à l'élément root
+        if (typeof window !== 'undefined') {
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+        }
+      },
+
+      // Changer la langue
+      setLanguage: (language) => {
+        set({ language });
       }
     }),
     {
-      name: 'app-storage',
+      name: 'app-store',
       partialize: (state) => ({
         theme: state.theme,
-        currentTab: state.currentTab
-      })
+        language: state.language,
+        lastSync: state.lastSync
+      }),
     }
   )
 );

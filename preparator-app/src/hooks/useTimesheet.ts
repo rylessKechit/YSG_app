@@ -1,115 +1,128 @@
-import { useState, useCallback } from 'react';
-import { useTimesheetStore } from '@/lib/stores';
+import { useTimesheetStore } from '@/lib/stores/timesheet';
+import { TimesheetStatus } from '@/lib/types/timesheet';
 
 export function useTimesheet() {
-  const {
-    todayStatus,
-    history,
-    isLoading,
-    error,
+  const { 
+    todayStatus, 
+    history, 
+    isLoading, 
+    error 
+  } = useTimesheetStore();
+
+  return { 
+    todayStatus, 
+    history, 
+    isLoading, 
+    error 
+  };
+}
+
+export function useTimesheetActions() {
+  const { 
     getTodayStatus,
     clockIn,
     clockOut,
     startBreak,
     endBreak,
     getHistory,
-    clearError
+    clearError,
+    refreshStatus
   } = useTimesheetStore();
 
-  const [localLoading, setLocalLoading] = useState<string | null>(null);
-
-  // Pointer l'arrivée
-  const handleClockIn = useCallback(async (agencyId: string) => {
-    setLocalLoading('clock-in');
-    try {
-      await clockIn(agencyId);
-      return true;
-    } catch (error) {
-      console.error('Erreur pointage arrivée:', error);
-      return false;
-    } finally {
-      setLocalLoading(null);
-    }
-  }, [clockIn]);
-
-  // Pointer le départ
-  const handleClockOut = useCallback(async (agencyId: string, notes?: string) => {
-    setLocalLoading('clock-out');
-    try {
-      await clockOut(agencyId, notes);
-      return true;
-    } catch (error) {
-      console.error('Erreur pointage départ:', error);
-      return false;
-    } finally {
-      setLocalLoading(null);
-    }
-  }, [clockOut]);
-
-  // Commencer la pause
-  const handleStartBreak = useCallback(async (agencyId: string) => {
-    setLocalLoading('break-start');
-    try {
-      await startBreak(agencyId);
-      return true;
-    } catch (error) {
-      console.error('Erreur début pause:', error);
-      return false;
-    } finally {
-      setLocalLoading(null);
-    }
-  }, [startBreak]);
-
-  // Terminer la pause
-  const handleEndBreak = useCallback(async (agencyId: string) => {
-    setLocalLoading('break-end');
-    try {
-      await endBreak(agencyId);
-      return true;
-    } catch (error) {
-      console.error('Erreur fin pause:', error);
-      return false;
-    } finally {
-      setLocalLoading(null);
-    }
-  }, [endBreak]);
-
-  // Vérifier si une action est en cours
-  const isActionLoading = useCallback((action: string) => {
-    return localLoading === action || isLoading;
-  }, [localLoading, isLoading]);
-
-  // Obtenir le statut actuel pour une agence
-  const getCurrentStatus = useCallback((agencyId: string) => {
-    if (!todayStatus || !agencyId) return null;
-    return todayStatus.currentStatus;
-  }, [todayStatus]);
-
-  return {
-    // État
-    todayStatus,
-    history,
-    isLoading: isLoading || localLoading !== null,
-    error,
-    localLoading,
-
-    // Actions
-    clockIn: handleClockIn,
-    clockOut: handleClockOut,
-    startBreak: handleStartBreak,
-    endBreak: handleEndBreak,
+  return { 
     getTodayStatus,
+    clockIn,
+    clockOut,
+    startBreak,
+    endBreak,
     getHistory,
     clearError,
+    refreshStatus
+  };
+}
 
-    // Utilitaires
-    isActionLoading,
-    getCurrentStatus,
+// Hook pour calculer les actions disponibles
+export function useTimesheetAvailableActions() {
+  const { todayStatus } = useTimesheetStore();
+  const actions = useTimesheetActions();
 
-    // État détaillé des actions
-    isClockingIn: localLoading === 'clock-in',
-    isClockingOut: localLoading === 'clock-out',
-    isStartingBreak: localLoading === 'break-start',
-    isEndingBreak: localLoading === 'break-end'
+  const getAvailableActions = () => {
+    if (!todayStatus) {
+      return {
+        canClockIn: false,
+        canClockOut: false,
+        canStartBreak: false,
+        canEndBreak: false
+      };
+    }
+
+    return {
+      canClockIn: todayStatus.currentStatus === 'not_started',
+      canClockOut: todayStatus.currentStatus === 'working' || todayStatus.currentStatus === 'on_break',
+      canStartBreak: todayStatus.currentStatus === 'working',
+      canEndBreak: todayStatus.currentStatus === 'on_break'
+    };
+  };
+
+  return {
+    ...actions,
+    ...getAvailableActions()
+  };
+}
+
+// Hook pour formater les données d'affichage
+export function useTimesheetDisplay() {
+  const { todayStatus } = useTimesheetStore();
+
+  const formatDuration = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h${mins.toString().padStart(2, '0')}`;
+  };
+
+  const formatTime = (timeString: string | null) => {
+    if (!timeString) return '--:--';
+    return new Date(timeString).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getStatusLabel = (status: TimesheetStatus['currentStatus']) => {
+    switch (status) {
+      case 'not_started':
+        return 'Pas encore pointé';
+      case 'working':
+        return 'En service';
+      case 'on_break':
+        return 'En pause';
+      case 'finished':
+        return 'Service terminé';
+      default:
+        return 'Statut inconnu';
+    }
+  };
+
+  const getStatusColor = (status: TimesheetStatus['currentStatus']) => {
+    switch (status) {
+      case 'not_started':
+        return { text: 'text-gray-600', bg: 'bg-gray-100' };
+      case 'working':
+        return { text: 'text-green-600', bg: 'bg-green-100' };
+      case 'on_break':
+        return { text: 'text-orange-600', bg: 'bg-orange-100' };
+      case 'finished':
+        return { text: 'text-blue-600', bg: 'bg-blue-100' };
+      default:
+        return { text: 'text-gray-600', bg: 'bg-gray-100' };
+    }
+  };
+
+  return {
+    formatDuration,
+    formatTime,
+    getStatusLabel,
+    getStatusColor,
+    todayStatus
   };
 }

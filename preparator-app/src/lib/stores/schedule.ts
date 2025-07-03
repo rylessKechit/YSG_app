@@ -1,6 +1,6 @@
 // src/lib/stores/schedule.ts
 import { create } from 'zustand';
-import { scheduleApi, timesheetApi, handleApiError } from '../api';
+import { scheduleApi, timesheetApi, handleApiError } from '../api/client';
 
 interface ScheduleState {
   // Planning du jour

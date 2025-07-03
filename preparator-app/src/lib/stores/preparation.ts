@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { preparationApi, handleApiError } from '../api';
+import { preparationApi, handleApiError } from '../api/client';
 import { PreparationState, Preparation, Agency, VehicleFormData, StepCompletionData, IssueReportData } from '../types';
 
 interface PreparationStore extends PreparationState {

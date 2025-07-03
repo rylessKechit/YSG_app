@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { authApi, handleApiError } from '../api';
+import { authApi, handleApiError } from '../api/client';
 import { User, LoginFormData, AuthState } from '../types';
 
 interface AuthStore extends AuthState {
