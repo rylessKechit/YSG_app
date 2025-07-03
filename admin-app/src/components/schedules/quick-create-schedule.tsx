@@ -274,7 +274,7 @@ export function QuickCreateSchedule({
   if (!isOpen) return null;
 
   const users = usersData?.data?.users || [];
-  const agencies = agenciesData?.data?.agencies || [];
+  const agencies = agenciesData?.agencies || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

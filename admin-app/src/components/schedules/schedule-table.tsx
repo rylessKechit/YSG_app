@@ -60,7 +60,7 @@ interface ScheduleFilters {
   page: number;
   limit: number;
   search?: string;
-  status?: string;
+  status?: 'all' | 'active' | 'cancelled' | 'completed';
   user?: string;
   agency?: string;
   sort?: string;
@@ -286,10 +286,10 @@ export function ScheduleTable() {
   };
 
   // ✅ CORRECTION: Gestion du changement de statut avec types appropriés
-  const handleStatusChange = (value: string) => {
+  const handleStatusChange = (value: 'all' | 'active' | 'cancelled' | 'completed') => {
     setFilters(prev => ({ 
       ...prev, 
-      status: value as 'all' | 'active' | 'cancelled' | 'completed'
+      status: value
     }));
   };
 
