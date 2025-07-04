@@ -1,327 +1,303 @@
 // lib/stores/preparation.ts
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { 
-  preparationApi, 
-  VehicleFormData, 
-  Preparation, 
-  Agency, 
-  StepCompletionData, 
-  IssueReportData,
-  PreparationStats 
-} from '@/lib/api/preparations';
+'use client';
 
-interface PreparationStore {
-  // État
+import { create } from 'zustand';
+import { preparationApi } from '@/lib/api/preparations';
+
+// Types locaux pour éviter les erreurs d'import
+interface Vehicle {
+  licensePlate: string;
+  brand: string;
+  model: string;
+  color?: string;
+  year?: number;
+  fuelType?: string;
+  condition?: string;
+  notes?: string;
+  fullName?: string;
+}
+
+interface Agency {
+  id: string;
+  name: string;
+  code: string;
+  client: string;
+  isDefault?: boolean;
+}
+
+interface PreparationStep {
+  type: string;
+  label?: string;
+  completed: boolean;
+  photoUrl?: string;
+  completedAt?: Date;
+  notes?: string;
+  order?: number;
+}
+
+interface Issue {
+  id?: string;
+  type: string;
+  description: string;
+  photoUrl?: string;
+  reportedAt?: Date;
+  severity?: 'low' | 'medium' | 'high';
+}
+
+interface Preparation {
+  id: string;
+  vehicle: Vehicle;
+  agency: Agency;
+  startTime: Date;
+  endTime?: Date;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  steps: PreparationStep[];
+  progress: number;
+  currentDuration: number;
+  totalMinutes?: number;
+  isOnTime?: boolean;
+  issues: Issue[];
+  issuesCount?: number;
+  notes?: string;
+  summary?: any;
+  createdAt: Date;
+}
+
+// Import the VehicleFormData type from the API to ensure type compatibility
+import type { VehicleFormData } from '@/lib/api/preparations';
+
+interface StepCompletionData {
+  stepType: string;
+  photo: File;
+  notes?: string;
+}
+
+interface IssueReportData {
+  type: string;
+  description: string;
+  photo?: File;
+  severity?: 'low' | 'medium' | 'high';
+}
+
+interface PreparationState {
+  // État des données
   currentPreparation: Preparation | null;
-  userAgencies: Agency[];
-  history: Preparation[];
-  stats: PreparationStats | null;
+  preparationHistory: Preparation[] | null;
+  userAgencies: Agency[] | null;
+  stats: any | null;
+  
+  // États de chargement
   isLoading: boolean;
   error: string | null;
   lastSync: Date | null;
-
-  // Actions - Données de base
+  
+  // Actions principales
   getUserAgencies: () => Promise<void>;
   getCurrentPreparation: () => Promise<void>;
-  getHistory: (params?: any) => Promise<void>;
-  getMyStats: (params?: any) => Promise<PreparationStats>;
-
-  // Actions - Workflow
   startPreparation: (data: VehicleFormData) => Promise<void>;
   completeStep: (preparationId: string, data: StepCompletionData) => Promise<void>;
   completePreparation: (preparationId: string, notes?: string) => Promise<void>;
   reportIssue: (preparationId: string, data: IssueReportData) => Promise<void>;
-  cancelPreparation: (preparationId: string, reason?: string) => Promise<void>;
-
-  // Actions - Utilitaires
+  
+  // Actions utilitaires
   clearError: () => void;
-  setLoading: (loading: boolean) => void;
   reset: () => void;
-  refreshCurrentPreparation: () => Promise<void>;
+  setLoading: (loading: boolean) => void;
 }
 
-// Fonction utilitaire pour gérer les erreurs API
+// Fonction helper pour gérer les erreurs API
 const handleApiError = (error: any): string => {
-  if (error.response?.data?.message) {
-    return error.response.data.message;
-  }
-  if (error.message) {
-    return error.message;
+  if (error && typeof error === 'object') {
+    if (error.response && error.response.data && error.response.data.message) {
+      return error.response.data.message;
+    }
+    if (error.message) {
+      return error.message;
+    }
   }
   return 'Une erreur inattendue s\'est produite';
 };
 
-export const usePreparationStore = create<PreparationStore>()(
-  persist(
-    (set, get) => ({
-      // État initial
+export const usePreparationStore = create<PreparationState>((set, get) => ({
+  // État initial
+  currentPreparation: null,
+  preparationHistory: null,
+  userAgencies: null,
+  stats: null,
+  isLoading: false,
+  error: null,
+  lastSync: null,
+
+  // Récupérer les agences de l'utilisateur
+  getUserAgencies: async () => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const result = await preparationApi.getUserAgencies();
+      set({
+        userAgencies: result.agencies,
+        isLoading: false,
+        lastSync: new Date()
+      });
+      
+      console.log('✅ Agences chargées:', result.agencies.length);
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      set({
+        isLoading: false,
+        error: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  // Récupérer la préparation en cours
+  getCurrentPreparation: async () => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const result = await preparationApi.getCurrentPreparation();
+      set({
+        currentPreparation: result.preparation,
+        isLoading: false,
+        lastSync: new Date()
+      });
+      
+      if (result.preparation) {
+        console.log('✅ Préparation en cours trouvée:', result.preparation.vehicle.licensePlate);
+      } else {
+        console.log('ℹ️ Aucune préparation en cours');
+      }
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      set({
+        isLoading: false,
+        error: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  // Démarrer une nouvelle préparation
+  startPreparation: async (data: VehicleFormData) => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const result = await preparationApi.startPreparation(data);
+      set({
+        currentPreparation: result.preparation,
+        isLoading: false,
+        lastSync: new Date()
+      });
+      
+      console.log('✅ Préparation démarrée:', result.preparation.vehicle.licensePlate);
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      set({
+        isLoading: false,
+        error: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  // Compléter une étape
+  completeStep: async (preparationId: string, data: StepCompletionData) => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const result = await preparationApi.completeStep(preparationId, data);
+      set({
+        currentPreparation: result.preparation,
+        isLoading: false,
+        lastSync: new Date()
+      });
+      
+      console.log('✅ Étape complétée:', data.stepType);
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      set({
+        isLoading: false,
+        error: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  // Terminer une préparation
+  completePreparation: async (preparationId: string, notes?: string) => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const result = await preparationApi.completePreparation(preparationId, notes);
+      set({
+        currentPreparation: null, // Plus de préparation en cours
+        isLoading: false,
+        lastSync: new Date()
+      });
+      
+      console.log('✅ Préparation terminée:', preparationId);
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      set({
+        isLoading: false,
+        error: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  // Signaler un incident
+  reportIssue: async (preparationId: string, data: IssueReportData) => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const result = await preparationApi.reportIssue(preparationId, data);
+      
+      // Mettre à jour la préparation actuelle avec le nouvel incident
+      const currentPrep = get().currentPreparation;
+      if (currentPrep && currentPrep.id === preparationId && result.issue) {
+        set({
+          currentPreparation: {
+            ...currentPrep,
+            issues: [...currentPrep.issues, result.issue]
+          },
+          isLoading: false,
+          lastSync: new Date()
+        });
+      } else {
+        set({ isLoading: false });
+      }
+      
+      console.log('✅ Incident signalé:', data.type);
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      set({
+        isLoading: false,
+        error: errorMessage
+      });
+      throw error;
+    }
+  },
+
+  // Actions utilitaires
+  clearError: () => {
+    set({ error: null });
+  },
+
+  reset: () => {
+    set({
       currentPreparation: null,
-      userAgencies: [],
-      history: [],
+      preparationHistory: null,
+      userAgencies: null,
       stats: null,
       isLoading: false,
       error: null,
-      lastSync: null,
+      lastSync: null
+    });
+  },
 
-      // Obtenir les agences de l'utilisateur
-      getUserAgencies: async () => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const data = await preparationApi.getUserAgencies();
-          set({
-            userAgencies: data.agencies || [],
-            isLoading: false,
-            lastSync: new Date()
-          });
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Obtenir la préparation en cours
-      getCurrentPreparation: async () => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const data = await preparationApi.getCurrentPreparation();
-          set({
-            currentPreparation: data.preparation,
-            isLoading: false,
-            lastSync: new Date()
-          });
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Rafraîchir la préparation courante
-      refreshCurrentPreparation: async () => {
-        const { currentPreparation } = get();
-        if (!currentPreparation) return;
-
-        try {
-          const data = await preparationApi.getPreparation(currentPreparation.id);
-          set({
-            currentPreparation: data.preparation,
-            lastSync: new Date()
-          });
-        } catch (error) {
-          console.error('Erreur rafraîchissement préparation:', error);
-        }
-      },
-
-      // Obtenir l'historique
-      getHistory: async (params = {}) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const data = await preparationApi.getHistory(params);
-          set({
-            history: data.preparations || [],
-            isLoading: false,
-            lastSync: new Date()
-          });
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Obtenir les statistiques
-      getMyStats: async (params = {}) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const stats = await preparationApi.getMyStats(params);
-          set({
-            stats,
-            isLoading: false,
-            lastSync: new Date()
-          });
-          return stats;
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Démarrer une préparation
-      startPreparation: async (data: VehicleFormData) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const result = await preparationApi.startPreparation(data);
-          set({
-            currentPreparation: result.preparation,
-            isLoading: false,
-            lastSync: new Date()
-          });
-          
-          console.log('✅ Préparation démarrée:', result.preparation.vehicle.licensePlate);
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Compléter une étape
-      completeStep: async (preparationId: string, data: StepCompletionData) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const result = await preparationApi.completeStep(preparationId, data);
-          set({
-            currentPreparation: result.preparation,
-            isLoading: false,
-            lastSync: new Date()
-          });
-          
-          console.log('✅ Étape complétée:', data.stepType);
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Terminer une préparation
-      completePreparation: async (preparationId: string, notes?: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const result = await preparationApi.completePreparation(preparationId, notes);
-          
-          // Mettre à jour l'état
-          set({
-            currentPreparation: null, // Plus de préparation en cours
-            isLoading: false,
-            lastSync: new Date()
-          });
-
-          // Rafraîchir l'historique
-          await get().getHistory();
-          
-          console.log('✅ Préparation terminée:', result.preparation.vehicle.licensePlate);
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Signaler un incident
-      reportIssue: async (preparationId: string, data: IssueReportData) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          await preparationApi.reportIssue(preparationId, data);
-          
-          // Rafraîchir la préparation courante pour voir l'incident
-          await get().refreshCurrentPreparation();
-          
-          set({
-            isLoading: false,
-            lastSync: new Date()
-          });
-          
-          console.log('✅ Incident signalé:', data.type);
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Annuler une préparation
-      cancelPreparation: async (preparationId: string, reason?: string) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          await preparationApi.cancelPreparation(preparationId, reason);
-          
-          set({
-            currentPreparation: null,
-            isLoading: false,
-            lastSync: new Date()
-          });
-
-          // Rafraîchir l'historique
-          await get().getHistory();
-          
-          console.log('✅ Préparation annulée');
-        } catch (error) {
-          const errorMessage = handleApiError(error);
-          set({
-            isLoading: false,
-            error: errorMessage
-          });
-          throw error;
-        }
-      },
-
-      // Nettoyer les erreurs
-      clearError: () => {
-        set({ error: null });
-      },
-
-      // Définir l'état de chargement
-      setLoading: (loading: boolean) => {
-        set({ isLoading: loading });
-      },
-
-      // Réinitialiser le store
-      reset: () => {
-        set({
-          currentPreparation: null,
-          userAgencies: [],
-          history: [],
-          stats: null,
-          isLoading: false,
-          error: null,
-          lastSync: null
-        });
-      }
-    }),
-    {
-      name: 'preparation-store',
-      partialize: (state) => ({
-        // Persister uniquement les données essentielles
-        userAgencies: state.userAgencies,
-        lastSync: state.lastSync
-      })
-    }
-  )
-);
+  setLoading: (loading: boolean) => {
+    set({ isLoading: loading });
+  }
+}));

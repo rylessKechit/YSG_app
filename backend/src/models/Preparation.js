@@ -1,3 +1,5 @@
+// ===== backend/src/models/Preparation.js - VERSION CORRIGÉE =====
+
 const mongoose = require('mongoose');
 const { PREPARATION_STATUS, PREPARATION_STEPS, TIME_LIMITS } = require('../utils/constants');
 
@@ -27,15 +29,68 @@ const preparationStepSchema = new mongoose.Schema({
   }]
 }, { _id: true });
 
+// ✅ Schéma véhicule intégré pour les nouvelles préparations
+const vehicleInfoSchema = new mongoose.Schema({
+  licensePlate: {
+    type: String,
+    required: true,
+    uppercase: true,
+    trim: true
+  },
+  brand: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  model: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  color: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  year: {
+    type: Number,
+    min: 1990,
+    max: new Date().getFullYear() + 1
+  },
+  fuelType: {
+    type: String,
+    enum: ['essence', 'diesel', 'electrique', 'hybride'],
+    default: 'essence'
+  },
+  condition: {
+    type: String,
+    enum: ['excellent', 'bon', 'correct', 'mediocre'],
+    default: 'bon'
+  },
+  notes: {
+    type: String,
+    default: ''
+  }
+}, { _id: false });
+
 const preparationSchema = new mongoose.Schema({
-  // Références
+  // ✅ CHANGEMENT: Support des deux modes (ObjectId ET objet intégré)
   vehicle: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Vehicle',
+    type: mongoose.Schema.Types.Mixed, // Peut être ObjectId ou objet
     required: [true, 'Le véhicule est requis']
   },
 
+  // Alternative : informations véhicule intégrées
+  vehicleInfo: vehicleInfoSchema,
+
   preparateur: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Le préparateur est requis']
+  },
+
+  // Alias pour compatibilité (req.user.userId → user)
+  user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: [true, 'Le préparateur est requis']
@@ -84,13 +139,36 @@ const preparationSchema = new mongoose.Schema({
   },
 
   // Notes générales
-  notes: String,
-
-  // Signature de fin
-  signature: {
-    preparateur: String, // Base64 de la signature
-    signedAt: Date
+  notes: {
+    type: String,
+    maxlength: [500, 'Les notes ne peuvent pas dépasser 500 caractères']
   },
+
+  // Incidents signalés
+  issues: [{
+    type: {
+      type: String,
+      required: true
+    },
+    description: {
+      type: String,
+      required: true
+    },
+    severity: {
+      type: String,
+      enum: ['low', 'medium', 'high'],
+      default: 'medium'
+    },
+    reportedAt: {
+      type: Date,
+      default: Date.now
+    },
+    photos: [String], // URLs des photos
+    resolved: {
+      type: Boolean,
+      default: false
+    }
+  }],
 
   // Métadonnées
   createdAt: {
@@ -105,46 +183,85 @@ const preparationSchema = new mongoose.Schema({
 
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toJSON: { 
+    transform: function(doc, ret) {
+      delete ret.__v;
+      
+      // ✅ Normaliser les données véhicule pour l'API
+      if (ret.vehicle && typeof ret.vehicle === 'object' && !mongoose.Types.ObjectId.isValid(ret.vehicle)) {
+        // C'est un objet véhicule intégré, on le garde tel quel
+      } else if (ret.vehicleInfo) {
+        // Utiliser vehicleInfo si vehicle est un ObjectId
+        ret.vehicle = ret.vehicleInfo;
+        delete ret.vehicleInfo;
+      }
+      
+      return ret;
+    }
+  }
 });
 
 // ===== INDEX =====
-preparationSchema.index({ preparateur: 1, createdAt: -1 });
+preparationSchema.index({ user: 1, status: 1 });
 preparationSchema.index({ agency: 1, createdAt: -1 });
-preparationSchema.index({ vehicle: 1 });
+preparationSchema.index({ 'vehicle.licensePlate': 1 });
 preparationSchema.index({ status: 1, createdAt: -1 });
 
-// ===== VIRTUELS =====
+// ===== MIDDLEWARE PRE-SAVE =====
 
-// Durée en format lisible
-preparationSchema.virtual('formattedDuration').get(function() {
-  if (!this.totalTime) return '--';
-  
-  const hours = Math.floor(this.totalTime / 60);
-  const minutes = this.totalTime % 60;
-  
-  if (hours > 0) {
-    return `${hours}h ${minutes}min`;
+// Synchroniser user et preparateur
+preparationSchema.pre('save', function(next) {
+  if (this.user && !this.preparateur) {
+    this.preparateur = this.user;
+  } else if (this.preparateur && !this.user) {
+    this.user = this.preparateur;
   }
-  return `${minutes}min`;
+  next();
 });
 
-// Statut de retard
-preparationSchema.virtual('isOvertime').get(function() {
-  if (!this.totalTime) return false;
-  return this.totalTime > TIME_LIMITS.PREPARATION_MAX_MINUTES;
+// Gérer les informations véhicule
+preparationSchema.pre('save', function(next) {
+  // Si vehicle est un objet (pas un ObjectId), le copier vers vehicleInfo
+  if (this.vehicle && typeof this.vehicle === 'object' && !mongoose.Types.ObjectId.isValid(this.vehicle)) {
+    this.vehicleInfo = this.vehicle;
+  }
+  next();
 });
 
-// Pourcentage de completion
-preparationSchema.virtual('completionPercentage').get(function() {
-  if (!this.steps || this.steps.length === 0) return 0;
-  
-  const completedSteps = this.steps.filter(step => step.completed).length;
-  return Math.round((completedSteps / this.steps.length) * 100);
+// Mettre à jour le timestamp
+preparationSchema.pre('save', function(next) {
+  if (this.isModified() && !this.isNew) {
+    this.updatedAt = Date.now();
+  }
+  next();
 });
 
-// ===== MIDDLEWARE =====
+// Initialiser les étapes par défaut
+preparationSchema.pre('save', function(next) {
+  if (this.isNew && (!this.steps || this.steps.length === 0)) {
+    this.steps = Object.values(PREPARATION_STEPS).map(step => ({
+      step,
+      completed: false
+    }));
+  }
+  next();
+});
+
+// Middleware pre-save pour initialiser les étapes par défaut
+preparationSchema.pre('save', function(next) {
+  // Si c'est une nouvelle préparation sans étapes, initialiser les étapes par défaut
+  if (this.isNew && (!this.steps || this.steps.length === 0)) {
+    this.steps = [
+      { step: 'exterior', completed: false },
+      { step: 'interior', completed: false },
+      { step: 'fuel', completed: false },
+      { step: 'tires_fluids', completed: false },
+      { step: 'special_wash', completed: false },
+      { step: 'parking', completed: false }
+    ];
+  }
+  next();
+});
 
 // Middleware pre-save pour calculer totalTime
 preparationSchema.pre('save', function(next) {
@@ -157,385 +274,96 @@ preparationSchema.pre('save', function(next) {
   next();
 });
 
+// ===== MÉTHODES VIRTUELLES =====
+
+// Progression en pourcentage
+preparationSchema.virtual('progress').get(function() {
+  if (!this.steps || this.steps.length === 0) return 0;
+  const completedSteps = this.steps.filter(step => step.completed).length;
+  return Math.round((completedSteps / this.steps.length) * 100);
+});
+
+// Durée actuelle en minutes
+preparationSchema.virtual('currentDuration').get(function() {
+  if (!this.startTime) return 0;
+  const endTime = this.endTime || new Date();
+  return Math.floor((endTime - this.startTime) / (1000 * 60));
+});
+
+// Respect du délai (30 minutes)
+preparationSchema.virtual('isOnTime').get(function() {
+  return this.currentDuration <= TIME_LIMITS.PREPARATION_TIME;
+});
+
+// Informations résumées
+preparationSchema.virtual('summary').get(function() {
+  const completed = this.steps.filter(s => s.completed).length;
+  const total = this.steps.length;
+  const issues = this.issues ? this.issues.length : 0;
+  
+  return {
+    completed,
+    total,
+    progress: this.progress,
+    duration: this.currentDuration,
+    isOnTime: this.isOnTime,
+    issues,
+    status: this.status
+  };
+});
+
 // ===== MÉTHODES D'INSTANCE =====
 
-// Marquer une étape comme complétée
-preparationSchema.methods.completeStep = function(stepName, notes = '', photos = []) {
-  const step = this.steps.find(s => s.step === stepName);
-  
+// Compléter une étape
+preparationSchema.methods.completeStep = function(stepType, data = {}) {
+  const step = this.steps.find(s => s.step === stepType);
   if (!step) {
-    throw new Error(`Étape ${stepName} non trouvée`);
+    throw new Error(`Étape "${stepType}" non trouvée`);
   }
-
+  
   if (step.completed) {
-    throw new Error(`Étape ${stepName} déjà complétée`);
+    throw new Error(`Étape "${stepType}" déjà complétée`);
   }
-
+  
   step.completed = true;
   step.completedAt = new Date();
-  step.notes = notes;
-  step.photos = photos;
-
-  // Si c'était la première étape, enregistrer l'heure de début
-  const firstCompletedStep = this.steps.find(s => s.completed);
-  if (!firstCompletedStep || firstCompletedStep.step === stepName) {
-    if (!this.startTime) {
-      this.startTime = new Date();
-    }
+  step.notes = data.notes || '';
+  
+  if (data.photos && Array.isArray(data.photos)) {
+    step.photos = data.photos;
   }
-
+  
   return this.save();
 };
 
-// Terminer la préparation
-preparationSchema.methods.complete = function(signature = null) {
-  // Vérifier que toutes les étapes sont complétées
-  const incompleteSteps = this.steps.filter(step => !step.completed);
-  
-  if (incompleteSteps.length > 0) {
-    throw new Error(`Étapes incomplètes: ${incompleteSteps.map(s => s.step).join(', ')}`);
+// Finaliser la préparation
+preparationSchema.methods.complete = function(notes = '') {
+  if (this.status !== PREPARATION_STATUS.IN_PROGRESS) {
+    throw new Error('Seule une préparation en cours peut être finalisée');
   }
-
+  
   this.status = PREPARATION_STATUS.COMPLETED;
   this.endTime = new Date();
-  
-  if (signature) {
-    this.signature = {
-      preparateur: signature,
-      signedAt: new Date()
-    };
-  }
-
-  return this.save();
-};
-
-// Annuler la préparation
-preparationSchema.methods.cancel = function(reason = '') {
-  this.status = PREPARATION_STATUS.CANCELLED;
-  this.notes = this.notes ? `${this.notes}\n\nAnnulé: ${reason}` : `Annulé: ${reason}`;
+  this.totalTime = this.currentDuration;
+  this.notes = notes;
   
   return this.save();
 };
 
-// ===== MÉTHODES STATIQUES =====
-
-// Trouver les préparations en retard - MÉTHODE AJOUTÉE
-preparationSchema.statics.findOvertime = function(filters = {}) {
-  return this.find({
-    ...filters,
-    status: PREPARATION_STATUS.IN_PROGRESS,
-    $expr: {
-      $gt: [
-        { $divide: [{ $subtract: [new Date(), '$startTime'] }, 1000 * 60] },
-        TIME_LIMITS.PREPARATION_MAX_MINUTES
-      ]
-    }
-  })
-  .populate('preparateur', 'firstName lastName email')
-  .populate('vehicle', 'licensePlate model')
-  .populate('agency', 'name')
-  .sort({ startTime: 1 });
-};
-
-// Statistiques par préparateur
-preparationSchema.statics.getPreparateurStats = function(preparateurId, dateRange = {}) {
-  const matchStage = {
-    preparateur: preparateurId,
-    status: PREPARATION_STATUS.COMPLETED
-  };
-
-  if (dateRange.start && dateRange.end) {
-    matchStage.createdAt = {
-      $gte: dateRange.start,
-      $lte: dateRange.end
-    };
+// Ajouter un incident
+preparationSchema.methods.addIssue = function(issueData) {
+  if (!this.issues) {
+    this.issues = [];
   }
-
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalPreparations: { $sum: 1 },
-        averageTime: { $avg: '$totalTime' },
-        minTime: { $min: '$totalTime' },
-        maxTime: { $max: '$totalTime' },
-        onTimePreparations: {
-          $sum: {
-            $cond: [
-              { $lte: ['$totalTime', TIME_LIMITS.PREPARATION_MAX_MINUTES] },
-              1,
-              0
-            ]
-          }
-        }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalPreparations: 1,
-        averageTime: { $round: ['$averageTime', 1] },
-        minTime: 1,
-        maxTime: 1,
-        onTimePreparations: 1,
-        onTimeRate: {
-          $round: [
-            { $multiply: [{ $divide: ['$onTimePreparations', '$totalPreparations'] }, 100] },
-            1
-          ]
-        }
-      }
-    }
-  ]);
-};
-
-// Statistiques par agence
-preparationSchema.statics.getAgencyStats = function(agencyId, dateRange = {}) {
-  const matchStage = {
-    agency: agencyId,
-    status: PREPARATION_STATUS.COMPLETED
-  };
-
-  if (dateRange.start && dateRange.end) {
-    matchStage.createdAt = {
-      $gte: dateRange.start,
-      $lte: dateRange.end
-    };
-  }
-
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$preparateur',
-        totalPreparations: { $sum: 1 },
-        averageTime: { $avg: '$totalTime' }
-      }
-    },
-    {
-      $lookup: {
-        from: 'users',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'preparateur'
-      }
-    },
-    {
-      $unwind: '$preparateur'
-    },
-    {
-      $project: {
-        _id: 0,
-        preparateur: {
-          _id: '$preparateur._id',
-          firstName: '$preparateur.firstName',
-          lastName: '$preparateur.lastName'
-        },
-        totalPreparations: 1,
-        averageTime: { $round: ['$averageTime', 1] }
-      }
-    },
-    {
-      $sort: { totalPreparations: -1 }
-    }
-  ]);
-};
-
-// Récupérer les préparations du jour pour un préparateur
-preparationSchema.statics.getTodayPreparations = function(preparateurId) {
-  const today = new Date();
-  const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-  const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-
-  return this.find({
-    preparateur: preparateurId,
-    createdAt: {
-      $gte: startOfDay,
-      $lte: endOfDay
-    }
-  })
-  .populate('vehicle', 'licensePlate model brand')
-  .populate('agency', 'name')
-  .sort({ createdAt: -1 });
-};
-
-// Récupérer les préparations en cours
-preparationSchema.statics.getInProgress = function(filters = {}) {
-  return this.find({
-    ...filters,
-    status: PREPARATION_STATUS.IN_PROGRESS
-  })
-  .populate('preparateur', 'firstName lastName')
-  .populate('vehicle', 'licensePlate model')
-  .populate('agency', 'name')
-  .sort({ startTime: 1 });
-};
-
-// Statistiques globales
-preparationSchema.statics.getGlobalStats = function(dateRange = {}) {
-  const matchStage = {
-    status: PREPARATION_STATUS.COMPLETED
-  };
-
-  if (dateRange.start && dateRange.end) {
-    matchStage.createdAt = {
-      $gte: dateRange.start,
-      $lte: dateRange.end
-    };
-  }
-
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalPreparations: { $sum: 1 },
-        averageTime: { $avg: '$totalTime' },
-        minTime: { $min: '$totalTime' },
-        maxTime: { $max: '$totalTime' },
-        onTimePreparations: {
-          $sum: {
-            $cond: [
-              { $lte: ['$totalTime', TIME_LIMITS.PREPARATION_MAX_MINUTES] },
-              1,
-              0
-            ]
-          }
-        }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalPreparations: 1,
-        averageTime: { $round: ['$averageTime', 1] },
-        minTime: 1,
-        maxTime: 1,
-        onTimePreparations: 1,
-        onTimeRate: {
-          $round: [
-            { $multiply: [{ $divide: ['$onTimePreparations', '$totalPreparations'] }, 100] },
-            1
-          ]
-        }
-      }
-    }
-  ]);
-};
-
-// Générer les étapes par défaut pour un véhicule
-preparationSchema.statics.generateDefaultSteps = function() {
-  return Object.values(PREPARATION_STEPS).map(step => ({
-    step,
-    completed: false
-  }));
-};
-
-// Recherche avancée
-preparationSchema.statics.advancedSearch = function(filters = {}) {
-  const {
-    preparateur,
-    agency,
-    vehicle,
-    status,
-    dateStart,
-    dateEnd,
-    isOvertime,
-    search,
-    page = 1,
-    limit = 20,
-    sort = 'createdAt',
-    order = 'desc'
-  } = filters;
-
-  const matchStage = {};
-
-  // Filtres de base
-  if (preparateur) matchStage.preparateur = preparateur;
-  if (agency) matchStage.agency = agency;
-  if (vehicle) matchStage.vehicle = vehicle;
-  if (status) matchStage.status = status;
-
-  // Filtre de dates
-  if (dateStart || dateEnd) {
-    matchStage.createdAt = {};
-    if (dateStart) matchStage.createdAt.$gte = new Date(dateStart);
-    if (dateEnd) matchStage.createdAt.$lte = new Date(dateEnd);
-  }
-
-  // Filtre overtime
-  if (isOvertime !== undefined) {
-    if (isOvertime) {
-      matchStage.totalTime = { $gt: TIME_LIMITS.PREPARATION_MAX_MINUTES };
-    } else {
-      matchStage.totalTime = { $lte: TIME_LIMITS.PREPARATION_MAX_MINUTES };
-    }
-  }
-
-  const aggregationPipeline = [
-    { $match: matchStage },
-    {
-      $lookup: {
-        from: 'users',
-        localField: 'preparateur',
-        foreignField: '_id',
-        as: 'preparateurInfo'
-      }
-    },
-    {
-      $lookup: {
-        from: 'vehicles',
-        localField: 'vehicle',
-        foreignField: '_id',
-        as: 'vehicleInfo'
-      }
-    },
-    {
-      $lookup: {
-        from: 'agencies',
-        localField: 'agency',
-        foreignField: '_id',
-        as: 'agencyInfo'
-      }
-    },
-    {
-      $unwind: '$preparateurInfo'
-    },
-    {
-      $unwind: '$vehicleInfo'
-    },
-    {
-      $unwind: '$agencyInfo'
-    }
-  ];
-
-  // Recherche textuelle
-  if (search) {
-    aggregationPipeline.push({
-      $match: {
-        $or: [
-          { 'preparateurInfo.firstName': { $regex: search, $options: 'i' } },
-          { 'preparateurInfo.lastName': { $regex: search, $options: 'i' } },
-          { 'vehicleInfo.licensePlate': { $regex: search, $options: 'i' } },
-          { 'vehicleInfo.model': { $regex: search, $options: 'i' } },
-          { 'agencyInfo.name': { $regex: search, $options: 'i' } }
-        ]
-      }
-    });
-  }
-
-  // Tri
-  const sortStage = {};
-  sortStage[sort] = order === 'desc' ? -1 : 1;
-  aggregationPipeline.push({ $sort: sortStage });
-
-  // Pagination
-  const skip = (page - 1) * limit;
-  aggregationPipeline.push({ $skip: skip });
-  aggregationPipeline.push({ $limit: parseInt(limit) });
-
-  return this.aggregate(aggregationPipeline);
+  
+  this.issues.push({
+    type: issueData.type,
+    description: issueData.description,
+    severity: issueData.severity || 'medium',
+    photos: issueData.photos || []
+  });
+  
+  return this.save();
 };
 
 module.exports = mongoose.model('Preparation', preparationSchema);

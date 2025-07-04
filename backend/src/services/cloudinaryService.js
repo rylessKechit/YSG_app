@@ -1,5 +1,49 @@
+// backend/src/services/cloudinaryService.js
 const { cloudinary } = require('../config/cloudinary');
-const { CLOUDINARY_CONFIG, FILE_LIMITS } = require('../utils/constants');
+
+// Configuration Cloudinary locale pour éviter les dépendances circulaires
+const CLOUDINARY_CONFIG = {
+  FOLDERS: {
+    PREPARATIONS: 'vehicle-prep/preparations',
+    INCIDENTS: 'vehicle-prep/incidents',
+    PROFILES: 'vehicle-prep/profiles'
+  },
+  TRANSFORMATIONS: {
+    COMPRESS: {
+      quality: 'auto:good',
+      format: 'auto',
+      width: 1200,
+      height: 1200,
+      crop: 'limit'
+    },
+    MEDIUM: {
+      quality: 'auto:good',
+      format: 'auto',
+      width: 800,
+      height: 800,
+      crop: 'limit'
+    },
+    THUMBNAIL: {
+      quality: 'auto:good',
+      format: 'auto',
+      width: 300,
+      height: 300,
+      crop: 'fill'
+    }
+  }
+};
+
+// Configuration des fichiers
+const FILE_CONFIG = {
+  MAX_SIZE: 5 * 1024 * 1024, // 5MB
+  ALLOWED_TYPES: [
+    'image/jpeg',
+    'image/jpg', 
+    'image/png',
+    'image/webp'
+  ],
+  ALLOWED_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.webp']
+};
 
 /**
  * Service pour gérer les uploads Cloudinary
@@ -16,7 +60,6 @@ class CloudinaryService {
     try {
       const {
         folder = CLOUDINARY_CONFIG.FOLDERS.PREPARATIONS,
-        transformation = CLOUDINARY_CONFIG.TRANSFORMATIONS.COMPRESS,
         filename = null,
         tags = []
       } = options;
@@ -25,11 +68,7 @@ class CloudinaryService {
         const uploadOptions = {
           resource_type: 'image',
           folder: folder,
-          transformation: transformation,
-          tags: ['vehicle-prep', ...tags],
-          quality: 'auto:good',
-          format: 'auto', // Cloudinary choisit le meilleur format
-          flags: 'progressive', // Chargement progressif
+          tags: ['vehicle-prep', ...tags]
         };
 
         // Ajouter un nom de fichier personnalisé si fourni
@@ -90,8 +129,7 @@ class CloudinaryService {
       return await this.uploadImage(buffer, {
         folder: CLOUDINARY_CONFIG.FOLDERS.PREPARATIONS,
         filename,
-        tags,
-        transformation: CLOUDINARY_CONFIG.TRANSFORMATIONS.MEDIUM
+        tags
       });
 
     } catch (error) {
@@ -121,10 +159,9 @@ class CloudinaryService {
       ].filter(Boolean);
 
       return await this.uploadImage(buffer, {
-        folder: `${CLOUDINARY_CONFIG.FOLDERS.PREPARATIONS}/incidents`,
+        folder: CLOUDINARY_CONFIG.FOLDERS.INCIDENTS,
         filename,
-        tags,
-        transformation: CLOUDINARY_CONFIG.TRANSFORMATIONS.MEDIUM
+        tags
       });
 
     } catch (error) {
@@ -135,7 +172,7 @@ class CloudinaryService {
 
   /**
    * Supprimer une image de Cloudinary
-   * @param {string} publicId - ID public de l'image à supprimer
+   * @param {string} publicId - ID public de l'image
    * @returns {Promise<Object>} - Résultat de la suppression
    */
   static async deleteImage(publicId) {
@@ -143,11 +180,10 @@ class CloudinaryService {
       const result = await cloudinary.uploader.destroy(publicId);
       
       if (result.result === 'ok') {
-        return { success: true, message: 'Image supprimée avec succès' };
+        return { success: true, publicId };
       } else {
-        throw new Error(`Échec de la suppression: ${result.result}`);
+        throw new Error(`Échec suppression: ${result.result}`);
       }
-
     } catch (error) {
       console.error('Erreur suppression Cloudinary:', error);
       throw new Error('Erreur lors de la suppression de l\'image');
@@ -156,20 +192,17 @@ class CloudinaryService {
 
   /**
    * Supprimer plusieurs images
-   * @param {Array<string>} publicIds - Liste des IDs publics à supprimer
-   * @returns {Promise<Object>} - Résultat des suppressions
+   * @param {Array<string>} publicIds - Liste des IDs publics
+   * @returns {Promise<Object>} - Résultat de la suppression
    */
   static async deleteMultipleImages(publicIds) {
     try {
-      const result = await cloudinary.api.delete_resources(publicIds);
-      
-      return {
-        success: true,
-        deleted: result.deleted,
-        notFound: result.not_found,
-        partialCleanup: result.partial_cleanup
-      };
+      if (!Array.isArray(publicIds) || publicIds.length === 0) {
+        return { success: true, deleted: {}, message: 'Aucune image à supprimer' };
+      }
 
+      const result = await cloudinary.api.delete_resources(publicIds);
+      return result;
     } catch (error) {
       console.error('Erreur suppression multiple Cloudinary:', error);
       throw new Error('Erreur lors de la suppression des images');
@@ -177,35 +210,56 @@ class CloudinaryService {
   }
 
   /**
-   * Générer une URL avec transformation à la volée
+   * Valider un fichier image
+   * @param {Object} file - Fichier Multer
+   * @returns {Object} - Résultat de la validation
+   */
+  static validateImageFile(file) {
+    const errors = [];
+
+    if (!file) {
+      errors.push('Aucun fichier fourni');
+      return { isValid: false, errors };
+    }
+
+    // Vérifier la taille du fichier
+    if (file.size > FILE_CONFIG.MAX_SIZE) {
+      errors.push(`Fichier trop volumineux. Taille maximum: ${FILE_CONFIG.MAX_SIZE / 1024 / 1024}MB`);
+    }
+
+    // Vérifier le type MIME
+    if (!FILE_CONFIG.ALLOWED_TYPES.includes(file.mimetype)) {
+      errors.push(`Type de fichier non autorisé. Types acceptés: ${FILE_CONFIG.ALLOWED_TYPES.join(', ')}`);
+    }
+
+    // Vérifier l'extension
+    if (file.originalname) {
+      const extension = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+      if (!FILE_CONFIG.ALLOWED_EXTENSIONS.includes(extension)) {
+        errors.push(`Extension non autorisée. Extensions acceptées: ${FILE_CONFIG.ALLOWED_EXTENSIONS.join(', ')}`);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Générer une URL de transformation
    * @param {string} publicId - ID public de l'image
-   * @param {Object} options - Options de transformation
+   * @param {Object} transformation - Transformation à appliquer
    * @returns {string} - URL transformée
    */
-  static getTransformedUrl(publicId, options = {}) {
+  static getTransformedUrl(publicId, transformation = CLOUDINARY_CONFIG.TRANSFORMATIONS.MEDIUM) {
     try {
-      const {
-        width = null,
-        height = null,
-        crop = 'fit',
-        quality = 'auto:good',
-        format = 'auto'
-      } = options;
-
-      const transformations = {
-        quality,
-        format,
-        flags: 'progressive'
-      };
-
-      if (width) transformations.width = width;
-      if (height) transformations.height = height;
-      if (width || height) transformations.crop = crop;
-
-      return cloudinary.url(publicId, transformations);
-
+      return cloudinary.url(publicId, {
+        ...transformation,
+        secure: true
+      });
     } catch (error) {
-      console.error('Erreur génération URL:', error);
+      console.error('Erreur génération URL transformée:', error);
       return null;
     }
   }
@@ -218,51 +272,20 @@ class CloudinaryService {
   static async getImageMetadata(publicId) {
     try {
       const result = await cloudinary.api.resource(publicId);
-      
       return {
+        publicId: result.public_id,
         url: result.secure_url,
         width: result.width,
         height: result.height,
         format: result.format,
         bytes: result.bytes,
         createdAt: result.created_at,
-        tags: result.tags
+        tags: result.tags || []
       };
-
     } catch (error) {
       console.error('Erreur récupération métadonnées:', error);
       throw new Error('Erreur lors de la récupération des métadonnées');
     }
-  }
-
-  /**
-   * Valider qu'un fichier est une image valide
-   * @param {Object} file - Objet fichier (multer)
-   * @returns {Object} - Résultat de la validation
-   */
-  static validateImageFile(file) {
-    const errors = [];
-
-    // Vérifier la taille
-    if (file.size > FILE_LIMITS.MAX_SIZE) {
-      errors.push(`Fichier trop volumineux. Maximum: ${FILE_LIMITS.MAX_SIZE / 1024 / 1024}MB`);
-    }
-
-    // Vérifier le type MIME
-    if (!FILE_LIMITS.ALLOWED_TYPES.includes(file.mimetype)) {
-      errors.push(`Type de fichier non autorisé. Types acceptés: ${FILE_LIMITS.ALLOWED_TYPES.join(', ')}`);
-    }
-
-    // Vérifier l'extension
-    const extension = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
-    if (!FILE_LIMITS.ALLOWED_EXTENSIONS.includes(extension)) {
-      errors.push(`Extension non autorisée. Extensions acceptées: ${FILE_LIMITS.ALLOWED_EXTENSIONS.join(', ')}`);
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
   }
 
   /**
@@ -294,9 +317,9 @@ class CloudinaryService {
 
       return {
         success: true,
-        deletedCount: Object.keys(result.deleted).length,
+        deletedCount: Object.keys(result.deleted || {}).length,
         orphanedIds,
-        message: `${Object.keys(result.deleted).length} images orphelines supprimées`
+        message: `${Object.keys(result.deleted || {}).length} images orphelines supprimées`
       };
 
     } catch (error) {

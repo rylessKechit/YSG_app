@@ -1,333 +1,194 @@
 // app/(dashboard)/preparations/page.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Plus, Search, Filter, Car, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { 
+  Plus, 
+  Clock, 
+  Car,
+  ArrowRight,
+  History,
+  AlertTriangle
+} from 'lucide-react';
+
 import { usePreparationStore } from '@/lib/stores/preparation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
 
-const PreparationsPage = () => {
+const PreparationsPage: React.FC = () => {
   const router = useRouter();
+  const { toast } = useToast();
+  
   const {
     currentPreparation,
-    history,
-    userAgencies,
+    getCurrentPreparation,
     isLoading,
     error,
-    getCurrentPreparation,
-    getHistory,
-    getUserAgencies,
     clearError
   } = usePreparationStore();
 
-  // États locaux pour les filtres
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedAgency, setSelectedAgency] = useState('all');
-  const [stats, setStats] = useState(null);
-
+  // Charger la préparation en cours au montage
   useEffect(() => {
-    // Charger les données initiales
-    const loadData = async () => {
+    const loadCurrentPreparation = async () => {
       try {
-        await Promise.all([
-          getCurrentPreparation(),
-          getHistory(),
-          getUserAgencies()
-        ]);
+        await getCurrentPreparation();
       } catch (error) {
-        console.error('Erreur chargement préparations:', error);
+        console.error('Erreur chargement préparation:', error);
       }
     };
 
-    loadData();
-  }, []);
+    loadCurrentPreparation();
+  }, [getCurrentPreparation]);
 
-  // Filtrer les préparations
-  const filteredPreparations = history.filter(prep => {
-    const matchesSearch = prep.vehicle.licensePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         prep.vehicle.brand.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesAgency = selectedAgency === 'all' || prep.agency.id === selectedAgency;
-    return matchesSearch && matchesAgency;
-  });
-
-  // Calculer les statistiques rapides
-  const quickStats = {
-    totalToday: history.filter(p => {
-      const today = new Date().toDateString();
-      return new Date(p.startTime).toDateString() === today;
-    }).length,
-    currentInProgress: currentPreparation ? 1 : 0,
-    averageTime: history.length > 0 ? 
-      Math.round(history.reduce((sum, p) => sum + (p.totalMinutes || 0), 0) / history.length) : 0,
-    onTimeRate: history.length > 0 ? 
-      Math.round((history.filter(p => p.isOnTime).length / history.length) * 100) : 0
-  };
-
-  const getStatusBadge = (status: string, isOnTime?: boolean) => {
-    switch (status) {
-      case 'completed':
-        return (
-          <Badge variant={isOnTime ? 'default' : 'secondary'} className="gap-1">
-            <CheckCircle className="w-3 h-3" />
-            {isOnTime ? 'Terminé' : 'Terminé (retard)'}
-          </Badge>
-        );
-      case 'in_progress':
-        return (
-          <Badge variant="outline" className="gap-1">
-            <Clock className="w-3 h-3" />
-            En cours
-          </Badge>
-        );
-      case 'cancelled':
-        return (
-          <Badge variant="destructive" className="gap-1">
-            <AlertTriangle className="w-3 h-3" />
-            Annulé
-          </Badge>
-        );
-      default:
-        return null;
+  // Nettoyer les erreurs après 5 secondes
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        clearError();
+      }, 5000);
+      return () => clearTimeout(timer);
     }
+  }, [error, clearError]);
+
+  // Rediriger vers la préparation en cours si elle existe
+  useEffect(() => {
+    if (currentPreparation && currentPreparation.id && !isLoading) {
+      console.log('Redirection vers préparation:', currentPreparation.id);
+      router.push(`/preparations/${currentPreparation.id}`);
+    }
+  }, [currentPreparation, router, isLoading]);
+
+  // Gestionnaires d'événements
+  const handleStartNewPreparation = () => {
+    router.push('/preparations/new');
   };
 
-  const formatDuration = (minutes: number) => {
-    if (!minutes) return 'N/A';
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  const handleViewHistory = () => {
+    toast({
+      title: "Fonctionnalité à venir",
+      description: "L'historique des préparations sera bientôt disponible.",
+    });
   };
 
-  if (error) {
+  // Loading state
+  if (isLoading) {
     return (
-      <div className="p-4">
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4">
-            <p className="text-red-800">Erreur: {error}</p>
-            <Button onClick={clearError} className="mt-2">
-              Réessayer
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Vérification des préparations en cours...</p>
+        </div>
       </div>
     );
   }
 
+  // Si une préparation est en cours, on sera redirigé automatiquement
+  // Cette page n'apparaît que s'il n'y a pas de préparation en cours
+
   return (
-    <div className="p-4 space-y-4">
-      {/* Header avec action principale */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Préparations</h1>
-        <Button 
-          onClick={() => router.push('/preparations/new')}
-          disabled={!!currentPreparation}
-          className="gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nouvelle Préparation
-        </Button>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-md mx-auto px-4 py-4">
+          <h1 className="text-xl font-semibold text-gray-900">Préparations</h1>
+          <p className="text-sm text-gray-600">Gestion des préparations véhicules</p>
+        </div>
+      </header>
 
-      {/* Préparation en cours */}
-      {currentPreparation && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg text-blue-900 flex items-center gap-2">
-              <Car className="w-5 h-5" />
-              Préparation en cours
-            </CardTitle>
+      {/* Contenu principal */}
+      <main className="max-w-md mx-auto px-4 py-6 space-y-4">
+        {/* Message d'erreur si applicable */}
+        {error && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-4">
+              <div className="flex items-center text-red-700">
+                <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
+                <span className="text-sm">{error}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Aucune préparation en cours */}
+        <Card>
+          <CardHeader className="text-center pb-2">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Car className="h-8 w-8 text-gray-400" />
+            </div>
+            <CardTitle className="text-lg">Aucune préparation en cours</CardTitle>
+            <p className="text-sm text-gray-600">
+              Vous n'avez actuellement aucune préparation de véhicule en cours.
+            </p>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-semibold text-blue-900">
-                    {currentPreparation.vehicle.licensePlate}
-                  </p>
-                  <p className="text-sm text-blue-700">
-                    {currentPreparation.vehicle.brand} {currentPreparation.vehicle.model}
-                  </p>
-                  <p className="text-xs text-blue-600">
-                    {currentPreparation.agency.name}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-blue-900">
-                    {Math.round(currentPreparation.progress)}%
-                  </p>
-                  <p className="text-sm text-blue-700">
-                    {formatDuration(currentPreparation.currentDuration)}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Barre de progression */}
-              <div className="w-full bg-blue-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${currentPreparation.progress}%` }}
-                />
-              </div>
-              
-              <Button 
-                onClick={() => router.push(`/preparations/${currentPreparation.id}`)}
-                className="w-full"
-              >
-                Continuer la préparation
-              </Button>
-            </div>
+          
+          <CardContent className="pt-2">
+            <Button 
+              onClick={handleStartNewPreparation}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              size="lg"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              Nouvelle préparation
+            </Button>
           </CardContent>
         </Card>
-      )}
 
-      {/* Statistiques rapides */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-gray-900">{quickStats.totalToday}</div>
-            <p className="text-sm text-gray-600">Aujourd'hui</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">{quickStats.currentInProgress}</div>
-            <p className="text-sm text-gray-600">En cours</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{quickStats.averageTime}m</div>
-            <p className="text-sm text-gray-600">Temps moyen</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-orange-600">{quickStats.onTimeRate}%</div>
-            <p className="text-sm text-gray-600">Ponctualité</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filtres */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Rechercher par plaque ou marque..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <div className="w-full sm:w-48">
-              <Select value={selectedAgency} onValueChange={setSelectedAgency}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Toutes les agences" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les agences</SelectItem>
-                  {userAgencies.map(agency => (
-                    <SelectItem key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Liste des préparations */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Historique ({filteredPreparations.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="flex items-center space-x-4">
-                  <Skeleton className="h-12 w-12 rounded" />
-                  <div className="space-y-2 flex-1">
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-3 w-1/2" />
+        {/* Actions rapides */}
+        <div className="space-y-3">
+          <h2 className="font-semibold text-gray-900">Actions rapides</h2>
+          
+          {/* Voir l'historique */}
+          <Card className="cursor-pointer hover:bg-gray-50 transition-colors">
+            <CardContent 
+              className="p-4"
+              onClick={handleViewHistory}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <History className="h-5 w-5 text-purple-600" />
                   </div>
-                  <Skeleton className="h-6 w-20" />
-                </div>
-              ))}
-            </div>
-          ) : filteredPreparations.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Car className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <p>Aucune préparation trouvée</p>
-              {!currentPreparation && (
-                <Button 
-                  onClick={() => router.push('/preparations/new')}
-                  className="mt-4"
-                  variant="outline"
-                >
-                  Démarrer votre première préparation
-                </Button>
-              )}
-            </div>
-          ) : (
-            <ScrollArea className="h-96">
-              <div className="space-y-3">
-                {filteredPreparations.map((preparation) => (
-                  <div
-                    key={preparation.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                    onClick={() => router.push(`/preparations/${preparation.id}`)}
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <Car className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">
-                          {preparation.vehicle.licensePlate}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {preparation.vehicle.brand} {preparation.vehicle.model}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {preparation.agency.name} • {new Date(preparation.startTime).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right space-y-1">
-                      {getStatusBadge(preparation.status, preparation.isOnTime)}
-                      <p className="text-sm text-gray-600">
-                        {formatDuration(preparation.totalMinutes ?? 0)}
-                      </p>
-                      {preparation.issuesCount > 0 && (
-                        <p className="text-xs text-red-600">
-                          {preparation.issuesCount} incident{preparation.issuesCount > 1 ? 's' : ''}
-                        </p>
-                      )}
-                    </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">Historique</h3>
+                    <p className="text-sm text-gray-600">Voir les préparations passées</p>
                   </div>
-                ))}
+                </div>
+                <ArrowRight className="h-5 w-5 text-gray-400" />
               </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+
+          {/* Statistiques rapides - placeholder */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-medium text-gray-900">Performance</h3>
+                  <p className="text-sm text-gray-600">Vos statistiques détaillées</p>
+                </div>
+                <Badge variant="outline">Bientôt</Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Conseils */}
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-blue-900 mb-2">💡 Conseil</h3>
+            <p className="text-sm text-blue-700">
+              Pour une préparation efficace, assurez-vous d'avoir une bonne connexion 
+              internet pour l'upload des photos et de bien vérifier chaque étape avant validation.
+            </p>
+          </CardContent>
+        </Card>
+      </main>
     </div>
   );
 };

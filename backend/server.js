@@ -1,6 +1,10 @@
+// ===== backend/server.js - VERSION CORRIGÉE =====
+
 require('dotenv').config();
 const app = require('./src/app');
-const connectDB = require('./src/config/database');
+
+// ✅ CORRECTION: Import destructuré car database.js exporte maintenant { connectDB, testConnection }
+const { connectDB } = require('./src/config/database');
 
 // Connexion à la base de données
 connectDB();
@@ -11,7 +15,7 @@ const PORT = process.env.PORT || 4000;
 const server = app.listen(PORT, () => {
   console.log(`🚀 Serveur démarré sur le port ${PORT}`);
   console.log(`🌍 Mode: ${process.env.NODE_ENV}`);
-  console.log(`📊 MongoDB: ${process.env.MONGODB_URI ? 'Connecté' : 'Non configuré'}`);
+  console.log(`📊 MongoDB: ${process.env.MONGODB_URI ? 'Configuré' : 'Non configuré'}`);
 });
 
 // Gestion propre de l'arrêt du serveur

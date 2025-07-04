@@ -1,6 +1,24 @@
+// backend/src/middleware/upload.js
 const multer = require('multer');
 const CloudinaryService = require('../services/cloudinaryService');
-const { FILE_LIMITS, ERROR_MESSAGES } = require('../utils/constants');
+
+// Configuration locale pour éviter les dépendances circulaires
+const FILE_LIMITS = {
+  MAX_SIZE: 5 * 1024 * 1024, // 5MB
+  ALLOWED_TYPES: [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp'
+  ],
+  ALLOWED_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.webp'],
+  MAX_FILES: 5
+};
+
+const ERROR_MESSAGES = {
+  SERVER_ERROR: 'Erreur interne du serveur',
+  UPLOAD_FAILED: 'Échec de l\'upload du fichier'
+};
 
 /**
  * Configuration Multer pour stockage en mémoire
@@ -76,7 +94,7 @@ const handleUploadError = (error, req, res, next) => {
   }
 
   // Autres erreurs (ex: type de fichier non autorisé)
-  if (error.message) {
+  if (error && error.message) {
     return res.status(400).json({
       success: false,
       message: error.message
@@ -123,7 +141,7 @@ const processCloudinaryUpload = (uploadType = 'preparation') => {
               ...metadata,
               vehicleId: req.body.vehicleId || req.params.vehicleId,
               stepType: req.body.stepType,
-              preparationId: req.body.preparationId || req.params.preparationId
+              preparationId: req.params.id || req.params.preparationId || req.body.preparationId
             };
             break;
           case 'incident':
@@ -131,7 +149,7 @@ const processCloudinaryUpload = (uploadType = 'preparation') => {
               ...metadata,
               vehicleId: req.body.vehicleId || req.params.vehicleId,
               issueType: req.body.issueType,
-              preparationId: req.body.preparationId || req.params.preparationId
+              preparationId: req.params.id || req.params.preparationId || req.body.preparationId
             };
             break;
         }
@@ -225,7 +243,8 @@ const requirePhoto = (req, res, next) => {
  * Middleware pour valider les paramètres d'upload de préparation
  */
 const validatePreparationUpload = (req, res, next) => {
-  const { stepType, preparationId } = req.body;
+  const { stepType } = req.body;
+  const preparationId = req.params.id || req.params.preparationId || req.body.preparationId;
 
   if (!stepType) {
     return res.status(400).json({
@@ -240,6 +259,9 @@ const validatePreparationUpload = (req, res, next) => {
       message: 'L\'ID de préparation est requis'
     });
   }
+
+  // Ajouter l'ID à req.body pour les middlewares suivants
+  req.body.preparationId = preparationId;
 
   next();
 };

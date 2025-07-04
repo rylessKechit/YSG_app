@@ -118,13 +118,25 @@ const PREPARATION_TYPES = {
  * Étapes de préparation
  */
 const PREPARATION_STEPS = {
-  EXTERIOR_CHECK: 'exterior_check',
-  INTERIOR_CHECK: 'interior_check',
-  FUEL_CHECK: 'fuel_check',
-  DOCUMENTS_CHECK: 'documents_check',
-  CLEANING: 'cleaning',
-  PHOTOS: 'photos',
-  FINAL_CHECK: 'final_check'
+  EXTERIOR: 'exterior',
+  INTERIOR: 'interior', 
+  FUEL: 'fuel',
+  TIRES_FLUIDS: 'tires_fluids',
+  SPECIAL_WASH: 'special_wash',
+  PARKING: 'parking'
+};
+
+/**
+ * Limites de temps (en minutes)
+ */
+const TIME_LIMITS = {
+  PREPARATION_TIME: 30, // Temps standard pour une préparation
+  PREPARATION_MAX_MINUTES: 30, // Limite pour considérer en retard
+  MAX_PREPARATION_TIME: 120, // 2 heures max
+  MAX_BREAK_TIME: 60, // 1 heure
+  MIN_SHIFT_DURATION: 240, // 4 heures
+  MAX_SHIFT_DURATION: 600, // 10 heures
+  LATE_THRESHOLD: 15 // 15 minutes de retard
 };
 
 /**
@@ -191,17 +203,6 @@ const SCHEDULE_STATUS = {
   ACTIVE: 'active',
   CANCELLED: 'cancelled',
   COMPLETED: 'completed'
-};
-
-/**
- * Limites de temps (en minutes)
- */
-const TIME_LIMITS = {
-  MAX_PREPARATION_TIME: 120, // 2 heures
-  MAX_BREAK_TIME: 60, // 1 heure
-  MIN_SHIFT_DURATION: 240, // 4 heures
-  MAX_SHIFT_DURATION: 600, // 10 heures
-  LATE_THRESHOLD: 15 // 15 minutes de retard
 };
 
 /**

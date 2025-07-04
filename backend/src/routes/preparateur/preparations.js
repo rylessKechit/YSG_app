@@ -140,8 +140,9 @@ router.post('/start', validateBody(preparationSchemas.startWithVehicle), async (
       });
     }
 
-    // Créer la préparation avec les informations véhicule
+    // ✅ CORRECTION: Créer la préparation avec véhicule intégré
     const preparation = new Preparation({
+      // ✅ Vehicle en tant qu'objet (pas ObjectId)
       vehicle: {
         licensePlate: licensePlate.toUpperCase(),
         brand: brand,
@@ -152,35 +153,36 @@ router.post('/start', validateBody(preparationSchemas.startWithVehicle), async (
         condition: condition || 'bon',
         notes: ''
       },
-      user: userId,
+      user: userId,           // ✅ Champ principal
+      preparateur: userId,    // ✅ Alias pour compatibilité
       agency: agencyId,
       notes: notes || '',
       startTime: new Date()
     });
 
-    await preparation.save();
+    // Sauvegarder
+    const savedPreparation = await preparation.save();
+    console.log('✅ Préparation créée:', savedPreparation._id);
 
     // Charger les relations pour la réponse
-    await preparation.populate('agency', 'name code client');
-
-    console.log('✅ Préparation créée:', preparation._id);
+    await savedPreparation.populate('agency', 'name code client');
 
     res.status(201).json({
       success: true,
       message: 'Préparation démarrée avec succès',
       data: {
         preparation: {
-          id: preparation._id,
-          vehicle: preparation.vehicle,
-          agency: preparation.agency,
-          startTime: preparation.startTime,
-          status: preparation.status,
-          steps: preparation.steps,
-          progress: preparation.progress,
-          currentDuration: preparation.currentDuration,
-          isOnTime: preparation.isOnTime,
-          issues: preparation.issues || [],
-          notes: preparation.notes
+          id: savedPreparation._id,
+          vehicle: savedPreparation.vehicle, // Objet complet maintenant
+          agency: savedPreparation.agency,
+          startTime: savedPreparation.startTime,
+          status: savedPreparation.status,
+          steps: savedPreparation.steps,
+          progress: savedPreparation.progress,
+          currentDuration: savedPreparation.currentDuration,
+          isOnTime: savedPreparation.isOnTime,
+          issues: savedPreparation.issues || [],
+          notes: savedPreparation.notes
         }
       }
     });
@@ -188,31 +190,23 @@ router.post('/start', validateBody(preparationSchemas.startWithVehicle), async (
   } catch (error) {
     console.error('❌ Erreur démarrage préparation:', error);
     
-    // Gestion spécifique des erreurs de validation Mongoose
+    // ✅ Gestion d'erreur spécifique validation
     if (error.name === 'ValidationError') {
-      const errors = Object.keys(error.errors).map(key => ({
-        field: key,
-        message: error.errors[key].message
+      const errors = Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message
       }));
       
       return res.status(400).json({
         success: false,
-        message: 'Erreur de validation des données',
+        message: 'Données de véhicule invalides',
         errors
-      });
-    }
-
-    // Gestion des erreurs de cast (ObjectId invalide)
-    if (error.name === 'CastError') {
-      return res.status(400).json({
-        success: false,
-        message: `ID invalide pour le champ ${error.path}`
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Erreur lors du démarrage de la préparation'
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
     });
   }
 });
@@ -512,15 +506,28 @@ router.put('/:id/step',
   uploadPreparationPhoto,
   requirePhoto,
   validatePreparationUpload,
-  validateBody(preparationSchemas.completeStep),
   async (req, res) => {
     try {
       const { id } = req.params;
       const { stepType, notes } = req.body;
       const userId = req.user.userId;
-      const photoUrl = req.cloudinaryUrl;
+      
+      // L'URL de la photo est maintenant dans req.uploadedFile
+      const photoUrl = req.uploadedFile?.url;
 
-      console.log('📸 Complétion étape:', { id, stepType, photoUrl });
+      console.log('📸 Complétion étape:', { 
+        preparationId: id, 
+        stepType, 
+        userId,
+        hasPhoto: !!photoUrl 
+      });
+
+      if (!photoUrl) {
+        return res.status(400).json({
+          success: false,
+          message: 'Photo requise pour compléter l\'étape'
+        });
+      }
 
       // Récupérer la préparation
       const preparation = await Preparation.findOne({
@@ -537,11 +544,11 @@ router.put('/:id/step',
       }
 
       // Trouver l'étape à compléter
-      const step = preparation.steps.find(s => s.type === stepType);
+      const step = preparation.steps.find(s => s.step === stepType);
       if (!step) {
         return res.status(400).json({
           success: false,
-          message: 'Type d\'étape invalide'
+          message: `Type d'étape invalide: ${stepType}`
         });
       }
 
@@ -555,22 +562,26 @@ router.put('/:id/step',
       // Marquer l'étape comme complétée
       step.completed = true;
       step.completedAt = new Date();
-      step.photoUrl = photoUrl;
       step.notes = notes || '';
-
-      // Recalculer la progression
-      preparation.calculateProgress();
+      
+      // Ajouter la photo
+      if (!step.photos) step.photos = [];
+      step.photos.push({
+        url: photoUrl,
+        description: `Photo étape ${stepType}`,
+        uploadedAt: new Date()
+      });
 
       await preparation.save();
 
-      // Recharger avec les relations
+      // Recharger avec les relations pour la réponse
       await preparation.populate('agency', 'name code client');
 
       console.log('✅ Étape complétée:', stepType, `(${preparation.progress}%)`);
 
       res.json({
         success: true,
-        message: `Étape "${step.label}" complétée avec succès`,
+        message: `Étape "${stepType}" complétée avec succès`,
         data: {
           preparation: {
             id: preparation._id,
@@ -592,7 +603,7 @@ router.put('/:id/step',
       console.error('❌ Erreur complétion étape:', error);
       res.status(500).json({
         success: false,
-        message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur lors de la complétion de l\'étape'
+        message: 'Erreur lors de la complétion de l\'étape'
       });
     }
   }
