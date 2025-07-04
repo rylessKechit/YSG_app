@@ -24,6 +24,19 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 
+// Interface TypeScript pour les données du formulaire
+interface VehicleFormData {
+  agencyId: string;
+  licensePlate: string;
+  brand: string;
+  model: string;
+  color?: string;
+  year?: number | null;
+  fuelType?: string;
+  condition?: string;
+  notes?: string;
+}
+
 // Schéma de validation simplifié
 const vehicleSchema = z.object({
   agencyId: z.string().min(1, 'Veuillez sélectionner une agence'),
@@ -33,9 +46,12 @@ const vehicleSchema = z.object({
     .transform(val => val.toUpperCase().replace(/\s+/g, '')),
   brand: z.string().min(1, 'Marque requise'),
   model: z.string().min(1, 'Modèle requis'),
-});
-
-type VehicleFormData = z.infer<typeof vehicleSchema>;
+  color: z.string().optional(),
+  year: z.number().nullable().optional(),
+  fuelType: z.string().optional(),
+  condition: z.string().optional(),
+  notes: z.string().optional()
+}) satisfies z.ZodType<VehicleFormData>;
 
 // Marques de véhicules
 const VEHICLE_BRANDS = [
@@ -67,6 +83,11 @@ const NewPreparationPage: React.FC = () => {
       licensePlate: '',
       brand: '',
       model: '',
+      color: '',
+      year: undefined,
+      fuelType: 'essence',
+      condition: 'bon',
+      notes: ''
     },
     mode: 'onChange'
   });
@@ -100,16 +121,16 @@ const NewPreparationPage: React.FC = () => {
   const onSubmit = async (data: VehicleFormData): Promise<void> => {
     try {
       // Préparer les données dans le format attendu par le backend
-      const vehicleData = {
+      const vehicleData: any = {
         agencyId: data.agencyId,
         licensePlate: formatLicensePlate(data.licensePlate),
         brand: showCustomBrand ? customBrand.trim() : data.brand,
         model: data.model,
-        color: '', // Optionnel
-        year: null, // Optionnel
-        fuelType: 'essence', // Valeur par défaut
-        condition: 'bon', // Valeur par défaut
-        notes: '' // Optionnel
+        color: data.color || '',
+        year: data.year || null,
+        fuelType: data.fuelType || 'essence',
+        condition: data.condition || 'bon',
+        notes: data.notes || ''
       };
 
       console.log('📤 Démarrage préparation:', vehicleData);
