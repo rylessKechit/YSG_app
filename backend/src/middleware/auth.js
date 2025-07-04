@@ -1,113 +1,132 @@
+// backend/src/middleware/auth.js
+// ✅ Middleware d'authentification complet et corrigé
+
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { ERROR_MESSAGES } = require('../utils/constants');
 
 /**
- * Middleware d'authentification JWT - VERSION CORRIGÉE
- * Vérifie la validité du token et charge les données utilisateur
+ * Middleware principal d'authentification
+ * Vérifie le token JWT et charge les données utilisateur
  */
 const auth = async (req, res, next) => {
   try {
-    console.log('🔍 Auth middleware - JWT_SECRET exists:', !!process.env.JWT_SECRET);
-    
-    // Récupérer le token depuis l'header Authorization
+    // Récupérer le token depuis l'en-tête Authorization
     const authHeader = req.header('Authorization');
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('❌ Token manquant ou format invalide');
+    if (!authHeader) {
       return res.status(401).json({
         success: false,
-        message: ERROR_MESSAGES.TOKEN_REQUIRED
+        message: ERROR_MESSAGES.TOKEN_REQUIRED || 'Token d\'authentification requis'
       });
     }
 
-    // Extraire le token (format: "Bearer TOKEN")
-    const token = authHeader.substring(7); // Plus sûr que replace
-    console.log('🎫 Token reçu:', token.substring(0, 20) + '...');
+    // Vérifier le format "Bearer TOKEN"
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: ERROR_MESSAGES.TOKEN_INVALID || 'Format de token invalide'
+      });
+    }
+
+    // Extraire le token
+    const token = authHeader.substring(7); // Enlever "Bearer "
     
-    if (!token || token === 'null' || token === 'undefined') {
+    if (!token) {
       return res.status(401).json({
         success: false,
-        message: ERROR_MESSAGES.TOKEN_REQUIRED
+        message: ERROR_MESSAGES.TOKEN_REQUIRED || 'Token manquant'
       });
     }
 
-    // VÉRIFICATION CRITIQUE - JWT_SECRET doit exister
+    // Vérifier la présence de la clé secrète
     if (!process.env.JWT_SECRET) {
-      console.error('💥 ERREUR CRITIQUE: JWT_SECRET manquant dans .env !');
+      console.error('❌ JWT_SECRET non défini dans les variables d\'environnement');
       return res.status(500).json({
         success: false,
-        message: 'Configuration serveur manquante'
+        message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur de configuration serveur'
       });
     }
 
-    console.log('🔐 Vérification token avec JWT_SECRET...');
-    
-    // Vérifier et décoder le token
+    // Décoder et vérifier le token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('✅ Token décodé:', { userId: decoded.userId, role: decoded.role });
     
-    // Charger l'utilisateur depuis la base de données
-    const user = await User.findById(decoded.userId)
-      .populate('agencies', 'name code client')
-      .select('-password');
-
-    if (!user) {
-      console.log('❌ Utilisateur non trouvé:', decoded.userId);
+    if (!decoded.userId) {
       return res.status(401).json({
         success: false,
-        message: ERROR_MESSAGES.USER_NOT_FOUND
+        message: ERROR_MESSAGES.TOKEN_INVALID || 'Token invalide'
+      });
+    }
+
+    // Récupérer l'utilisateur depuis la base de données
+    const user = await User.findById(decoded.userId)
+      .populate('agencies', 'name code client workingHours isActive')
+      .select('-password'); // Exclure le mot de passe
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: ERROR_MESSAGES.USER_NOT_FOUND || 'Utilisateur non trouvé'
       });
     }
 
     // Vérifier que l'utilisateur est actif
     if (!user.isActive) {
-      console.log('❌ Utilisateur inactif:', user.email);
       return res.status(401).json({
         success: false,
-        message: ERROR_MESSAGES.USER_INACTIVE
+        message: ERROR_MESSAGES.ACCOUNT_DISABLED || 'Compte désactivé'
       });
     }
 
-    // Ajouter les données utilisateur à la requête
+    // Attacher les informations utilisateur à la requête
     req.user = {
       userId: user._id,
       email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
       role: user.role,
-      agencies: user.agencies,
-      fullUser: user // Pour accès complet si nécessaire
+      agencies: user.agencies || [],
+      isActive: user.isActive,
+      fullUser: user // Référence complète si nécessaire
     };
 
-    console.log('✅ Auth réussie pour:', user.email);
+    console.log(`✅ Utilisateur authentifié: ${user.email} (${user.role})`);
     next();
 
   } catch (error) {
-    console.error('💥 Erreur authentification:', error.name, error.message);
+    console.error('❌ Erreur authentification:', error);
 
-    // Gérer les différents types d'erreurs JWT
+    // Gestion spécifique des erreurs JWT
     if (error.name === 'JsonWebTokenError') {
-      console.error('🔐 JWT Error details:', {
+      console.error('Token JWT invalide:', {
         message: error.message,
-        jwtSecretExists: !!process.env.JWT_SECRET,
+        hasSecret: !!process.env.JWT_SECRET,
         jwtSecretLength: process.env.JWT_SECRET?.length || 0
       });
       return res.status(401).json({
         success: false,
-        message: ERROR_MESSAGES.TOKEN_INVALID
+        message: ERROR_MESSAGES.TOKEN_INVALID || 'Token invalide'
       });
     }
 
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
-        message: ERROR_MESSAGES.TOKEN_EXPIRED
+        message: ERROR_MESSAGES.TOKEN_EXPIRED || 'Token expiré'
+      });
+    }
+
+    if (error.name === 'NotBeforeError') {
+      return res.status(401).json({
+        success: false,
+        message: ERROR_MESSAGES.TOKEN_INVALID || 'Token non encore valide'
       });
     }
 
     // Erreur générique
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
     });
   }
 };
@@ -120,7 +139,7 @@ const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.header('Authorization');
     
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return next(); // Pas de token, on continue sans utilisateur
     }
 
@@ -130,17 +149,21 @@ const optionalAuth = async (req, res, next) => {
       return next();
     }
 
+    // Essayer de décoder le token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId)
-      .populate('agencies', 'name code client')
+      .populate('agencies', 'name code client workingHours isActive')
       .select('-password');
 
     if (user && user.isActive) {
       req.user = {
         userId: user._id,
         email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
         role: user.role,
-        agencies: user.agencies,
+        agencies: user.agencies || [],
+        isActive: user.isActive,
         fullUser: user
       };
     }
@@ -149,6 +172,7 @@ const optionalAuth = async (req, res, next) => {
 
   } catch (error) {
     // En cas d'erreur avec le token optionnel, on continue sans utilisateur
+    console.log('Token optionnel invalide, continuation sans auth');
     next();
   }
 };
@@ -180,7 +204,7 @@ const checkAgencyAccess = (req, res, next) => {
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
-        message: ERROR_MESSAGES.ACCESS_DENIED
+        message: ERROR_MESSAGES.ACCESS_DENIED || 'Accès refusé à cette agence'
       });
     }
 
@@ -190,7 +214,7 @@ const checkAgencyAccess = (req, res, next) => {
     console.error('Erreur vérification accès agence:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
     });
   }
 };
@@ -211,7 +235,7 @@ const checkUserAccess = (req, res, next) => {
     if (req.user.userId.toString() !== targetUserId.toString()) {
       return res.status(403).json({
         success: false,
-        message: ERROR_MESSAGES.ACCESS_DENIED
+        message: ERROR_MESSAGES.ACCESS_DENIED || 'Accès refusé'
       });
     }
 
@@ -221,7 +245,56 @@ const checkUserAccess = (req, res, next) => {
     console.error('Erreur vérification accès utilisateur:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
+    });
+  }
+};
+
+/**
+ * Middleware pour générer un token JWT
+ * Utilitaire pour la génération de tokens
+ */
+const generateToken = (userId) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET non défini');
+  }
+
+  return jwt.sign(
+    { userId }, 
+    process.env.JWT_SECRET, 
+    { 
+      expiresIn: process.env.JWT_EXPIRE || '7d',
+      issuer: 'ysg-backend',
+      audience: 'ysg-app'
+    }
+  );
+};
+
+/**
+ * Middleware pour rafraîchir un token
+ */
+const refreshToken = async (req, res, next) => {
+  try {
+    // Le middleware auth doit avoir été exécuté avant
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Utilisateur non authentifié'
+      });
+    }
+
+    // Générer un nouveau token
+    const newToken = generateToken(req.user.userId);
+    
+    // Ajouter le nouveau token à la réponse
+    req.newToken = newToken;
+    
+    next();
+  } catch (error) {
+    console.error('Erreur rafraîchissement token:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
     });
   }
 };
@@ -230,5 +303,7 @@ module.exports = {
   auth,
   optionalAuth,
   checkAgencyAccess,
-  checkUserAccess
+  checkUserAccess,
+  generateToken,
+  refreshToken
 };

@@ -1,4 +1,6 @@
-// app/(dashboard)/preparations/[id]/page.tsx
+// preparator-app/src/app/(dashboard)/preparations/[id]/page.tsx
+// ✅ Page de workflow de préparation corrigée
+
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -14,7 +16,7 @@ import {
   Plus
 } from 'lucide-react';
 
-import { usePreparationStore } from '@/lib/stores/preparation';
+import { usePreparationStore, usePreparationStats } from '@/lib/stores/preparation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,47 +27,7 @@ import { CameraCapture } from '@/components/preparations/CameraCapture';
 import { IssueReportModal } from '@/components/preparations/IssueReportModal';
 import { PreparationTimer } from '@/components/preparations/PreparationTimer';
 
-import type { Preparation, PreparationStep } from '@/lib/types';
-
-// Définition des étapes avec leurs labels français
-const PREPARATION_STEPS = [
-  {
-    type: 'exterior',
-    label: 'Extérieur',
-    description: 'Nettoyage carrosserie, vitres, jantes',
-    icon: '🚗'
-  },
-  {
-    type: 'interior',
-    label: 'Intérieur', 
-    description: 'Aspirateur, nettoyage surfaces, désinfection',
-    icon: '🧽'
-  },
-  {
-    type: 'fuel',
-    label: 'Carburant',
-    description: 'Vérification niveau, ajout si nécessaire',
-    icon: '⛽'
-  },
-  {
-    type: 'tires_fluids',
-    label: 'Pneus & Fluides',
-    description: 'Pression pneus, niveaux huile/liquides',
-    icon: '🔧'
-  },
-  {
-    type: 'special_wash',
-    label: 'Lavage Spécial',
-    description: 'Traitement anti-bactérien, parfums',
-    icon: '✨'
-  },
-  {
-    type: 'parking',
-    label: 'Stationnement',
-    description: 'Positionnement final, vérification clés',
-    icon: '🅿️'
-  }
-] as const;
+import { PREPARATION_STEPS, type StepDefinition, type IssueReportData } from '@/lib/types';
 
 const PreparationWorkflowPage: React.FC = () => {
   const router = useRouter();
@@ -74,169 +36,179 @@ const PreparationWorkflowPage: React.FC = () => {
   
   const {
     currentPreparation,
-    getCurrentPreparation,
     completeStep,
     completePreparation,
     reportIssue,
+    getCurrentPreparation,
     isLoading,
     error,
     clearError
   } = usePreparationStore();
 
-  // États locaux
+  const stats = usePreparationStats();
+
+  // ===== ÉTATS LOCAUX =====
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
-  const [showCamera, setShowCamera] = useState<boolean>(false);
-  const [showIssueModal, setShowIssueModal] = useState<boolean>(false);
-  const [stepNotes, setStepNotes] = useState<string>('');
-  const [isCompletingStep, setIsCompletingStep] = useState<boolean>(false);
-  const [finalNotes, setFinalNotes] = useState<string>('');
+  const [showCamera, setShowCamera] = useState(false);
+  const [showIssueModal, setShowIssueModal] = useState(false);
+  const [isCompletingStep, setIsCompletingStep] = useState(false);
+  const [isCompletingPreparation, setIsCompletingPreparation] = useState(false);
+  const [finalNotes, setFinalNotes] = useState('');
 
-  const preparationId = params.id as string;
-
+  // ===== EFFETS =====
+  
   // Charger la préparation au montage
   useEffect(() => {
-    if (preparationId) {
+    if (params.id) {
       getCurrentPreparation();
     }
-  }, [preparationId, getCurrentPreparation]);
+  }, [params.id, getCurrentPreparation]);
 
-  // Nettoyer les erreurs
+  // Rediriger si pas de préparation
+  useEffect(() => {
+    if (!isLoading && !currentPreparation && !error) {
+      router.push('/preparations');
+    }
+  }, [isLoading, currentPreparation, error, router]);
+
+  // Effacer les erreurs
   useEffect(() => {
     if (error) {
-      const timer = setTimeout(() => clearError(), 5000);
-      return () => clearTimeout(timer);
+      toast({
+        title: "Erreur",
+        description: error,
+        variant: "destructive"
+      });
+      clearError();
     }
-  }, [error, clearError]);
+  }, [error, toast, clearError]);
 
-  // Gérer la capture photo
-  const handlePhotoCapture = useCallback(async (photoFile: File) => {
+  // ===== FONCTIONS UTILITAIRES =====
+
+  // ✅ Obtenir l'étape suivante
+  const getNextStep = useCallback((): StepDefinition | null => {
+    if (!currentPreparation?.steps) return null;
+    
+    return PREPARATION_STEPS.find(stepDef => {
+      const step = currentPreparation.steps.find(s => s.step === stepDef.step);
+      return step && !step.completed;
+    }) || null;
+  }, [currentPreparation]);
+
+  // ✅ Vérifier si une étape est la suivante
+  const isNextStep = useCallback((stepType: string): boolean => {
+    const nextStep = getNextStep();
+    return nextStep?.step === stepType;
+  }, [getNextStep]);
+
+  // ===== HANDLERS =====
+
+  // ✅ Démarrer une étape
+  const handleStartStep = (stepType: string) => {
+    if (!isNextStep(stepType)) {
+      toast({
+        title: "Étape non disponible",
+        description: "Vous devez compléter les étapes précédentes d'abord",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSelectedStep(stepType);
+    setShowCamera(true);
+  };
+
+  // ✅ Compléter une étape
+  const handleStepComplete = async (photo: File, notes?: string) => {
     if (!selectedStep || !currentPreparation) return;
 
     try {
       setIsCompletingStep(true);
       
       await completeStep(currentPreparation.id, {
-        stepType: selectedStep,
-        photo: photoFile,
-        notes: stepNotes.trim()
+        stepType: selectedStep, // Sera mappé vers 'step' dans le store
+        photo,
+        notes
       });
 
       toast({
-        title: "✅ Étape complétée !",
-        description: `L'étape "${PREPARATION_STEPS.find(s => s.type === selectedStep)?.label}" a été validée.`,
+        title: "Étape complétée",
+        description: `L'étape ${PREPARATION_STEPS.find(s => s.step === selectedStep)?.label} a été validée`,
+        variant: "default"
       });
 
-      // Reset des états
       setSelectedStep(null);
       setShowCamera(false);
-      setStepNotes('');
-      
-    } catch (error: any) {
-      console.error('❌ Erreur completion étape:', error);
+    } catch (error) {
+      console.error('Erreur complétion étape:', error);
       toast({
         title: "Erreur",
-        description: error?.message || "Impossible de compléter l'étape",
+        description: "Impossible de compléter l'étape",
         variant: "destructive"
       });
     } finally {
       setIsCompletingStep(false);
     }
-  }, [selectedStep, currentPreparation, stepNotes, completeStep, toast]);
-
-  // Démarrer une étape
-  const handleStartStep = (stepType: string) => {
-    setSelectedStep(stepType);
-    setStepNotes('');
-    setShowCamera(true);
   };
 
-  // Finaliser la préparation
-  const handleCompletePreparation = async () => {
-    if (!currentPreparation) return;
-
-    // Vérifier que toutes les étapes sont complétées
-    const incompleteTasks = currentPreparation.steps.filter(step => !step.completed);
-    if (incompleteTasks.length > 0) {
-      toast({
-        title: "Préparation incomplète",
-        description: `Il reste ${incompleteTasks.length} étape(s) à compléter.`,
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      await completePreparation(currentPreparation.id, finalNotes.trim());
-      
-      toast({
-        title: "🎉 Préparation terminée !",
-        description: `Véhicule ${currentPreparation.vehicle.licensePlate} prêt pour location.`,
-      });
-
-      // Redirection vers le dashboard
-      router.push('/dashboard');
-      
-    } catch (error: any) {
-      console.error('❌ Erreur finalisation:', error);
-      toast({
-        title: "Erreur",
-        description: error?.message || "Impossible de finaliser la préparation",
-        variant: "destructive"
-      });
-    }
-  };
-
-  // Signaler un incident
-  const handleReportIssue = async (issueData: {
-    type: string;
-    description: string;
-    photo?: File;
-    severity?: 'low' | 'medium' | 'high';
-  }) => {
+  // ✅ Signaler un incident
+  const handleReportIssue = async (data: IssueReportData) => {
     if (!currentPreparation) return;
 
     try {
-      await reportIssue(currentPreparation.id, issueData);
+      await reportIssue(currentPreparation.id, data);
       
       toast({
         title: "Incident signalé",
-        description: "L'incident a été enregistré et sera traité.",
+        description: "L'incident a été enregistré avec succès",
+        variant: "default"
       });
-      
+
       setShowIssueModal(false);
-      
-    } catch (error: any) {
-      console.error('❌ Erreur signalement:', error);
+    } catch (error) {
+      console.error('Erreur signalement incident:', error);
       toast({
         title: "Erreur",
-        description: error?.message || "Impossible de signaler l'incident",
+        description: "Impossible de signaler l'incident",
         variant: "destructive"
       });
     }
   };
 
-  // Calculer les statistiques
-  const getPreparationStats = () => {
-    if (!currentPreparation) return null;
+  // ✅ Terminer la préparation
+  const handleCompletePreparation = async () => {
+    if (!currentPreparation || !stats?.canComplete) return;
 
-    const totalSteps = currentPreparation.steps.length;
-    const completedSteps = currentPreparation.steps.filter(s => s.completed).length;
-    const progressPercent = Math.round((completedSteps / totalSteps) * 100);
-    
-    return {
-      totalSteps,
-      completedSteps,
-      progressPercent,
-      isOnTime: currentPreparation.isOnTime,
-      duration: currentPreparation.currentDuration,
-      issuesCount: currentPreparation.issues?.length || 0
-    };
+    try {
+      setIsCompletingPreparation(true);
+      
+      await completePreparation(currentPreparation.id, finalNotes);
+      
+      toast({
+        title: "Préparation terminée",
+        description: "La préparation a été finalisée avec succès",
+        variant: "default"
+      });
+
+      // Rediriger vers la liste des préparations
+      setTimeout(() => {
+        router.push('/preparations');
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Erreur finalisation:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de terminer la préparation",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCompletingPreparation(false);
+    }
   };
 
-  const stats = getPreparationStats();
-
-  // Loading state
-  if (isLoading && !currentPreparation) {
+  // ===== AFFICHAGE DE CHARGEMENT =====
+  if (isLoading || !currentPreparation) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -247,148 +219,83 @@ const PreparationWorkflowPage: React.FC = () => {
     );
   }
 
-  // Error state
-  if (error && !currentPreparation) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Erreur de chargement</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={() => router.back()}>
-            Retour
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // No preparation state
-  if (!currentPreparation) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Car className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Aucune préparation</h2>
-          <p className="text-gray-600 mb-4">Aucune préparation en cours trouvée.</p>
-          <Button onClick={() => router.push('/preparations')}>
-            Retour aux préparations
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
+  // ===== RENDU PRINCIPAL =====
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header avec navigation */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-md mx-auto px-4 py-3">
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-4 py-4">
           <div className="flex items-center justify-between">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => router.back()}
-              className="p-2"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            
-            <div className="text-center flex-1">
-              <h1 className="font-semibold text-gray-900">Préparation</h1>
-              <p className="text-sm text-gray-600">
-                {currentPreparation.vehicle.licensePlate}
-              </p>
-            </div>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowIssueModal(true)}
-              className="p-2 text-orange-600"
-            >
-              <AlertTriangle className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      {/* Contenu principal */}
-      <main className="max-w-md mx-auto px-4 pb-6">
-        {/* Carte informations véhicule */}
-        <Card className="mt-4">
-          <CardHeader className="pb-3">
-            <div className="flex justify-between items-start">
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.back()}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              
               <div>
-                <CardTitle className="text-lg">
+                <h1 className="font-semibold text-gray-900">
                   {currentPreparation.vehicle.brand} {currentPreparation.vehicle.model}
-                </CardTitle>
-                <p className="text-sm text-gray-600 mt-1">
-                  {currentPreparation.agency.name} • {currentPreparation.vehicle.licensePlate}
+                </h1>
+                <p className="text-sm text-gray-600">
+                  {currentPreparation.vehicle.licensePlate} • {currentPreparation.agency.name}
                 </p>
               </div>
-              
-              <div className="text-right">
-                <Badge variant={stats?.isOnTime ? "default" : "destructive"}>
-                  <Clock className="h-3 w-3 mr-1" />
-                  {Math.floor(stats?.duration || 0)}min
-                </Badge>
-              </div>
             </div>
-          </CardHeader>
-          
-          <CardContent className="pt-0">
-            {/* Timer et progression */}
-            <div className="space-y-3">
+
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowIssueModal(true)}
+              >
+                <AlertTriangle className="h-4 w-4" />
+              </Button>
+              
               <PreparationTimer 
                 startTime={currentPreparation.startTime}
-                isOnTime={stats?.isOnTime || false}
+                isOnTime={currentPreparation.isOnTime ?? false}
               />
-              
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span>Progression</span>
-                  <span>{stats?.completedSteps}/{stats?.totalSteps} étapes</span>
-                </div>
-                <Progress value={stats?.progressPercent || 0} className="h-2" />
-              </div>
-              
-              {(stats?.issuesCount ?? 0) > 0 && (
-                <div className="flex items-center text-orange-600 text-sm">
-                  <AlertTriangle className="h-4 w-4 mr-1" />
-                  {stats?.issuesCount ?? 0} incident(s) signalé(s)
-                </div>
-              )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
+          {/* Barre de progression */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">
+                Progression
+              </span>
+              <span className="text-sm text-gray-600">
+                {stats?.completedSteps}/{stats?.totalSteps} étapes
+              </span>
+            </div>
+            <Progress value={stats?.progress || 0} className="h-2" />
+          </div>
+        </div>
+      </div>
+
+      {/* Contenu principal */}
+      <div className="p-4 space-y-4">
         {/* Liste des étapes */}
-        <div className="mt-6 space-y-3">
-          <h2 className="font-semibold text-gray-900">Étapes de préparation</h2>
-          
+        <div className="space-y-4">
           {PREPARATION_STEPS.map((stepDef, index) => {
-            const step = currentPreparation.steps.find(s => s.type === stepDef.type);
+            // ✅ Correspondance corrigée backend ↔ frontend
+            const step = currentPreparation.steps.find(s => s.step === stepDef.step);
             const isCompleted = step?.completed || false;
-            const isNext = !isCompleted && 
-              currentPreparation.steps.slice(0, index).every(s => s.completed);
-            
+            const isNext = !isCompleted && isNextStep(stepDef.step);
+
             return (
-              <Card 
-                key={stepDef.type}
-                className={`transition-all duration-200 ${
-                  isCompleted 
-                    ? 'bg-green-50 border-green-200' 
-                    : isNext 
-                      ? 'bg-blue-50 border-blue-200 shadow-md'
-                      : 'bg-gray-50 border-gray-200'
-                }`}
-              >
+              <Card key={stepDef.step} className={`transition-colors ${
+                isCompleted ? 'bg-green-50 border-green-200' : 
+                isNext ? 'bg-blue-50 border-blue-200' : ''
+              }`}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className={`
-                        w-8 h-8 rounded-full flex items-center justify-center text-lg
+                        w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
                         ${isCompleted 
                           ? 'bg-green-500 text-white' 
                           : isNext
@@ -436,7 +343,7 @@ const PreparationWorkflowPage: React.FC = () => {
                       
                       {isNext && !isCompleted && (
                         <Button
-                          onClick={() => handleStartStep(stepDef.type)}
+                          onClick={() => handleStartStep(stepDef.step)}
                           disabled={isCompletingStep}
                           className="bg-blue-600 hover:bg-blue-700"
                         >
@@ -459,32 +366,36 @@ const PreparationWorkflowPage: React.FC = () => {
         </div>
 
         {/* Finalisation */}
-        {stats?.completedSteps === stats?.totalSteps && (
+        {stats?.canComplete && (
           <Card className="mt-6 bg-green-50 border-green-200">
             <CardContent className="p-4">
               <h3 className="font-semibold text-green-900 mb-3">
                 🎉 Toutes les étapes sont complétées !
               </h3>
               
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <Textarea
                   placeholder="Notes finales (optionnel)..."
                   value={finalNotes}
                   onChange={(e) => setFinalNotes(e.target.value)}
+                  className="resize-none"
                   rows={3}
                 />
                 
                 <Button
                   onClick={handleCompletePreparation}
-                  disabled={isLoading}
+                  disabled={isCompletingPreparation}
                   className="w-full bg-green-600 hover:bg-green-700"
                   size="lg"
                 >
-                  {isLoading ? (
-                    "Finalisation..."
+                  {isCompletingPreparation ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Finalisation...
+                    </>
                   ) : (
                     <>
-                      <CheckCircle2 className="h-5 w-5 mr-2" />
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
                       Terminer la préparation
                     </>
                   )}
@@ -493,20 +404,48 @@ const PreparationWorkflowPage: React.FC = () => {
             </CardContent>
           </Card>
         )}
-      </main>
+
+        {/* Incidents existants */}
+        {currentPreparation.issues && currentPreparation.issues.length > 0 && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-orange-900 flex items-center">
+                <AlertTriangle className="h-5 w-5 mr-2" />
+                Incidents signalés ({currentPreparation.issues.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {currentPreparation.issues.map((issue, index) => (
+                <div key={index} className="p-3 bg-orange-50 rounded border border-orange-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium text-orange-900">{issue.type}</h4>
+                    <Badge variant={
+                      issue.severity === 'high' ? 'destructive' :
+                      issue.severity === 'medium' ? 'default' : 'secondary'
+                    }>
+                      {issue.severity}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-orange-800">{issue.description}</p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    Signalé à {new Date(issue.reportedAt).toLocaleTimeString('fr-FR')}
+                  </p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Modals */}
       {showCamera && selectedStep && (
         <CameraCapture
-          onCapture={handlePhotoCapture}
+          onCapture={handleStepComplete}
           onCancel={() => {
-            setShowCamera(false);
             setSelectedStep(null);
-            setStepNotes('');
+            setShowCamera(false);
           }}
-          stepLabel={PREPARATION_STEPS.find(s => s.type === selectedStep)?.label || ''}
-          notes={stepNotes}
-          onNotesChange={setStepNotes}
+          stepLabel={PREPARATION_STEPS.find(s => s.step === selectedStep)?.label || selectedStep}
           isLoading={isCompletingStep}
         />
       )}
@@ -515,7 +454,7 @@ const PreparationWorkflowPage: React.FC = () => {
         <IssueReportModal
           onSubmit={handleReportIssue}
           onCancel={() => setShowIssueModal(false)}
-          isLoading={isLoading}
+          isLoading={false}
         />
       )}
     </div>

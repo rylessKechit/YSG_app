@@ -1,141 +1,143 @@
-// ===== backend/src/app.js - VERSION CORRIGÉE AVEC ROUTE AGENCIES =====
+// backend/src/app.js
+// ✅ Configuration Express corrigée avec gestion d'erreurs améliorée
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const compression = require('compression');
-const cron = require('node-cron');
-const path = require('path');
+require('dotenv').config();
 
 const app = express();
 
-// ===== MIDDLEWARES GLOBAUX =====
-
-// Compression gzip
-app.use(compression());
+// ===== MIDDLEWARES DE BASE =====
 
 // Sécurité
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" } // Pour Cloudinary
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS - Configurer selon vos besoins
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-admin-domain.com', 'https://your-app-domain.com']
-    : ['http://localhost:3000', 'http://localhost:3001'],
+// CORS
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
-  optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 
-// Rate limiting
+// Limitation du taux de requêtes
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
+  max: 1000, // limite chaque IP à 1000 requêtes par fenêtre
   message: {
     success: false,
-    message: 'Trop de requêtes, veuillez réessayer plus tard'
-  }
+    message: 'Trop de requêtes, veuillez réessayer plus tard.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
 });
-app.use('/api/', limiter);
+app.use(limiter);
 
-// Parsing JSON et URL
+// Logging
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined'));
+}
+
+// Parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Logging des requêtes (dev only)
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path} - ${new Date().toISOString()}`);
-    next();
-  });
-}
+// ===== ROUTES DE SANTÉ =====
 
-// ===== ROUTES DE BASE =====
-
-// Health check
+// Route de santé générale
 app.get('/health', (req, res) => {
   res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-    version: '1.0.0'
+    success: true,
+    message: 'Serveur opérationnel',
+    data: {
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      version: process.env.npm_package_version || '1.0.0'
+    }
   });
 });
 
-// Route racine
-app.get('/', (req, res) => {
+// Route API de base
+app.get('/api', (req, res) => {
   res.json({
-    message: 'Vehicle Prep API',
-    version: '1.0.0',
-    documentation: '/api/docs',
-    health: '/health'
+    success: true,
+    message: 'API YSG opérationnelle',
+    data: {
+      version: '1.0.0',
+      endpoints: {
+        auth: '/api/auth',
+        admin: '/api/admin',
+        preparateur: {
+          preparations: '/api/preparations',
+          timesheets: '/api/timesheets',
+          profile: '/api/profile'
+        }
+      }
+    }
   });
 });
 
-// ===== ROUTES AUTHENTIFICATION =====
+// ===== ROUTES D'AUTHENTIFICATION =====
 
 try {
   app.use('/api/auth', require('./routes/auth'));
   console.log('✅ Routes auth chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Route auth non trouvée, sera ajoutée plus tard');
+  console.error('❌ Erreur chargement routes auth:', error.message);
 }
 
 // ===== ROUTES ADMIN =====
 
 try {
-  // ===== NOUVEAU: ROUTES RAPPORTS AUTOMATIQUES =====
-  app.use('/api/admin/reports', require('./routes/admin/reports'));
-  console.log('✅ Routes rapports automatiques chargées avec succès');
-} catch (error) {
-  console.warn('⚠️ Erreur chargement routes rapports:', error.message);
-}
-
-try {
   // Users
-  app.use('/api/admin/users', require('./routes/admin/users/users'));
-  app.use('/api/admin/users', require('./routes/admin/users/bulk-actions'));
-  app.use('/api/admin/users', require('./routes/admin/users/profile-complete'));
-  console.log('✅ Routes users chargées avec succès');
+  app.use('/api/admin/users', require('./routes/admin/users/index'));
+  console.log('✅ Routes admin/users chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Erreur chargement routes users:', error.message);
+  console.warn('⚠️ Erreur chargement routes admin/users:', error.message);
 }
 
 try {
+  // Agencies
   app.use('/api/admin/agencies', require('./routes/admin/agencies'));
-  console.log('✅ Routes agencies chargées avec succès');
+  console.log('✅ Routes admin/agencies chargées avec succès');
 } catch (error) {
-  console.error('❌ Erreur chargement routes agencies:', error.message);
-  console.warn('Vérifiez que le fichier ./routes/admin/agencies.js existe');
+  console.warn('⚠️ Erreur chargement routes admin/agencies:', error.message);
 }
 
 try {
   // Schedules
-  app.use('/api/admin/schedules/stats', require('./routes/admin/schedules/stats'));
-  app.use('/api/admin/schedules/calendar', require('./routes/admin/schedules/calendar'));
-  app.use('/api/admin/schedules/validate', require('./routes/admin/schedules/validate'));
-  app.use('/api/admin/schedules/templates', require('./routes/admin/schedules/templates'));
-  app.use('/api/admin/schedules/conflicts', require('./routes/admin/schedules/conflicts'));
-  app.use('/api/admin/schedules', require('./routes/admin/schedules/schedules'));
-  console.log('✅ Routes schedules chargées avec succès');
+  app.use('/api/admin/schedules', require('./routes/admin/schedules/index'));
+  console.log('✅ Routes admin/schedules chargées avec succès');
 } catch (error) {
-  console.error('❌ Erreur chargement routes schedules:', error);
-  console.warn('Vérifiez que tous les fichiers de routes schedules existent');
+  console.warn('⚠️ Erreur chargement routes admin/schedules:', error.message);
 }
 
 try {
+  // Timesheets
   app.use('/api/admin/timesheets', require('./routes/admin/timesheets/index'));
-  console.log('✅ Routes admin timesheets chargées avec succès');
+  console.log('✅ Routes admin/timesheets chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Erreur chargement routes admin timesheets:', error);
+  console.warn('⚠️ Erreur chargement routes admin/timesheets:', error.message);
+}
+
+try {
+  // Preparations
+  app.use('/api/admin/preparations', require('./routes/preparateur/preparations'));
+  console.log('✅ Routes admin/preparations chargées avec succès');
+} catch (error) {
+  console.warn('⚠️ Erreur chargement routes preparateur/preparations:', error.message);
 }
 
 try {
   // Dashboard
-  app.use('/api/admin/dashboard', require('./routes/admin/dashboard/dashboard'));
-  app.use('/api/admin/dashboard/kpis', require('./routes/admin/dashboard/kpis'));
   app.use('/api/admin/dashboard/overview', require('./routes/admin/dashboard/overview'));
   app.use('/api/admin/dashboard/charts', require('./routes/admin/dashboard/charts'));
   app.use('/api/admin/dashboard/alerts', require('./routes/admin/dashboard/alerts'));
@@ -161,7 +163,7 @@ try {
   console.warn('⚠️ Route admin/settings non trouvée');
 }
 
-// ===== ROUTES COMMUNES (POUR TOUS LES UTILISATEURS) =====
+// ===== ROUTES COMMUNES =====
 
 try {
   // Routes communes agencies (pour préparateurs aussi)
@@ -174,94 +176,118 @@ try {
 // ===== ROUTES PRÉPARATEUR =====
 
 try {
+  // ✅ CORRECTION: Routes directes (pas via index préparateur)
   app.use('/api/timesheets', require('./routes/preparateur/timesheets'));
   app.use('/api/preparations', require('./routes/preparateur/preparations'));
   app.use('/api/profile', require('./routes/preparateur/profile'));
   console.log('✅ Routes préparateur chargées avec succès');
 } catch (error) {
-  console.warn(error);
+  console.error('❌ Erreur chargement routes préparateur:', error);
+  console.error('Stack trace:', error.stack);
 }
 
 // ===== GESTION DES ERREURS =====
 
-// Route 404 pour les API non trouvées
-app.use('/api/*', (req, res) => {
-  console.log(`❌ Route API non trouvée: ${req.method} ${req.originalUrl}`);
-  
+// Route non trouvée
+app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route API non trouvée: ${req.method} ${req.originalUrl}`,
-    availableRoutes: {
-      auth: [
-        'POST /api/auth/login',
-        'GET /api/auth/me',
-        'POST /api/auth/refresh'
-      ],
-      admin: [
-        'GET /api/admin/users',
-        'POST /api/admin/users',
-        'GET /api/admin/agencies',        // ✅ MAINTENANT DISPONIBLE
-        'POST /api/admin/agencies',       // ✅ MAINTENANT DISPONIBLE
-        'GET /api/admin/schedules',
-        'GET /api/admin/dashboard',
-        'GET /api/admin/reports',
-        'GET /api/admin/settings'
-      ],
-      common: [
-        'GET /api/agencies',              // Pour tous les utilisateurs
-      ],
-      health: [
-        'GET /health',
-        'GET /'
-      ]
+    message: 'Route non trouvée',
+    data: {
+      method: req.method,
+      path: req.originalUrl,
+      timestamp: new Date().toISOString()
     }
   });
 });
 
-// Gestionnaire d'erreur global
+// Middleware de gestion d'erreurs global
 app.use((error, req, res, next) => {
-  console.error('❌ Erreur serveur:', error);
+  console.error('❌ Erreur globale:', error);
   
-  // Erreur de validation Mongoose
+  // Erreur de validation Joi
+  if (error.isJoi) {
+    return res.status(400).json({
+      success: false,
+      message: 'Erreur de validation',
+      errors: error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      }))
+    });
+  }
+  
+  // Erreur de cast MongoDB
+  if (error.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      message: 'ID invalide',
+      data: {
+        field: error.path,
+        value: error.value
+      }
+    });
+  }
+  
+  // Erreur de duplication MongoDB
+  if (error.code === 11000) {
+    const field = Object.keys(error.keyPattern)[0];
+    return res.status(409).json({
+      success: false,
+      message: `${field} déjà utilisé`,
+      data: {
+        field,
+        value: error.keyValue[field]
+      }
+    });
+  }
+  
+  // Erreur de validation MongoDB
   if (error.name === 'ValidationError') {
-    const errors = Object.values(error.errors).map(err => err.message);
+    const errors = Object.values(error.errors).map(err => ({
+      field: err.path,
+      message: err.message
+    }));
+    
     return res.status(400).json({
       success: false,
       message: 'Erreur de validation',
       errors
     });
   }
-
-  // Erreur de duplication MongoDB
-  if (error.code === 11000) {
-    return res.status(400).json({
+  
+  // Erreur de timeout
+  if (error.code === 'ETIMEDOUT') {
+    return res.status(408).json({
       success: false,
-      message: 'Cette ressource existe déjà'
+      message: 'Timeout de la requête'
     });
   }
-
+  
   // Erreur générique
-  res.status(500).json({
+  const status = error.status || error.statusCode || 500;
+  const message = error.message || 'Erreur serveur interne';
+  
+  res.status(status).json({
     success: false,
-    message: 'Erreur interne du serveur',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    message,
+    ...(process.env.NODE_ENV === 'development' && {
+      stack: error.stack,
+      details: error
+    })
   });
 });
 
-// ===== TÂCHES CRON (OPTIONNEL) =====
+// Gestion des promesses non gérées
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Promesse rejetée non gérée:', reason);
+  console.error('À la promesse:', promise);
+});
 
-// Vérification des retards toutes les 5 minutes (seulement en production)
-if (process.env.NODE_ENV === 'production') {
-  cron.schedule('*/5 * * * *', async () => {
-    try {
-      // Appeler le job de vérification des retards
-      const checkLateTimesheets = require('./jobs/checkLateTimesheets');
-      await checkLateTimesheets();
-      console.log('🕒 Vérification des retards terminée');
-    } catch (error) {
-      console.error('❌ Erreur vérification retards:', error);
-    }
-  });
-}
+// Gestion des exceptions non gérées
+process.on('uncaughtException', (error) => {
+  console.error('❌ Exception non gérée:', error);
+  process.exit(1);
+});
 
 module.exports = app;

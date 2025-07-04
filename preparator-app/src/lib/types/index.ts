@@ -1,15 +1,14 @@
-// Types principaux de l'application
+// preparator-app/src/lib/types.ts
+// ✅ Types harmonisés avec le backend
 
 export interface User {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: 'preparateur' | 'superviseur' | 'admin';
+  role: 'preparateur' | 'admin';
   agencies: Agency[];
   stats?: UserStats;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface Agency {
@@ -17,22 +16,12 @@ export interface Agency {
   name: string;
   code: string;
   client: string;
-  address?: string;
-  city?: string;
-  postalCode?: string;
   isDefault?: boolean;
-  isActive: boolean;
-  createdAt: Date;
-}
-
-export interface UserStats {
-  totalPreparations: number;
-  onTimeRate: number;
-  averageTime: number;
-  lastCalculated: string | null;
-  thisWeekPreparations: number;
-  thisMonthPreparations: number;
-  qualityScore: number;
+  workingHours?: {
+    start: string;
+    end: string;
+  };
+  isActive?: boolean;
 }
 
 export interface Vehicle {
@@ -42,286 +31,213 @@ export interface Vehicle {
   model: string;
   color?: string;
   year?: number;
-  fuelType?: 'essence' | 'diesel' | 'electrique' | 'hybride' | 'autre';
-  condition: 'excellent' | 'bon' | 'moyen' | 'mauvais';
-  notes?: string;
+  fuelType?: 'essence' | 'diesel' | 'electrique' | 'hybride';
+  condition?: 'excellent' | 'bon' | 'correct' | 'mediocre';
+  status?: 'available' | 'in_preparation' | 'ready' | 'rented';
+  agency?: Agency;
 }
 
+// ✅ CORRIGÉ: Utilisation de 'step' comme dans le backend
 export interface PreparationStep {
-  type: 'exterior' | 'interior' | 'fuel' | 'tires_fluids' | 'special_wash' | 'parking';
-  label: string;
+  step: string; // ✅ 'step' au lieu de 'type'
   completed: boolean;
   photoUrl?: string;
-  photoPublicId?: string;
   completedAt?: Date;
   notes?: string;
-  duration?: number;
-}
-
-export interface Issue {
-  id?: string;
-  type: 'damage' | 'missing_key' | 'fuel_problem' | 'cleanliness' | 'mechanical' | 'other';
-  description: string;
-  photoUrl?: string;
-  photoPublicId?: string;
-  reportedAt: Date;
+  photos?: Array<{
+    url: string;
+    description: string;
+    uploadedAt: Date;
+  }>;
 }
 
 export interface Preparation {
   id: string;
   vehicle: Vehicle;
   agency: Agency;
-  user?: Pick<User, 'id' | 'firstName' | 'lastName'>;
+  user?: User;
   startTime: Date;
   endTime?: Date;
-  totalMinutes?: number;
-  status: 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   steps: PreparationStep[];
   progress: number;
   currentDuration: number;
+  totalTime?: number;
   isOnTime?: boolean;
   notes?: string;
-  issues: Issue[];
-  qualityRating?: {
-    score: number;
-    comment?: string;
-    ratedBy?: string;
-    ratedAt?: Date;
+  issues?: Issue[];
+  qualityCheck?: {
+    passed: boolean;
+    checkedBy?: string;
+    checkedAt?: Date;
+    notes?: string;
   };
-  summary?: PreparationSummary;
-  createdAt: Date;
 }
 
-export interface PreparationSummary {
-  totalTime: string;
-  completedSteps: number;
-  totalSteps: number;
-  onTime: boolean;
-  issues: number;
-  quality?: number;
+export interface Issue {
+  type: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  reportedAt: Date;
+  photos?: string[];
+  resolved: boolean;
 }
 
-// Types pour les formulaires
+// ✅ CORRIGÉ: Data pour compléter une étape
+export interface StepCompletionData {
+  stepType: string; // Sera mappé vers 'step' dans l'API
+  photo: File;
+  notes?: string;
+}
+
+// ✅ Data pour commencer une préparation avec véhicule
+export interface VehicleFormData {
+  agencyId: string;
+  licensePlate: string;
+  brand: string;
+  model: string;
+  color?: string;
+  year?: number;
+  fuelType?: 'essence' | 'diesel' | 'electrique' | 'hybride';
+  condition?: 'excellent' | 'bon' | 'correct' | 'mediocre';
+  notes?: string;
+}
+
+// ✅ Data pour signaler un incident
+export interface IssueReportData {
+  type: string;
+  description: string;
+  severity?: 'low' | 'medium' | 'high';
+  photo?: File;
+}
+
+// ✅ Statistiques utilisateur
+export interface UserStats {
+  totalPreparations: number;
+  averageTime: number;
+  completionRate: number;
+  onTimeRate: number;
+  issuesReported: number;
+}
+
+// ✅ Statut pointage
+export interface TimesheetStatus {
+  isWorking: boolean;
+  isOnBreak: boolean;
+  currentAgency?: Agency;
+  startTime?: Date;
+  breakStart?: Date;
+  totalWorkedToday: number;
+  totalBreakToday: number;
+}
+
+// ✅ Définition des étapes harmonisée
+export interface StepDefinition {
+  step: string; // ✅ Utilise 'step' comme le backend
+  label: string;
+  description: string;
+  icon: string;
+}
+
+// ✅ Constantes des étapes
+export const PREPARATION_STEPS: readonly StepDefinition[] = [
+  {
+    step: 'exterior',
+    label: 'Extérieur',
+    description: 'Nettoyage carrosserie, vitres, jantes',
+    icon: '🚗'
+  },
+  {
+    step: 'interior',
+    label: 'Intérieur', 
+    description: 'Aspirateur, nettoyage surfaces, désinfection',
+    icon: '🧽'
+  },
+  {
+    step: 'fuel',
+    label: 'Carburant',
+    description: 'Vérification niveau, ajout si nécessaire',
+    icon: '⛽'
+  },
+  {
+    step: 'tires_fluids',
+    label: 'Pneus & Fluides',
+    description: 'Pression pneus, niveaux huile/liquides',
+    icon: '🔧'
+  },
+  {
+    step: 'special_wash',
+    label: 'Lavage Spécial',
+    description: 'Traitement anti-bactérien, parfums',
+    icon: '✨'
+  },
+  {
+    step: 'parking',
+    label: 'Stationnement',
+    description: 'Positionnement final, vérification clés',
+    icon: '🅿️'
+  }
+] as const;
+
+// ✅ Types pour les réponses API
+export interface ApiResponse<T = any> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  errors?: string[];
+}
+
+export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+// ✅ Types pour les formulaires
 export interface LoginFormData {
   email: string;
   password: string;
 }
 
-export interface VehicleFormData {
-  agencyId: string;
-  vehicle: {
-    licensePlate: string;
-    brand: string;
-    model: string;
-    color?: string;
-    year?: number;
-    fuelType?: string;
-    condition?: string;
-    notes?: string;
-  };
-  notes?: string;
+export interface ProfileFormData {
+  firstName: string;
+  lastName: string;
+  email: string;
 }
 
-export interface StepCompletionData {
-  stepType: string;
-  photo: File;
-  notes?: string;
-}
-
-export interface IssueReportData {
-  type: string;
-  description: string;
-  photo?: File;
-}
-
-// Types d'état de l'application
-export interface AppState {
-  isLoading: boolean;
-  error: string | null;
-  isOnline: boolean;
-  theme: 'light' | 'dark' | 'system';
-}
-
-// Types pour les réponses API
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  errors?: string[];
-}
-
-// Types pour les états des stores
-export interface PreparationState {
-  // Préparations
-  currentPreparation: Preparation | null;
-  preparationHistory: Preparation[] | null;
-  
-  // Agences utilisateur
-  userAgencies: Agency[] | null;
-  
-  // Statistiques
-  stats: any | null;
-  
-  // États
-  isLoading: boolean;
-  error: string | null;
-}
-
-// Types pour les statistiques utilisateur
-export interface PerformanceMetrics {
-  totalPreparations: number;
-  averageTime: number;
-  onTimeRate: number;
-  qualityScore: number;
-  weeklyStats: {
-    week: string;
-    preparations: number;
-    averageTime: number;
-  }[];
-  monthlyStats: {
-    month: string;
-    preparations: number;
-    averageTime: number;
-  }[];
-}
-
-// Types pour les horaires
-export interface Schedule {
-  id: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  agency: Agency;
-  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
-}
-
-export interface WeekSchedule {
-  week: string;
-  schedules: Schedule[];
-}
-
-// Types pour les données du dashboard
-export interface DashboardSummary {
-  todayPreparations: number;
-  weekPreparations: number;
-  monthPreparations: number;
-  averageTimeToday: number;
-  onTimeRateWeek: number;
-  currentStreak: number;
-}
-
-// Types pour les timesheet (import depuis timesheet.ts)
-export interface TimesheetData {
-  id: string;
-  agency: Agency;
-  startTime: string;
-  endTime: string;
-  breakStart?: string;
-  breakEnd?: string;
-  notes?: string;
-  workingDuration: number;
-  formatted: any;
-}
-
-export interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  level: 'bronze' | 'silver' | 'gold' | 'platinum';
-  earnedAt?: Date;
-}
-
-export interface Goal {
-  id: string;
-  title: string;
-  description: string;
-  progress: number;
-  target: number;
-}
-
-// Types d'événements et navigation
-export type NavigationEvent = 'dashboard' | 'timesheets' | 'preparations' | 'profile';
-
-export type LoadingState = 'idle' | 'loading' | 'success' | 'error';
-
-export type ThemeMode = 'light' | 'dark' | 'system';
-
-// Types pour les paramètres de requête
-export interface QueryParams {
-  page?: number;
-  limit?: number;
-  startDate?: string;
-  endDate?: string;
+// ✅ Types pour les filtres et recherches
+export interface PreparationFilters {
+  startDate?: Date;
+  endDate?: Date;
   agencyId?: string;
   search?: string;
-  sort?: string;
-  order?: 'asc' | 'desc';
+  status?: Preparation['status'];
 }
 
-// Types pour les filtres
-export interface HistoryFilters {
-  startDate: Date;
-  endDate: Date;
+export interface TimesheetFilters {
+  startDate?: Date;
+  endDate?: Date;
   agencyId?: string;
-  search?: string;
 }
 
-// Types pour les notifications - CORRIGÉ: Définition complète
-export interface Notification {
-  id: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  title: string;
-  message: string;
-  duration?: number;
-  read?: boolean;
-  actions?: NotificationAction[];
-  createdAt: Date;
+// ✅ Enums pour les constantes
+export enum PreparationStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled'
 }
 
-export interface NotificationAction {
-  label: string;
-  action: () => void;
-  variant?: 'default' | 'destructive';
+export enum UserRole {
+  ADMIN = 'admin',
+  PREPARATEUR = 'preparateur'
 }
 
-// Types pour les préférences utilisateur
-export interface UserPreferences {
-  theme: ThemeMode;
-  notifications: {
-    push: boolean;
-    email: boolean;
-    reminders: boolean;
-  };
-  language: 'fr' | 'en';
-  defaultAgency?: string;
+export enum IssueSeverity {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high'
 }
-
-// Types pour la géolocalisation (future feature)
-export interface Location {
-  latitude: number;
-  longitude: number;
-  accuracy?: number;
-  timestamp: Date;
-}
-
-// Types pour le mode offline
-export interface OfflineAction {
-  id: string;
-  type: 'clock-in' | 'clock-out' | 'start-preparation' | 'complete-step';
-  data: any;
-  timestamp: Date;
-  retryCount: number;
-}
-
-// Types utilitaires
-export type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
-};
-
-export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-export type RequiredFields<T, K extends keyof T> = T & Required<Pick<T, K>>;
-
-// Export des types depuis les sous-modules
-export * from './timesheet';

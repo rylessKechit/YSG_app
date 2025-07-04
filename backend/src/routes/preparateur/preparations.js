@@ -1,86 +1,143 @@
 // backend/src/routes/preparateur/preparations.js
-const express = require('express');
-const mongoose = require('mongoose');
-const Preparation = require('../../models/Preparation');
-const { auth } = require('../../middleware/auth');
-const { preparateurAuth } = require('../../middleware/adminAuth');
-const { validateBody, validateObjectId, validateQuery, preparationSchemas, querySchemas } = require('../../middleware/validation');
-const { uploadPreparationPhoto, uploadIncidentPhoto, requirePhoto, validatePreparationUpload } = require('../../middleware/upload');
-const { SUCCESS_MESSAGES, ERROR_MESSAGES, PREPARATION_STEPS, STEP_LABELS } = require('../../utils/constants');
+// ✅ Routes des préparations avec importations et middlewares corrigés
 
+const express = require('express');
 const router = express.Router();
 
-// Toutes les routes nécessitent une authentification préparateur
-router.use(auth, preparateurAuth);
+// ===== IMPORTATIONS CORRIGÉES =====
+
+// Middlewares d'authentification
+const { auth } = require('../../middleware/auth');
+const { preparateurAuth } = require('../../middleware/adminAuth');
+
+// Middlewares de validation
+const { 
+  validateBody, 
+  validateObjectId, 
+  preparationSchemas, 
+  validatePreparationUpload 
+} = require('../../middleware/validation');
+
+// Middlewares d'upload
+const { 
+  uploadPreparationPhoto, 
+  requirePhoto 
+} = require('../../middleware/upload');
+
+// Modèles
+const Preparation = require('../../models/Preparation');
+const Agency = require('../../models/Agency');
+const Vehicle = require('../../models/Vehicle');
+const User = require('../../models/User');
+
+// Utilitaires
+const { PREPARATION_STATUS } = require('../../utils/constants');
+
+// ===== APPLICATION DES MIDDLEWARES =====
+
+// Appliquer l'authentification et l'autorisation préparateur sur toutes les routes
+router.use(auth);
+router.use(preparateurAuth);
+
+// ===== ROUTES =====
 
 /**
  * @route   GET /api/preparations/user-agencies
- * @desc    Obtenir les agences de l'utilisateur connecté
+ * @desc    Récupérer les agences assignées à l'utilisateur
  * @access  Preparateur
  */
 router.get('/user-agencies', async (req, res) => {
   try {
     const userId = req.user.userId;
     
-    // Les agences sont déjà dans req.user.agencies grâce au middleware auth
-    const agencies = req.user.agencies || [];
+    console.log('🏢 Récupération agences utilisateur:', userId);
     
-    console.log(`✅ Agences utilisateur ${userId}:`, agencies.length);
+    // Récupérer l'utilisateur avec ses agences
+    const user = await User.findById(userId).populate('agencies', 'name code client workingHours isActive');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Utilisateur non trouvé'
+      });
+    }
+    
+    // Filtrer les agences actives
+    const activeAgencies = user.agencies.filter(agency => agency.isActive);
+    
+    console.log('✅ Agences récupérées:', activeAgencies.length);
     
     res.json({
       success: true,
       data: {
-        agencies: agencies.map(agency => ({
-          id: agency._id.toString(),
+        agencies: activeAgencies.map((agency, index) => ({
+          id: agency._id,
           name: agency.name,
           code: agency.code,
           client: agency.client,
-          isDefault: agency.isDefault || false
+          workingHours: agency.workingHours,
+          isDefault: index === 0 // Première agence = défaut
         }))
       }
     });
-
+    
   } catch (error) {
     console.error('❌ Erreur récupération agences:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
+      message: 'Erreur lors de la récupération des agences'
     });
   }
 });
 
 /**
  * @route   GET /api/preparations/current
- * @desc    Obtenir la préparation en cours de l'utilisateur
+ * @desc    Récupérer la préparation en cours
  * @access  Preparateur
  */
 router.get('/current', async (req, res) => {
   try {
     const userId = req.user.userId;
-
+    
+    console.log('📋 Récupération préparation courante:', userId);
+    
     const preparation = await Preparation.findOne({
       user: userId,
-      status: 'in_progress'
-    })
-    .populate('agency', 'name code client')
-    .populate('user', 'firstName lastName');
+      status: PREPARATION_STATUS.IN_PROGRESS
+    }).populate([
+      { path: 'vehicle' },
+      { path: 'agency', select: 'name code client' }
+    ]);
 
     if (!preparation) {
-      return res.json({
-        success: true,
-        data: {
-          preparation: null
-        }
+      return res.status(404).json({
+        success: false,
+        message: 'Aucune préparation en cours'
       });
     }
+
+    console.log('✅ Préparation courante récupérée:', preparation._id);
 
     res.json({
       success: true,
       data: {
         preparation: {
           id: preparation._id,
-          vehicle: preparation.vehicle,
-          agency: preparation.agency,
+          vehicle: {
+            id: preparation.vehicle._id,
+            licensePlate: preparation.vehicle.licensePlate,
+            brand: preparation.vehicle.brand,
+            model: preparation.vehicle.model,
+            color: preparation.vehicle.color,
+            year: preparation.vehicle.year,
+            fuelType: preparation.vehicle.fuelType
+          },
+          agency: {
+            id: preparation.agency._id,
+            name: preparation.agency.name,
+            code: preparation.agency.code,
+            client: preparation.agency.client
+          },
           startTime: preparation.startTime,
           status: preparation.status,
           steps: preparation.steps,
@@ -97,430 +154,167 @@ router.get('/current', async (req, res) => {
     console.error('❌ Erreur récupération préparation courante:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
+      message: 'Erreur lors de la récupération de la préparation'
     });
   }
 });
 
 /**
  * @route   POST /api/preparations/start
- * @desc    Démarrer une préparation avec informations véhicule
+ * @desc    Démarrer une nouvelle préparation avec véhicule
  * @access  Preparateur
  */
-router.post('/start', validateBody(preparationSchemas.startWithVehicle), async (req, res) => {
-  try {
-    const { agencyId, licensePlate, brand, model, color, year, fuelType, condition, notes } = req.body;
-    const userId = req.user.userId;
+router.post('/start',
+  validateBody(preparationSchemas.startWithVehicle),
+  async (req, res) => {
+    try {
+      const { agencyId, licensePlate, brand, model, color, year, fuelType, condition, notes } = req.body;
+      const userId = req.user.userId;
 
-    console.log('🚀 Démarrage préparation:', { agencyId, licensePlate, brand, model });
+      console.log('🚀 Démarrage nouvelle préparation:', { licensePlate, brand, model, agencyId });
 
-    // Vérifier l'accès à l'agence
-    const userAgencies = req.user.agencies || [];
-    const hasAccess = userAgencies.some(
-      agency => agency._id.toString() === agencyId.toString()
-    );
-
-    if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        message: 'Vous n\'avez pas accès à cette agence'
+      // Vérifier qu'il n'y a pas déjà une préparation en cours
+      const existingPreparation = await Preparation.findOne({
+        user: userId,
+        status: PREPARATION_STATUS.IN_PROGRESS
       });
-    }
 
-    // Vérifier qu'il n'y a pas déjà une préparation en cours
-    const existingPreparation = await Preparation.findOne({
-      user: userId,
-      status: 'in_progress'
-    });
-
-    if (existingPreparation) {
-      return res.status(400).json({
-        success: false,
-        message: 'Vous avez déjà une préparation en cours'
-      });
-    }
-
-    // ✅ CORRECTION: Créer la préparation avec véhicule intégré
-    const preparation = new Preparation({
-      // ✅ Vehicle en tant qu'objet (pas ObjectId)
-      vehicle: {
-        licensePlate: licensePlate.toUpperCase(),
-        brand: brand,
-        model: model,
-        color: color || '',
-        year: year || null,
-        fuelType: fuelType || 'essence',
-        condition: condition || 'bon',
-        notes: ''
-      },
-      user: userId,           // ✅ Champ principal
-      preparateur: userId,    // ✅ Alias pour compatibilité
-      agency: agencyId,
-      notes: notes || '',
-      startTime: new Date()
-    });
-
-    // Sauvegarder
-    const savedPreparation = await preparation.save();
-    console.log('✅ Préparation créée:', savedPreparation._id);
-
-    // Charger les relations pour la réponse
-    await savedPreparation.populate('agency', 'name code client');
-
-    res.status(201).json({
-      success: true,
-      message: 'Préparation démarrée avec succès',
-      data: {
-        preparation: {
-          id: savedPreparation._id,
-          vehicle: savedPreparation.vehicle, // Objet complet maintenant
-          agency: savedPreparation.agency,
-          startTime: savedPreparation.startTime,
-          status: savedPreparation.status,
-          steps: savedPreparation.steps,
-          progress: savedPreparation.progress,
-          currentDuration: savedPreparation.currentDuration,
-          isOnTime: savedPreparation.isOnTime,
-          issues: savedPreparation.issues || [],
-          notes: savedPreparation.notes
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur démarrage préparation:', error);
-    
-    // ✅ Gestion d'erreur spécifique validation
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => ({
-        field: err.path,
-        message: err.message
-      }));
-      
-      return res.status(400).json({
-        success: false,
-        message: 'Données de véhicule invalides',
-        errors
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
-    });
-  }
-});
-
-/**
- * @route   GET /api/preparations/history
- * @desc    Obtenir l'historique des préparations de l'utilisateur
- * @access  Preparateur
- */
-router.get('/history', validateQuery(querySchemas.preparationHistory), async (req, res) => {
-  try {
-    const { startDate, endDate, agencyId, search, page, limit } = req.query;
-    const userId = req.user.userId;
-
-    console.log('📋 Historique préparations:', { page, limit, search });
-
-    // Dates par défaut (30 derniers jours)
-    const defaultEndDate = endDate ? new Date(endDate) : new Date();
-    const defaultStartDate = startDate ? new Date(startDate) : 
-      new Date(defaultEndDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    // Construire la requête
-    const query = {
-      user: userId,
-      status: { $in: ['completed', 'cancelled'] },
-      createdAt: { $gte: defaultStartDate, $lte: defaultEndDate }
-    };
-
-    if (agencyId) {
-      // Vérifier l'accès à l'agence
-      const hasAccess = req.user.agencies.some(
-        agency => agency._id.toString() === agencyId.toString()
-      );
-
-      if (!hasAccess) {
-        return res.status(403).json({
+      if (existingPreparation) {
+        return res.status(400).json({
           success: false,
-          message: 'Accès refusé à cette agence'
+          message: 'Vous avez déjà une préparation en cours',
+          data: { currentPreparationId: existingPreparation._id }
         });
       }
 
-      query.agency = agencyId;
-    }
-
-    // Recherche par plaque d'immatriculation
-    if (search) {
-      query['vehicle.licensePlate'] = { $regex: search.toUpperCase(), $options: 'i' };
-    }
-
-    // Exécuter la requête avec pagination
-    const skip = (page - 1) * limit;
-    
-    const [preparations, totalCount] = await Promise.all([
-      Preparation.find(query)
-        .populate('agency', 'name code client')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit)),
+      // Vérifier que l'agence existe et est assignée à l'utilisateur
+      const user = await User.findById(userId).populate('agencies');
       
-      Preparation.countDocuments(query)
-    ]);
-
-    // Calculs de pagination
-    const totalPages = Math.ceil(totalCount / limit);
-
-    res.json({
-      success: true,
-      data: {
-        preparations: preparations.map(prep => ({
-          id: prep._id,
-          vehicle: {
-            licensePlate: prep.vehicle.licensePlate,
-            brand: prep.vehicle.brand,
-            model: prep.vehicle.model,
-            fullName: `${prep.vehicle.brand} ${prep.vehicle.model}`,
-            condition: prep.vehicle.condition
-          },
-          agency: prep.agency,
-          startTime: prep.startTime,
-          endTime: prep.endTime,
-          totalMinutes: prep.totalMinutes,
-          isOnTime: prep.isOnTime,
-          status: prep.status,
-          progress: prep.progress,
-          completedStepsCount: prep.steps.filter(s => s.completed).length,
-          totalStepsCount: prep.steps.length,
-          issuesCount: prep.issues.length,
-          summary: prep.summary,
-          createdAt: prep.createdAt
-        })),
-        filters: {
-          startDate: defaultStartDate,
-          endDate: defaultEndDate,
-          agencyId,
-          search
-        },
-        pagination: {
-          page,
-          limit,
-          totalCount,
-          totalPages,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
-        }
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'Utilisateur non trouvé'
+        });
       }
-    });
 
-  } catch (error) {
-    console.error('❌ Erreur historique préparations:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
-    });
-  }
-});
-
-/**
- * @route   GET /api/preparations/vehicle-history/:licensePlate
- * @desc    Historique des préparations d'un véhicule par plaque
- * @access  Preparateur
- */
-router.get('/vehicle-history/:licensePlate', async (req, res) => {
-  try {
-    const { licensePlate } = req.params;
-    const userId = req.user.userId;
-
-    // Récupérer l'historique des préparations pour cette plaque
-    const preparations = await Preparation.find({
-      'vehicle.licensePlate': licensePlate.toUpperCase(),
-      user: userId // Sécurité : seulement ses propres préparations
-    })
-      .populate('user', 'firstName lastName')
-      .populate('agency', 'name code')
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      data: {
-        licensePlate: licensePlate.toUpperCase(),
-        preparations: preparations.map(prep => ({
-          id: prep._id,
-          vehicle: prep.vehicle,
-          user: prep.user,
-          agency: prep.agency,
-          startTime: prep.startTime,
-          endTime: prep.endTime,
-          totalMinutes: prep.totalMinutes,
-          isOnTime: prep.isOnTime,
-          status: prep.status,
-          progress: prep.progress,
-          issuesCount: prep.issues.length,
-          createdAt: prep.createdAt
-        })),
-        summary: {
-          totalPreparations: preparations.length,
-          lastPreparation: preparations[0]?.createdAt,
-          averageTime: preparations.length > 0 ? 
-            Math.round(preparations.reduce((sum, p) => sum + (p.totalMinutes || 0), 0) / preparations.length) : 0,
-          lastVehicleInfo: preparations[0]?.vehicle
-        }
+      const assignedAgency = user.agencies.find(agency => agency._id.toString() === agencyId);
+      if (!assignedAgency) {
+        return res.status(403).json({
+          success: false,
+          message: 'Agence non autorisée pour cet utilisateur'
+        });
       }
-    });
 
-  } catch (error) {
-    console.error('❌ Erreur historique véhicule:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
-    });
-  }
-});
+      // Créer ou récupérer le véhicule
+      let vehicle = await Vehicle.findOne({ licensePlate: licensePlate.toUpperCase() });
+      
+      if (!vehicle) {
+        vehicle = await Vehicle.create({
+          licensePlate: licensePlate.toUpperCase(),
+          brand,
+          model,
+          color,
+          year,
+          fuelType,
+          agency: agencyId,
+          status: 'in_preparation'
+        });
+        console.log('🚗 Nouveau véhicule créé:', vehicle.licensePlate);
+      } else {
+        // Mettre à jour les informations du véhicule
+        vehicle.brand = brand;
+        vehicle.model = model;
+        vehicle.color = color || vehicle.color;
+        vehicle.year = year || vehicle.year;
+        vehicle.fuelType = fuelType || vehicle.fuelType;
+        vehicle.status = 'in_preparation';
+        vehicle.agency = agencyId;
+        await vehicle.save();
+        console.log('🔄 Véhicule mis à jour:', vehicle.licensePlate);
+      }
 
-/**
- * @route   GET /api/preparations/my-stats
- * @desc    Obtenir les statistiques personnelles de l'utilisateur
- * @access  Preparateur
- */
-router.get('/my-stats', validateQuery(querySchemas.dateRange), async (req, res) => {
-  try {
-    const { startDate, endDate, agencyId } = req.query;
-    const userId = req.user.userId;
+      // Créer la préparation
+      const preparation = await Preparation.create({
+        vehicle: vehicle._id,
+        user: userId,
+        agency: agencyId,
+        status: PREPARATION_STATUS.IN_PROGRESS,
+        notes: notes || '',
+        // Les étapes seront créées automatiquement par le middleware pre-save
+      });
 
-    console.log('📊 Statistiques utilisateur:', userId);
+      // Mettre à jour le véhicule avec la préparation courante
+      vehicle.currentPreparation = preparation._id;
+      await vehicle.save();
 
-    // Dates par défaut (30 derniers jours)
-    const defaultEndDate = endDate ? new Date(endDate) : new Date();
-    const defaultStartDate = startDate ? new Date(startDate) : 
-      new Date(defaultEndDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+      // Recharger avec les relations pour la réponse
+      await preparation.populate([
+        { path: 'vehicle' },
+        { path: 'agency', select: 'name code client' },
+        { path: 'user', select: 'firstName lastName' }
+      ]);
 
-    // Construire la requête
-    const query = {
-      user: userId,
-      status: 'completed',
-      createdAt: { $gte: defaultStartDate, $lte: defaultEndDate }
-    };
+      console.log('✅ Préparation démarrée:', preparation._id);
 
-    if (agencyId) {
-      query.agency = agencyId;
-    }
+      res.status(201).json({
+        success: true,
+        message: 'Préparation démarrée avec succès',
+        data: {
+          preparation: {
+            id: preparation._id,
+            vehicle: {
+              id: preparation.vehicle._id,
+              licensePlate: preparation.vehicle.licensePlate,
+              brand: preparation.vehicle.brand,
+              model: preparation.vehicle.model,
+              color: preparation.vehicle.color,
+              year: preparation.vehicle.year,
+              fuelType: preparation.vehicle.fuelType
+            },
+            agency: {
+              id: preparation.agency._id,
+              name: preparation.agency.name,
+              code: preparation.agency.code,
+              client: preparation.agency.client
+            },
+            startTime: preparation.startTime,
+            status: preparation.status,
+            steps: preparation.steps,
+            progress: preparation.progress,
+            currentDuration: preparation.currentDuration,
+            isOnTime: preparation.isOnTime,
+            notes: preparation.notes
+          }
+        }
+      });
 
-    // Récupérer toutes les préparations complétées
-    const preparations = await Preparation.find(query);
-
-    // Calculer les statistiques
-    const totalPreparations = preparations.length;
-    const onTimePreparations = preparations.filter(p => p.isOnTime).length;
-    const totalMinutes = preparations.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
-
-    const stats = {
-      totalPreparations,
-      averageTime: totalPreparations > 0 ? Math.round(totalMinutes / totalPreparations) : 0,
-      onTimeRate: totalPreparations > 0 ? Math.round((onTimePreparations / totalPreparations) * 100) : 0,
-      completionRate: 100, // Puisqu'on ne prend que les complétées
-      bestTime: totalPreparations > 0 ? Math.min(...preparations.map(p => p.totalMinutes || 30)) : 0,
-      worstTime: totalPreparations > 0 ? Math.max(...preparations.map(p => p.totalMinutes || 30)) : 0,
-      weeklyStats: [], // À implémenter si nécessaire
-      stepStats: [] // À implémenter si nécessaire
-    };
-
-    res.json({
-      success: true,
-      data: stats
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur statistiques:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
-    });
-  }
-});
-
-/**
- * @route   GET /api/preparations/:id
- * @desc    Obtenir une préparation par ID
- * @access  Preparateur
- */
-router.get('/:id', validateObjectId(), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId;
-
-    const preparation = await Preparation.findOne({
-      _id: id,
-      user: userId // Sécurité : seulement ses propres préparations
-    })
-    .populate('agency', 'name code client')
-    .populate('user', 'firstName lastName');
-
-    if (!preparation) {
-      return res.status(404).json({
+    } catch (error) {
+      console.error('❌ Erreur démarrage préparation:', error);
+      res.status(500).json({
         success: false,
-        message: 'Préparation non trouvée'
+        message: 'Erreur lors du démarrage de la préparation'
       });
     }
-
-    res.json({
-      success: true,
-      data: {
-        preparation: {
-          id: preparation._id,
-          vehicle: preparation.vehicle,
-          agency: preparation.agency,
-          user: preparation.user,
-          startTime: preparation.startTime,
-          endTime: preparation.endTime,
-          status: preparation.status,
-          steps: preparation.steps,
-          progress: preparation.progress,
-          currentDuration: preparation.currentDuration,
-          totalMinutes: preparation.totalMinutes,
-          isOnTime: preparation.isOnTime,
-          issues: preparation.issues || [],
-          notes: preparation.notes,
-          summary: preparation.summary
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur récupération préparation:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
-    });
   }
-});
+);
 
 /**
  * @route   PUT /api/preparations/:id/step
- * @desc    Compléter une étape avec photo
+ * @desc    Compléter une étape de préparation avec photo
  * @access  Preparateur
  */
-router.put('/:id/step', 
+router.put('/:id/step',
   validateObjectId(),
   uploadPreparationPhoto,
-  requirePhoto,
   validatePreparationUpload,
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { stepType, notes } = req.body;
+      const { step, notes } = req.body; // ✅ Utilise 'step' au lieu de 'stepType'
       const userId = req.user.userId;
-      
-      // L'URL de la photo est maintenant dans req.uploadedFile
-      const photoUrl = req.uploadedFile?.url;
+      const photoUrl = req.uploadedFile?.secure_url;
 
-      console.log('📸 Complétion étape:', { 
-        preparationId: id, 
-        stepType, 
-        userId,
-        hasPhoto: !!photoUrl 
-      });
+      console.log('📸 Complétion étape:', { preparationId: id, step, photoUrl: !!photoUrl });
 
       if (!photoUrl) {
         return res.status(400).json({
@@ -533,7 +327,7 @@ router.put('/:id/step',
       const preparation = await Preparation.findOne({
         _id: id,
         user: userId,
-        status: 'in_progress'
+        status: PREPARATION_STATUS.IN_PROGRESS
       });
 
       if (!preparation) {
@@ -543,16 +337,16 @@ router.put('/:id/step',
         });
       }
 
-      // Trouver l'étape à compléter
-      const step = preparation.steps.find(s => s.step === stepType);
-      if (!step) {
+      // ✅ CORRECTION: Trouver l'étape avec la propriété 'step'
+      const stepToComplete = preparation.steps.find(s => s.step === step);
+      if (!stepToComplete) {
         return res.status(400).json({
           success: false,
-          message: `Type d'étape invalide: ${stepType}`
+          message: `Type d'étape invalide: ${step}`
         });
       }
 
-      if (step.completed) {
+      if (stepToComplete.completed) {
         return res.status(400).json({
           success: false,
           message: 'Cette étape est déjà complétée'
@@ -560,15 +354,15 @@ router.put('/:id/step',
       }
 
       // Marquer l'étape comme complétée
-      step.completed = true;
-      step.completedAt = new Date();
-      step.notes = notes || '';
+      stepToComplete.completed = true;
+      stepToComplete.completedAt = new Date();
+      stepToComplete.notes = notes || '';
       
       // Ajouter la photo
-      if (!step.photos) step.photos = [];
-      step.photos.push({
+      if (!stepToComplete.photos) stepToComplete.photos = [];
+      stepToComplete.photos.push({
         url: photoUrl,
-        description: `Photo étape ${stepType}`,
+        description: `Photo étape ${step}`,
         uploadedAt: new Date()
       });
 
@@ -577,11 +371,11 @@ router.put('/:id/step',
       // Recharger avec les relations pour la réponse
       await preparation.populate('agency', 'name code client');
 
-      console.log('✅ Étape complétée:', stepType, `(${preparation.progress}%)`);
+      console.log('✅ Étape complétée:', step, `(${preparation.progress}%)`);
 
       res.json({
         success: true,
-        message: `Étape "${stepType}" complétée avec succès`,
+        message: `Étape "${step}" complétée avec succès`,
         data: {
           preparation: {
             id: preparation._id,
@@ -625,11 +419,10 @@ router.post('/:id/complete',
 
       console.log('🏁 Finalisation préparation:', id);
 
-      // Récupérer la préparation
       const preparation = await Preparation.findOne({
         _id: id,
         user: userId,
-        status: 'in_progress'
+        status: PREPARATION_STATUS.IN_PROGRESS
       });
 
       if (!preparation) {
@@ -644,29 +437,29 @@ router.post('/:id/complete',
       if (incompleteSteps.length > 0) {
         return res.status(400).json({
           success: false,
-          message: 'Toutes les étapes doivent être complétées avant de terminer la préparation',
-          data: {
-            incompleteSteps: incompleteSteps.map(step => step.type)
+          message: `${incompleteSteps.length} étape(s) non complétée(s)`,
+          data: { 
+            incompleteSteps: incompleteSteps.map(s => s.step) 
           }
         });
       }
 
       // Finaliser la préparation
-      preparation.status = 'completed';
-      preparation.endTime = new Date();
-      preparation.notes = notes || preparation.notes || '';
-      
-      // Recalculer les métriques finales
-      preparation.calculateDuration();
-      preparation.generateSummary();
+      await preparation.complete(notes);
 
-      await preparation.save();
+      // Mettre à jour le statut du véhicule
+      await Vehicle.findByIdAndUpdate(preparation.vehicle, {
+        status: 'ready',
+        currentPreparation: null
+      });
 
       // Recharger avec les relations
-      await preparation.populate('agency', 'name code client');
+      await preparation.populate([
+        { path: 'vehicle' },
+        { path: 'agency', select: 'name code client' }
+      ]);
 
-      console.log('✅ Préparation terminée:', preparation.vehicle.licensePlate, 
-                  `${preparation.totalMinutes}min`, preparation.isOnTime ? '(À temps)' : '(En retard)');
+      console.log('✅ Préparation terminée:', preparation._id, `(${preparation.totalTime}min)`);
 
       res.json({
         success: true,
@@ -681,11 +474,10 @@ router.post('/:id/complete',
             status: preparation.status,
             steps: preparation.steps,
             progress: preparation.progress,
-            totalMinutes: preparation.totalMinutes,
+            totalTime: preparation.totalTime,
             isOnTime: preparation.isOnTime,
             issues: preparation.issues || [],
-            notes: preparation.notes,
-            summary: preparation.summary
+            notes: preparation.notes
           }
         }
       });
@@ -694,7 +486,7 @@ router.post('/:id/complete',
       console.error('❌ Erreur finalisation préparation:', error);
       res.status(500).json({
         success: false,
-        message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur lors de la finalisation'
+        message: 'Erreur lors de la finalisation de la préparation'
       });
     }
   }
@@ -702,57 +494,54 @@ router.post('/:id/complete',
 
 /**
  * @route   POST /api/preparations/:id/issue
- * @desc    Signaler un incident
+ * @desc    Signaler un incident sur une préparation
  * @access  Preparateur
  */
 router.post('/:id/issue',
   validateObjectId(),
-  uploadIncidentPhoto,
+  uploadPreparationPhoto, // Photo optionnelle pour les incidents
   validateBody(preparationSchemas.reportIssue),
   async (req, res) => {
     try {
       const { id } = req.params;
       const { type, description, severity } = req.body;
       const userId = req.user.userId;
-      const photoUrl = req.cloudinaryUrl || null;
+      const photoUrl = req.uploadedFile?.secure_url;
 
-      console.log('⚠️ Signalement incident:', { id, type, severity });
+      console.log('⚠️ Signalement incident:', { preparationId: id, type, severity });
 
-      // Récupérer la préparation
       const preparation = await Preparation.findOne({
         _id: id,
-        user: userId
+        user: userId,
+        status: PREPARATION_STATUS.IN_PROGRESS
       });
 
       if (!preparation) {
         return res.status(404).json({
           success: false,
-          message: 'Préparation non trouvée'
+          message: 'Préparation non trouvée ou déjà terminée'
         });
       }
 
       // Ajouter l'incident
-      const issue = {
+      const issueData = {
         type,
         description,
-        severity: severity || 'medium',
-        photoUrl,
-        reportedAt: new Date(),
-        reportedBy: userId
+        severity,
+        photos: photoUrl ? [photoUrl] : []
       };
 
-      preparation.issues.push(issue);
-      await preparation.save();
+      await preparation.addIssue(issueData);
 
       console.log('✅ Incident signalé:', type);
 
-      res.status(201).json({
+      res.json({
         success: true,
         message: 'Incident signalé avec succès',
         data: {
-          issue: {
-            ...issue,
-            id: preparation.issues[preparation.issues.length - 1]._id
+          preparation: {
+            id: preparation._id,
+            issues: preparation.issues
           }
         }
       });
@@ -761,287 +550,185 @@ router.post('/:id/issue',
       console.error('❌ Erreur signalement incident:', error);
       res.status(500).json({
         success: false,
-        message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur lors du signalement'
+        message: 'Erreur lors du signalement de l\'incident'
       });
     }
   }
 );
 
 /**
- * @route   POST /api/preparations/:id/cancel
- * @desc    Annuler une préparation
- * @access  Preparateur
- */
-router.post('/:id/cancel', validateObjectId(), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
-    const userId = req.user.userId;
-
-    console.log('🚫 Annulation préparation:', id);
-
-    // Récupérer la préparation
-    const preparation = await Preparation.findOne({
-      _id: id,
-      user: userId,
-      status: 'in_progress'
-    });
-
-    if (!preparation) {
-      return res.status(404).json({
-        success: false,
-        message: 'Préparation non trouvée ou déjà terminée'
-      });
-    }
-
-    // Annuler la préparation
-    preparation.status = 'cancelled';
-    preparation.endTime = new Date();
-    preparation.notes = `Annulée: ${reason || 'Aucune raison spécifiée'}`;
-    
-    await preparation.save();
-
-    console.log('✅ Préparation annulée:', preparation.vehicle.licensePlate);
-
-    res.json({
-      success: true,
-      message: 'Préparation annulée avec succès'
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur annulation préparation:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur lors de l\'annulation'
-    });
-  }
-});
-
-/**
  * @route   GET /api/preparations/history
- * @desc    Obtenir l'historique des préparations de l'utilisateur
+ * @desc    Récupérer l'historique des préparations de l'utilisateur
  * @access  Preparateur
  */
-router.get('/history', validateQuery(querySchemas.preparationHistory), async (req, res) => {
+router.get('/history', async (req, res) => {
   try {
-    const { startDate, endDate, agencyId, search, page, limit } = req.query;
     const userId = req.user.userId;
+    const { page = 1, limit = 20, search, agencyId, startDate, endDate } = req.query;
 
-    console.log('📋 Historique préparations:', { page, limit, search });
+    console.log('📋 Récupération historique préparations:', userId);
 
-    // Dates par défaut (30 derniers jours)
-    const defaultEndDate = endDate ? new Date(endDate) : new Date();
-    const defaultStartDate = startDate ? new Date(startDate) : 
-      new Date(defaultEndDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    // Construire le filtre
+    const filter = { user: userId };
 
-    // Construire la requête
-    const query = {
-      user: userId,
-      status: { $in: ['completed', 'cancelled'] },
-      createdAt: { $gte: defaultStartDate, $lte: defaultEndDate }
-    };
+    if (search) {
+      filter.$or = [
+        { 'vehicle.licensePlate': { $regex: search, $options: 'i' } },
+        { 'vehicle.brand': { $regex: search, $options: 'i' } },
+        { 'vehicle.model': { $regex: search, $options: 'i' } }
+      ];
+    }
 
     if (agencyId) {
-      // Vérifier l'accès à l'agence
-      const hasAccess = req.user.agencies.some(
-        agency => agency._id.toString() === agencyId.toString()
-      );
-
-      if (!hasAccess) {
-        return res.status(403).json({
-          success: false,
-          message: 'Accès refusé à cette agence'
-        });
-      }
-
-      query.agency = agencyId;
+      filter.agency = agencyId;
     }
 
-    // Recherche par plaque d'immatriculation
-    if (search) {
-      query['vehicle.licensePlate'] = { $regex: search.toUpperCase(), $options: 'i' };
+    if (startDate || endDate) {
+      filter.startTime = {};
+      if (startDate) filter.startTime.$gte = new Date(startDate);
+      if (endDate) filter.startTime.$lte = new Date(endDate);
     }
 
-    // Exécuter la requête avec pagination
-    const skip = (page - 1) * limit;
-    
-    const [preparations, totalCount] = await Promise.all([
-      Preparation.find(query)
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Requête avec pagination
+    const [preparations, total] = await Promise.all([
+      Preparation.find(filter)
         .populate('agency', 'name code client')
-        .sort({ createdAt: -1 })
+        .populate('vehicle')
+        .sort({ startTime: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
-      
-      Preparation.countDocuments(query)
+        .limit(limitNum)
+        .lean(),
+      Preparation.countDocuments(filter)
     ]);
 
-    // Calculs de pagination
-    const totalPages = Math.ceil(totalCount / limit);
+    console.log('✅ Historique récupéré:', preparations.length, 'préparations');
 
     res.json({
       success: true,
       data: {
-        preparations: preparations.map(prep => ({
-          id: prep._id,
-          vehicle: {
-            licensePlate: prep.vehicle.licensePlate,
-            brand: prep.vehicle.brand,
-            model: prep.vehicle.model,
-            fullName: `${prep.vehicle.brand} ${prep.vehicle.model}`,
-            condition: prep.vehicle.condition
-          },
-          agency: prep.agency,
-          startTime: prep.startTime,
-          endTime: prep.endTime,
-          totalMinutes: prep.totalMinutes,
-          isOnTime: prep.isOnTime,
-          status: prep.status,
-          progress: prep.progress,
-          completedStepsCount: prep.steps.filter(s => s.completed).length,
-          totalStepsCount: prep.steps.length,
-          issuesCount: prep.issues.length,
-          summary: prep.summary,
-          createdAt: prep.createdAt
-        })),
-        filters: {
-          startDate: defaultStartDate,
-          endDate: defaultEndDate,
-          agencyId,
-          search
-        },
-        pagination: {
-          page,
-          limit,
-          totalCount,
-          totalPages,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur historique préparations:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
-    });
-  }
-});
-
-/**
- * @route   GET /api/preparations/vehicle-history/:licensePlate
- * @desc    Historique des préparations d'un véhicule par plaque
- * @access  Preparateur
- */
-router.get('/vehicle-history/:licensePlate', async (req, res) => {
-  try {
-    const { licensePlate } = req.params;
-    const userId = req.user.userId;
-
-    // Récupérer l'historique des préparations pour cette plaque
-    const preparations = await Preparation.find({
-      'vehicle.licensePlate': licensePlate.toUpperCase(),
-      user: userId // Sécurité : seulement ses propres préparations
-    })
-      .populate('user', 'firstName lastName')
-      .populate('agency', 'name code')
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      data: {
-        licensePlate: licensePlate.toUpperCase(),
         preparations: preparations.map(prep => ({
           id: prep._id,
           vehicle: prep.vehicle,
-          user: prep.user,
           agency: prep.agency,
           startTime: prep.startTime,
           endTime: prep.endTime,
-          totalMinutes: prep.totalMinutes,
-          isOnTime: prep.isOnTime,
           status: prep.status,
           progress: prep.progress,
-          issuesCount: prep.issues.length,
-          createdAt: prep.createdAt
+          totalTime: prep.totalTime,
+          isOnTime: prep.isOnTime,
+          issues: prep.issues?.length || 0
         })),
-        summary: {
-          totalPreparations: preparations.length,
-          lastPreparation: preparations[0]?.createdAt,
-          averageTime: preparations.length > 0 ? 
-            Math.round(preparations.reduce((sum, p) => sum + (p.totalMinutes || 0), 0) / preparations.length) : 0,
-          lastVehicleInfo: preparations[0]?.vehicle
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
         }
       }
     });
 
   } catch (error) {
-    console.error('❌ Erreur historique véhicule:', error);
+    console.error('❌ Erreur récupération historique:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
+      message: 'Erreur lors de la récupération de l\'historique'
     });
   }
 });
 
 /**
  * @route   GET /api/preparations/my-stats
- * @desc    Obtenir les statistiques personnelles de l'utilisateur
+ * @desc    Récupérer les statistiques personnelles du préparateur
  * @access  Preparateur
  */
-router.get('/my-stats', validateQuery(querySchemas.dateRange), async (req, res) => {
+router.get('/my-stats', async (req, res) => {
   try {
-    const { startDate, endDate, agencyId } = req.query;
     const userId = req.user.userId;
+    const { period = 'month' } = req.query;
 
-    console.log('📊 Statistiques utilisateur:', userId);
+    console.log('📊 Récupération statistiques utilisateur:', userId);
 
-    // Dates par défaut (30 derniers jours)
-    const defaultEndDate = endDate ? new Date(endDate) : new Date();
-    const defaultStartDate = startDate ? new Date(startDate) : 
-      new Date(defaultEndDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    // Construire la requête
-    const query = {
-      user: userId,
-      status: 'completed',
-      createdAt: { $gte: defaultStartDate, $lte: defaultEndDate }
-    };
-
-    if (agencyId) {
-      query.agency = agencyId;
+    // Calculer la période
+    const now = new Date();
+    let startDate;
+    
+    switch (period) {
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case 'year':
+        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Récupérer toutes les préparations complétées
-    const preparations = await Preparation.find(query);
+    // Requêtes de statistiques
+    const [totalPreparations, completedPreparations, avgTimeResult, onTimeCount] = await Promise.all([
+      Preparation.countDocuments({ user: userId, startTime: { $gte: startDate } }),
+      Preparation.countDocuments({ 
+        user: userId, 
+        status: 'completed', 
+        startTime: { $gte: startDate } 
+      }),
+      Preparation.aggregate([
+        { 
+          $match: { 
+            user: userId, 
+            status: 'completed', 
+            startTime: { $gte: startDate },
+            totalTime: { $exists: true, $ne: null }
+          }
+        },
+        { 
+          $group: { 
+            _id: null, 
+            avgTime: { $avg: '$totalTime' } 
+          } 
+        }
+      ]),
+      Preparation.countDocuments({ 
+        user: userId, 
+        status: 'completed', 
+        isOnTime: true, 
+        startTime: { $gte: startDate } 
+      })
+    ]);
 
-    // Calculer les statistiques
-    const totalPreparations = preparations.length;
-    const onTimePreparations = preparations.filter(p => p.isOnTime).length;
-    const totalMinutes = preparations.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
+    const averageTime = avgTimeResult.length > 0 ? Math.round(avgTimeResult[0].avgTime) : 0;
+    const completionRate = totalPreparations > 0 ? Math.round((completedPreparations / totalPreparations) * 100) : 0;
+    const onTimeRate = completedPreparations > 0 ? Math.round((onTimeCount / completedPreparations) * 100) : 0;
 
-    const stats = {
-      totalPreparations,
-      averageTime: totalPreparations > 0 ? Math.round(totalMinutes / totalPreparations) : 0,
-      onTimeRate: totalPreparations > 0 ? Math.round((onTimePreparations / totalPreparations) * 100) : 0,
-      completionRate: 100, // Puisqu'on ne prend que les complétées
-      bestTime: totalPreparations > 0 ? Math.min(...preparations.map(p => p.totalMinutes || 30)) : 0,
-      worstTime: totalPreparations > 0 ? Math.max(...preparations.map(p => p.totalMinutes || 30)) : 0,
-      weeklyStats: [], // À implémenter si nécessaire
-      stepStats: [] // À implémenter si nécessaire
-    };
+    console.log('✅ Statistiques calculées:', { totalPreparations, completionRate, averageTime, onTimeRate });
 
     res.json({
       success: true,
-      data: stats
+      data: {
+        stats: {
+          period,
+          totalPreparations,
+          completedPreparations,
+          completionRate,
+          averageTime,
+          onTimeRate,
+          calculatedAt: now
+        }
+      }
     });
 
   } catch (error) {
-    console.error('❌ Erreur statistiques:', error);
+    console.error('❌ Erreur calcul statistiques:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
+      message: 'Erreur lors du calcul des statistiques'
     });
   }
 });

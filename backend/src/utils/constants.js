@@ -1,60 +1,93 @@
-// ===== backend/src/utils/constants.js - VERSION CORRIGÉE =====
+// backend/src/utils/constants.js
+// ✅ Constantes complètes et corrigées
+
+/**
+ * Limites de temps (en minutes)
+ */
+const TIME_LIMITS = {
+  PREPARATION_TIME: 30,        // Temps maximum pour une préparation
+  BREAK_TIME: 60,              // Temps maximum de pause
+  LATE_THRESHOLD: 15,          // Seuil de retard en minutes
+  SESSION_TIMEOUT: 480,        // Timeout session (8h)
+  TOKEN_EXPIRE: 10080          // Expiration token (7 jours en minutes)
+};
+
+/**
+ * Limites de fichiers pour les uploads
+ */
+const FILE_LIMITS = {
+  MAX_SIZE: 5 * 1024 * 1024,   // 5MB
+  MAX_FILES: 10,               // Maximum 10 fichiers par upload
+  ALLOWED_TYPES: [
+    'image/jpeg',
+    'image/jpg', 
+    'image/png',
+    'image/webp'
+  ]
+};
 
 /**
  * Messages d'erreur standardisés
  */
 const ERROR_MESSAGES = {
-  // Erreurs générales
-  SERVER_ERROR: 'Erreur interne du serveur',
-  INVALID_REQUEST: 'Requête invalide',
-  VALIDATION_ERROR: 'Erreur de validation des données',
-  
   // Authentification
   TOKEN_REQUIRED: 'Token d\'authentification requis',
-  TOKEN_INVALID: 'Token d\'authentification invalide',
-  TOKEN_EXPIRED: 'Token d\'authentification expiré',
-  INVALID_CREDENTIALS: 'Identifiants invalides',
+  TOKEN_INVALID: 'Token invalide',
+  TOKEN_EXPIRED: 'Token expiré',
+  CREDENTIALS_INVALID: 'Identifiants invalides',
+  USER_NOT_FOUND: 'Utilisateur non trouvé',
+  ACCOUNT_DISABLED: 'Compte désactivé',
   ACCESS_DENIED: 'Accès refusé',
   ADMIN_REQUIRED: 'Droits administrateur requis',
   
-  // Utilisateurs
-  USER_NOT_FOUND: 'Utilisateur non trouvé',
-  EMAIL_ALREADY_EXISTS: 'Un utilisateur avec cet email existe déjà',
+  // Validation
+  VALIDATION_ERROR: 'Erreur de validation',
+  REQUIRED_FIELD: 'Champ requis',
+  INVALID_FORMAT: 'Format invalide',
   INVALID_EMAIL: 'Format d\'email invalide',
-  PASSWORD_TOO_SHORT: 'Le mot de passe doit contenir au moins 6 caractères',
-  CANNOT_DELETE_LAST_ADMIN: 'Impossible de supprimer le dernier administrateur',
+  PASSWORD_TOO_SHORT: 'Mot de passe trop court (minimum 6 caractères)',
   
-  // Agences
-  AGENCY_NOT_FOUND: 'Agence non trouvée',
-  AGENCY_CODE_EXISTS: 'Une agence avec ce code existe déjà',
-  INVALID_WORKING_HOURS: 'Horaires de travail invalides',
-  
-  // Plannings
-  SCHEDULE_NOT_FOUND: 'Planning non trouvé',
-  SCHEDULE_CONFLICT: 'Conflit de planning détecté',
-  INVALID_TIME_RANGE: 'Plage horaire invalide',
-  
-  // Véhicules
-  VEHICLE_NOT_FOUND: 'Véhicule non trouvé',
-  LICENSE_PLATE_EXISTS: 'Un véhicule avec cette plaque d\'immatriculation existe déjà',
-  INVALID_LICENSE_PLATE: 'Format de plaque d\'immatriculation invalide',
+  // Ressources
+  RESOURCE_NOT_FOUND: 'Ressource non trouvée',
+  DUPLICATE_ENTRY: 'Entrée déjà existante',
+  REFERENCE_ERROR: 'Référence invalide',
   
   // Préparations
   PREPARATION_NOT_FOUND: 'Préparation non trouvée',
-  PREPARATION_ALREADY_STARTED: 'Une préparation est déjà en cours pour ce véhicule',
-  PREPARATION_NOT_STARTED: 'Aucune préparation en cours pour ce véhicule',
+  PREPARATION_ALREADY_EXISTS: 'Une préparation est déjà en cours',
+  PREPARATION_COMPLETED: 'Préparation déjà terminée',
+  INVALID_PREPARATION_STATUS: 'Statut de préparation invalide',
   INVALID_PREPARATION_STEP: 'Étape de préparation invalide',
+  STEP_ALREADY_COMPLETED: 'Cette étape est déjà complétée',
+  STEP_NOT_AVAILABLE: 'Cette étape n\'est pas encore disponible',
+  
+  // Véhicules
+  VEHICLE_NOT_FOUND: 'Véhicule non trouvé',
+  VEHICLE_IN_USE: 'Véhicule en cours d\'utilisation',
+  INVALID_LICENSE_PLATE: 'Plaque d\'immatriculation invalide',
+  
+  // Agences
+  AGENCY_NOT_FOUND: 'Agence non trouvée',
+  AGENCY_ACCESS_DENIED: 'Accès à cette agence non autorisé',
+  INVALID_AGENCY: 'Agence invalide',
   
   // Pointage
   ALREADY_CLOCKED_IN: 'Vous êtes déjà pointé',
   NOT_CLOCKED_IN: 'Vous n\'êtes pas pointé',
   ALREADY_ON_BREAK: 'Vous êtes déjà en pause',
   NOT_ON_BREAK: 'Vous n\'êtes pas en pause',
+  INVALID_TIMESHEET: 'Feuille de temps invalide',
   
   // Upload
   UPLOAD_FAILED: 'Échec de l\'upload du fichier',
   FILE_TOO_LARGE: 'Fichier trop volumineux',
-  INVALID_FILE_TYPE: 'Type de fichier non autorisé'
+  INVALID_FILE_TYPE: 'Type de fichier non autorisé',
+  PHOTO_REQUIRED: 'Photo requise',
+  
+  // Serveur
+  SERVER_ERROR: 'Erreur serveur interne',
+  DATABASE_ERROR: 'Erreur de base de données',
+  EXTERNAL_API_ERROR: 'Erreur API externe'
 };
 
 /**
@@ -69,22 +102,33 @@ const SUCCESS_MESSAGES = {
   // Authentification
   LOGIN_SUCCESS: 'Connexion réussie',
   LOGOUT_SUCCESS: 'Déconnexion réussie',
+  PASSWORD_CHANGED: 'Mot de passe modifié avec succès',
   
   // Agences
   AGENCY_CREATED: 'Agence créée avec succès',
   AGENCY_UPDATED: 'Agence modifiée avec succès',
+  AGENCY_DELETED: 'Agence supprimée avec succès',
   
   // Plannings
   SCHEDULE_CREATED: 'Planning créé avec succès',
   SCHEDULE_UPDATED: 'Planning modifié avec succès',
+  SCHEDULE_DELETED: 'Planning supprimé avec succès',
   
   // Préparations
   PREPARATION_STARTED: 'Préparation démarrée avec succès',
   PREPARATION_COMPLETED: 'Préparation terminée avec succès',
+  STEP_COMPLETED: 'Étape complétée avec succès',
+  ISSUE_REPORTED: 'Incident signalé avec succès',
   
   // Pointage
   CLOCK_IN_SUCCESS: 'Pointage d\'arrivée enregistré',
-  CLOCK_OUT_SUCCESS: 'Pointage de départ enregistré'
+  CLOCK_OUT_SUCCESS: 'Pointage de départ enregistré',
+  BREAK_START_SUCCESS: 'Début de pause enregistré',
+  BREAK_END_SUCCESS: 'Fin de pause enregistrée',
+  
+  // Upload
+  UPLOAD_SUCCESS: 'Fichier uploadé avec succès',
+  PHOTO_UPLOADED: 'Photo uploadée avec succès'
 };
 
 /**
@@ -109,13 +153,14 @@ const PREPARATION_STATUS = {
  * Types de préparations
  */
 const PREPARATION_TYPES = {
-  ARRIVAL: 'arrival',
-  DEPARTURE: 'departure',
-  MAINTENANCE: 'maintenance'
+  ARRIVAL: 'arrival',           // Préparation d'arrivée
+  DEPARTURE: 'departure',       // Préparation de départ
+  MAINTENANCE: 'maintenance',   // Maintenance
+  CLEANING: 'cleaning'          // Nettoyage seul
 };
 
 /**
- * Étapes de préparation
+ * ✅ Étapes de préparation (CORRIGÉ pour correspondre au modèle)
  */
 const PREPARATION_STEPS = {
   EXTERIOR: 'exterior',
@@ -127,50 +172,15 @@ const PREPARATION_STEPS = {
 };
 
 /**
- * Limites de temps (en minutes)
+ * Labels des étapes de préparation
  */
-const TIME_LIMITS = {
-  PREPARATION_TIME: 30, // Temps standard pour une préparation
-  PREPARATION_MAX_MINUTES: 30, // Limite pour considérer en retard
-  MAX_PREPARATION_TIME: 120, // 2 heures max
-  MAX_BREAK_TIME: 60, // 1 heure
-  MIN_SHIFT_DURATION: 240, // 4 heures
-  MAX_SHIFT_DURATION: 600, // 10 heures
-  LATE_THRESHOLD: 15 // 15 minutes de retard
-};
-
-/**
- * Statuts des pointages
- */
-const TIMESHEET_STATUS = {
-  CLOCKED_OUT: 'clocked_out',
-  CLOCKED_IN: 'clocked_in',
-  ON_BREAK: 'on_break'
-};
-
-/**
- * Types de pauses
- */
-const BREAK_TYPES = {
-  LUNCH: 'lunch',
-  COFFEE: 'coffee',
-  PERSONAL: 'personal',
-  TECHNICAL: 'technical'
-};
-
-/**
- * Catégories de véhicules
- */
-const VEHICLE_CATEGORIES = {
-  ECONOMY: 'economy',
-  COMPACT: 'compact',
-  INTERMEDIATE: 'intermediate',
-  STANDARD: 'standard',
-  FULLSIZE: 'fullsize',
-  PREMIUM: 'premium',
-  LUXURY: 'luxury',
-  SUV: 'suv',
-  VAN: 'van'
+const STEP_LABELS = {
+  [PREPARATION_STEPS.EXTERIOR]: 'Préparation extérieure',
+  [PREPARATION_STEPS.INTERIOR]: 'Préparation intérieure', 
+  [PREPARATION_STEPS.FUEL]: 'Mise à niveau carburant',
+  [PREPARATION_STEPS.TIRES_FLUIDS]: 'Pression pneus & fluides',
+  [PREPARATION_STEPS.SPECIAL_WASH]: 'Lavage spécial',
+  [PREPARATION_STEPS.PARKING]: 'Stationnement final'
 };
 
 /**
@@ -178,141 +188,173 @@ const VEHICLE_CATEGORIES = {
  */
 const VEHICLE_STATUS = {
   AVAILABLE: 'available',
-  RENTED: 'rented',
   IN_PREPARATION: 'in_preparation',
+  READY: 'ready',
+  RENTED: 'rented',
   MAINTENANCE: 'maintenance',
   OUT_OF_SERVICE: 'out_of_service'
 };
 
 /**
+ * Types de carburant
+ */
+const FUEL_TYPES = {
+  ESSENCE: 'essence',
+  DIESEL: 'diesel',
+  ELECTRIQUE: 'electrique',
+  HYBRIDE: 'hybride',
+  GAZ: 'gaz'
+};
+
+/**
+ * États des véhicules
+ */
+const VEHICLE_CONDITIONS = {
+  EXCELLENT: 'excellent',
+  BON: 'bon',
+  CORRECT: 'correct',
+  MEDIOCRE: 'mediocre',
+  MAUVAIS: 'mauvais'
+};
+
+/**
+ * Statuts des pointages
+ */
+const TIMESHEET_STATUS = {
+  CLOCKED_IN: 'clocked_in',
+  CLOCKED_OUT: 'clocked_out',
+  ON_BREAK: 'on_break',
+  NOT_WORKING: 'not_working'
+};
+
+/**
  * Types d'incidents
  */
-const INCIDENT_TYPES = {
-  DAMAGE: 'damage',
-  MISSING_KEY: 'missing_key',
-  FUEL_PROBLEM: 'fuel_problem',
-  CLEANLINESS: 'cleanliness',
-  MECHANICAL: 'mechanical',
-  OTHER: 'other'
+const ISSUE_TYPES = {
+  DAMAGE: 'damage',                // Dommage
+  MISSING_ITEM: 'missing_item',    // Élément manquant
+  CLEANLINESS: 'cleanliness',      // Propreté
+  MECHANICAL: 'mechanical',        // Mécanique
+  ELECTRICAL: 'electrical',        // Électrique
+  OTHER: 'other'                   // Autre
 };
 
 /**
- * Statuts des plannings
+ * Niveaux de gravité des incidents
  */
-const SCHEDULE_STATUS = {
-  ACTIVE: 'active',
-  CANCELLED: 'cancelled',
-  COMPLETED: 'completed'
+const ISSUE_SEVERITY = {
+  LOW: 'low',      // Faible
+  MEDIUM: 'medium', // Moyen
+  HIGH: 'high'     // Élevé
 };
 
 /**
- * Limites pour les fichiers
+ * Périodes pour les statistiques
  */
-const FILE_LIMITS = {
-  MAX_SIZE: 5 * 1024 * 1024, // 5MB
-  ALLOWED_TYPES: [
-    'image/jpeg',
-    'image/jpg',
-    'image/png',
-    'image/webp'
-  ],
-  MAX_FILES_PER_UPLOAD: 5
+const STATS_PERIODS = {
+  DAY: 'day',
+  WEEK: 'week',
+  MONTH: 'month',
+  QUARTER: 'quarter',
+  YEAR: 'year'
 };
 
 /**
- * Configuration de la pagination
+ * Types de notifications
  */
-const PAGINATION = {
-  DEFAULT_PAGE: 1,
-  DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100
+const NOTIFICATION_TYPES = {
+  INFO: 'info',
+  SUCCESS: 'success',
+  WARNING: 'warning',
+  ERROR: 'error'
 };
 
 /**
  * Formats de date
  */
 const DATE_FORMATS = {
-  DATE: 'YYYY-MM-DD',
+  DATE_ONLY: 'YYYY-MM-DD',
   DATETIME: 'YYYY-MM-DD HH:mm:ss',
-  TIME: 'HH:mm',
-  DISPLAY: 'DD/MM/YYYY',
-  DISPLAY_WITH_TIME: 'DD/MM/YYYY HH:mm'
+  TIME_ONLY: 'HH:mm',
+  DISPLAY_DATE: 'DD/MM/YYYY',
+  DISPLAY_DATETIME: 'DD/MM/YYYY HH:mm'
 };
 
 /**
- * Configuration email
+ * Configurations par défaut
  */
-const EMAIL_CONFIG = {
-  TEMPLATES: {
-    WELCOME: 'welcome',
-    PASSWORD_RESET: 'password_reset',
-    NOTIFICATION: 'notification'
-  },
-  PRIORITIES: {
-    LOW: 'low',
-    NORMAL: 'normal',
-    HIGH: 'high'
-  }
+const DEFAULT_CONFIG = {
+  PAGINATION_LIMIT: 20,
+  MAX_PAGINATION_LIMIT: 100,
+  DEFAULT_SORT: 'createdAt',
+  DEFAULT_ORDER: 'desc',
+  SESSION_DURATION: 8, // heures
+  MAX_LOGIN_ATTEMPTS: 5,
+  LOCKOUT_DURATION: 30 // minutes
 };
 
 /**
- * Événements du système
+ * Expressions régulières utiles
  */
-const SYSTEM_EVENTS = {
-  USER_CREATED: 'user.created',
-  USER_UPDATED: 'user.updated',
-  USER_DELETED: 'user.deleted',
-  PREPARATION_STARTED: 'preparation.started',
-  PREPARATION_COMPLETED: 'preparation.completed',
-  CLOCK_IN: 'timesheet.clock_in',
-  CLOCK_OUT: 'timesheet.clock_out'
+const REGEX_PATTERNS = {
+  EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  LICENSE_PLATE: /^[A-Z0-9\-\s]{2,15}$/,
+  PHONE: /^[\+]?[1-9][\d]{0,15}$/,
+  TIME: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/,
+  AGENCY_CODE: /^[A-Z0-9]{2,10}$/,
+  OBJECT_ID: /^[0-9a-fA-F]{24}$/
 };
 
 /**
- * Niveaux de log
+ * URLs et endpoints externes
  */
-const LOG_LEVELS = {
-  ERROR: 'error',
-  WARN: 'warn',
-  INFO: 'info',
-  DEBUG: 'debug'
+const EXTERNAL_APIS = {
+  CLOUDINARY_BASE: 'https://api.cloudinary.com/v1_1',
+  MAPS_API: process.env.MAPS_API_URL,
+  WEATHER_API: process.env.WEATHER_API_URL
 };
 
 /**
- * Configuration cache
+ * Configurations Cloudinary
  */
-const CACHE_CONFIG = {
-  TTL: {
-    SHORT: 300, // 5 minutes
-    MEDIUM: 3600, // 1 heure
-    LONG: 86400 // 24 heures
-  },
-  KEYS: {
-    USER_STATS: 'user_stats',
-    AGENCY_LIST: 'agency_list',
-    DASHBOARD_DATA: 'dashboard_data'
-  }
+const CLOUDINARY_CONFIG = {
+  FOLDER_PREPARATIONS: 'preparations',
+  FOLDER_INCIDENTS: 'incidents',
+  FOLDER_PROFILES: 'profiles',
+  MAX_FILE_SIZE: FILE_LIMITS.MAX_SIZE,
+  ALLOWED_FORMATS: ['jpg', 'jpeg', 'png', 'webp'],
+  QUALITY: 'auto:good',
+  FETCH_FORMAT: 'auto'
 };
 
 module.exports = {
+  // Limites
+  TIME_LIMITS,
+  FILE_LIMITS,
+  
+  // Messages
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
+  
+  // Enums principaux
   USER_ROLES,
   PREPARATION_STATUS,
   PREPARATION_TYPES,
   PREPARATION_STEPS,
-  TIMESHEET_STATUS,
-  BREAK_TYPES,
-  VEHICLE_CATEGORIES,
+  STEP_LABELS,
   VEHICLE_STATUS,
-  INCIDENT_TYPES,
-  SCHEDULE_STATUS,
-  TIME_LIMITS,
-  FILE_LIMITS,
-  PAGINATION,
+  FUEL_TYPES,
+  VEHICLE_CONDITIONS,
+  TIMESHEET_STATUS,
+  ISSUE_TYPES,
+  ISSUE_SEVERITY,
+  STATS_PERIODS,
+  NOTIFICATION_TYPES,
+  
+  // Configuration
   DATE_FORMATS,
-  EMAIL_CONFIG,
-  SYSTEM_EVENTS,
-  LOG_LEVELS,
-  CACHE_CONFIG
+  DEFAULT_CONFIG,
+  REGEX_PATTERNS,
+  EXTERNAL_APIS,
+  CLOUDINARY_CONFIG
 };
