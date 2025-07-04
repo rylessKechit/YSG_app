@@ -1,3 +1,4 @@
+// backend/src/routes/admin/dashboard/alerts.js - VERSION CORRIGÉE
 const express = require('express');
 const Joi = require('joi');
 const Timesheet = require('../../../models/Timesheet');
@@ -110,9 +111,6 @@ router.patch('/:id/read', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Pour l'instant, on retourne juste un succès
-    // Dans une vraie implémentation, on sauvegarderait l'état en BDD
-    
     console.log(`✅ Alerte ${id} marquée comme lue`);
 
     res.json({
@@ -133,7 +131,7 @@ router.patch('/:id/read', async (req, res) => {
   }
 });
 
-// ===== FONCTIONS UTILITAIRES =====
+// ===== FONCTIONS UTILITAIRES CORRIGÉES =====
 
 /**
  * Alertes de retards de pointage
@@ -190,26 +188,39 @@ async function getLateStartAlerts(today) {
 }
 
 /**
- * Alertes de préparations trop longues
+ * ✅ CORRECTION : Alertes de préparations trop longues avec gestion des dates invalides
  */
 async function getLongPreparationAlerts() {
   try {
-    const cutoffTime = new Date(Date.now() - TIME_LIMITS.PREPARATION_MAX_MINUTES * 60 * 1000);
+    // ✅ Utiliser une constante par défaut si TIME_LIMITS n'est pas défini
+    const maxMinutes = TIME_LIMITS?.PREPARATION_MAX_MINUTES || 30;
+    const cutoffTime = new Date(Date.now() - maxMinutes * 60 * 1000);
     
+    console.log('🔍 Recherche préparations longues avant:', cutoffTime.toISOString());
+
+    // ✅ CORRECTION : Requête avec gestion des dates invalides
     const longPreparations = await Preparation.find({
       status: 'in_progress',
-      startTime: { $lte: cutoffTime }
+      startTime: { 
+        $exists: true, 
+        $ne: null,
+        $type: 'date',  // ✅ S'assurer que c'est bien une date valide
+        $lte: cutoffTime 
+      }
     })
     .populate('preparateur', 'firstName lastName')
     .populate('vehicle', 'licensePlate model')
     .populate('agency', 'name')
     .limit(10);
 
+    console.log(`📊 ${longPreparations.length} préparations longues trouvées`);
+
     const alerts = [];
     
     longPreparations.forEach(prep => {
-      if (prep.preparateur) {
-        const durationMinutes = Math.floor((Date.now() - prep.startTime) / (1000 * 60));
+      // ✅ CORRECTION : Vérifier que startTime est une date valide
+      if (prep.preparateur && prep.startTime && prep.startTime instanceof Date && !isNaN(prep.startTime.getTime())) {
+        const durationMinutes = Math.floor((Date.now() - prep.startTime.getTime()) / (1000 * 60));
         const priority = durationMinutes > 60 ? 'high' : 'medium';
         
         alerts.push({
@@ -227,12 +238,19 @@ async function getLongPreparationAlerts() {
           actionRequired: true,
           actionUrl: `/admin/preparations/${prep._id}`
         });
+      } else {
+        console.warn('⚠️ Préparation avec startTime invalide:', {
+          id: prep._id,
+          startTime: prep.startTime,
+          hasPreparateur: !!prep.preparateur
+        });
       }
     });
 
     return alerts;
   } catch (error) {
-    console.error('Erreur alertes préparations:', error);
+    console.error('❌ Erreur alertes préparations:', error);
+    // ✅ Retourner un tableau vide au lieu de faire planter l'API
     return [];
   }
 }

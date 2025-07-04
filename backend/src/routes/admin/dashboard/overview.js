@@ -1,3 +1,4 @@
+// backend/src/routes/admin/dashboard/overview.js - VERSION CORRIGÉE
 const express = require('express');
 const Joi = require('joi');
 const User = require('../../../models/User');
@@ -183,81 +184,149 @@ async function calculateTodayLateCount(today, tomorrow) {
 }
 
 /**
- * Récupérer les alertes récentes
+ * ✅ CORRECTION : Récupérer les alertes récentes avec gestion des dates invalides
  */
 async function getRecentAlerts(today) {
   try {
     const alerts = [];
 
-    // 1. Retards actuels
-    const currentLateEmployees = await Timesheet.find({
+    // 1. Retards de pointage
+    const now = new Date();
+    const lateTimesheets = await Timesheet.find({
       date: { $gte: today },
       clockInTime: null,
       schedule: { $exists: true }
     })
-    .populate('user', 'firstName lastName email')
+    .populate('user', 'firstName lastName')
     .populate('agency', 'name')
     .populate('schedule', 'startTime')
     .limit(5);
 
-    currentLateEmployees.forEach(timesheet => {
+    lateTimesheets.forEach(timesheet => {
       if (timesheet.user && timesheet.schedule) {
-        const now = new Date();
-        const [scheduleHour, scheduleMinute] = timesheet.schedule.startTime.split(':').map(Number);
-        const scheduleTime = new Date(today);
-        scheduleTime.setHours(scheduleHour, scheduleMinute, 0, 0);
-        
-        if (now > scheduleTime) {
-          alerts.push({
-            id: `late_${timesheet._id}`,
-            type: 'late_start',
-            priority: 'high',
-            title: 'Retard de pointage',
-            message: `${timesheet.user.firstName} ${timesheet.user.lastName} n'a pas encore pointé`,
-            userId: timesheet.user._id,
-            userName: `${timesheet.user.firstName} ${timesheet.user.lastName}`,
-            agencyId: timesheet.agency?._id,
-            agencyName: timesheet.agency?.name,
-            timestamp: now.toISOString(),
-            isRead: false,
-            actionRequired: true,
-            actionUrl: `/admin/users/${timesheet.user._id}`
-          });
+        try {
+          const [scheduleHour, scheduleMinute] = timesheet.schedule.startTime.split(':').map(Number);
+          const scheduleTime = new Date(today);
+          scheduleTime.setHours(scheduleHour, scheduleMinute, 0, 0);
+          
+          if (now > scheduleTime) {
+            const delayMinutes = Math.floor((now - scheduleTime) / (1000 * 60));
+            alerts.push({
+              id: `late_${timesheet._id}`,
+              type: 'late_start',
+              priority: delayMinutes > 30 ? 'critical' : delayMinutes > 15 ? 'high' : 'medium',
+              title: 'Retard de pointage',
+              message: `${timesheet.user.firstName} ${timesheet.user.lastName} en retard de ${delayMinutes} minutes`,
+              userId: timesheet.user._id,
+              userName: `${timesheet.user.firstName} ${timesheet.user.lastName}`,
+              agencyId: timesheet.agency?._id,
+              agencyName: timesheet.agency?.name,
+              timestamp: now.toISOString(),
+              isRead: false,
+              actionRequired: true,
+              actionUrl: `/admin/users/${timesheet.user._id}`
+            });
+          }
+        } catch (timeError) {
+          console.warn('⚠️ Erreur traitement timesheet:', timeError.message);
         }
       }
     });
 
-    // 2. Préparations en retard
-    const overtimePreparations = await Preparation.find({
-      status: 'in_progress',
-      startTime: {
-        $lte: new Date(Date.now() - TIME_LIMITS.PREPARATION_MAX_MINUTES * 60 * 1000)
-      }
-    })
-    .populate('preparateur', 'firstName lastName')
-    .populate('vehicle', 'licensePlate')
-    .populate('agency', 'name')
-    .limit(5);
+    // ✅ CORRECTION : 2. Préparations en retard avec gestion des dates invalides
+    try {
+      // Utiliser une constante par défaut si TIME_LIMITS n'est pas défini
+      const maxMinutes = TIME_LIMITS?.PREPARATION_MAX_MINUTES || 30;
+      const cutoffTime = new Date(Date.now() - maxMinutes * 60 * 1000);
+      
+      console.log('🔍 Recherche préparations longues avant:', cutoffTime.toISOString());
 
-    overtimePreparations.forEach(prep => {
-      if (prep.preparateur) {
-        alerts.push({
-          id: `overtime_${prep._id}`,
-          type: 'long_preparation',
-          priority: 'medium',
-          title: 'Préparation en retard',
-          message: `Préparation du véhicule ${prep.vehicle?.licensePlate || 'N/A'} dépasse ${TIME_LIMITS.PREPARATION_MAX_MINUTES} minutes`,
-          userId: prep.preparateur._id,
-          userName: `${prep.preparateur.firstName} ${prep.preparateur.lastName}`,
-          agencyId: prep.agency?._id,
-          agencyName: prep.agency?.name,
-          timestamp: new Date().toISOString(),
-          isRead: false,
-          actionRequired: true,
-          actionUrl: `/admin/preparations/${prep._id}`
-        });
-      }
-    });
+      // ✅ CORRECTION : Requête avec protection contre les dates invalides
+      const overtimePreparations = await Preparation.find({
+        status: 'in_progress',
+        startTime: {
+          $exists: true,
+          $ne: null,
+          $type: 'date',  // ✅ S'assurer que c'est bien une date valide
+          $lte: cutoffTime
+        }
+      })
+      .populate('preparateur', 'firstName lastName')
+      .populate('vehicle', 'licensePlate')
+      .populate('agency', 'name')
+      .limit(5);
+
+      console.log(`📊 ${overtimePreparations.length} préparations longues trouvées`);
+
+      overtimePreparations.forEach(prep => {
+        // ✅ CORRECTION : Vérifier que startTime est une date valide
+        if (prep.preparateur && prep.startTime && prep.startTime instanceof Date && !isNaN(prep.startTime.getTime())) {
+          const durationMinutes = Math.floor((Date.now() - prep.startTime.getTime()) / (1000 * 60));
+          
+          alerts.push({
+            id: `overtime_${prep._id}`,
+            type: 'long_preparation',
+            priority: durationMinutes > 60 ? 'high' : 'medium',
+            title: 'Préparation en retard',
+            message: `Préparation du véhicule ${prep.vehicle?.licensePlate || 'N/A'} dépasse ${maxMinutes} minutes`,
+            userId: prep.preparateur._id,
+            userName: `${prep.preparateur.firstName} ${prep.preparateur.lastName}`,
+            agencyId: prep.agency?._id,
+            agencyName: prep.agency?.name,
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            actionRequired: true,
+            actionUrl: `/admin/preparations/${prep._id}`
+          });
+        } else {
+          console.warn('⚠️ Préparation avec startTime invalide dans overview:', {
+            id: prep._id,
+            startTime: prep.startTime,
+            hasPreparateur: !!prep.preparateur
+          });
+        }
+      });
+    } catch (prepError) {
+      console.error('❌ Erreur récupération préparations longues:', prepError);
+      // Ne pas faire planter la fonction, continuer avec les autres alertes
+    }
+
+    // 3. Fin de service manquante (hier)
+    try {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      const missingClockOuts = await Timesheet.find({
+        date: { $gte: yesterday, $lt: today },
+        clockInTime: { $exists: true },
+        clockOutTime: null
+      })
+      .populate('user', 'firstName lastName')
+      .populate('agency', 'name')
+      .limit(3);
+
+      missingClockOuts.forEach(timesheet => {
+        if (timesheet.user) {
+          alerts.push({
+            id: `missing_out_${timesheet._id}`,
+            type: 'missing_clock_out',
+            priority: 'medium',
+            title: 'Fin de service non pointée',
+            message: `${timesheet.user.firstName} ${timesheet.user.lastName} n'a pas pointé sa fin de service`,
+            userId: timesheet.user._id,
+            userName: `${timesheet.user.firstName} ${timesheet.user.lastName}`,
+            agencyId: timesheet.agency?._id,
+            agencyName: timesheet.agency?.name,
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            actionRequired: true,
+            actionUrl: `/admin/timesheets/${timesheet._id}`
+          });
+        }
+      });
+    } catch (clockOutError) {
+      console.error('❌ Erreur récupération clock-out manquants:', clockOutError);
+    }
 
     // Trier par priorité et timestamp
     return alerts.sort((a, b) => {
@@ -269,8 +338,8 @@ async function getRecentAlerts(today) {
     }).slice(0, 10);
 
   } catch (error) {
-    console.error('Erreur récupération alertes:', error);
-    return [];
+    console.error('❌ Erreur récupération alertes:', error);
+    return []; // ✅ Retourner un tableau vide au lieu de faire planter l'API
   }
 }
 

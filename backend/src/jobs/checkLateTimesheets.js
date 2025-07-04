@@ -1,100 +1,34 @@
-const Schedule = require('../models/Schedule');
-const Timesheet = require('../models/Timesheet');
-const { sendAlertEmail } = require('../services/emailService');
-const { TIME_LIMITS } = require('../utils/constants');
+// backend/src/jobs/checkLateTimesheets.js - VERSION CORRIGÉE
+const nodemailer = require('nodemailer');
+const { EMAIL_CONFIG } = require('../utils/constants');
+
+// Configuration email
+const transporter = nodemailer.createTransporter({
+  service: EMAIL_CONFIG.SERVICE,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// Limites de temps en minutes
+const TIME_LIMITS = {
+  LATE_THRESHOLD: 15,
+  PREPARATION_MAX_MINUTES: 30
+};
 
 /**
- * Job de vérification des retards de pointage
- * Exécuté toutes les 5 minutes via node-cron
+ * Fonction principale de vérification des retards
  */
 const checkLateTimesheets = async () => {
   try {
-    console.log('🔍 Vérification des retards de pointage...');
+    console.log('🔍 Vérification des retards...');
     
-    const now = new Date();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Vérifier les retards de pointage
+    const overdueCount = await checkOverdueClockIns();
     
-    // Chercher tous les plannings du jour
-    const todaySchedules = await Schedule.find({
-      date: today,
-      status: 'active'
-    }).populate('user agency');
-
-    let alertsSent = 0;
-    let overdueCount = 0;
-
-    for (const schedule of todaySchedules) {
-      try {
-        // Calculer l'heure prévue de début
-        const [hours, minutes] = schedule.startTime.split(':');
-        const scheduledStart = new Date(today);
-        scheduledStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-        
-        // Calculer le retard en minutes
-        const delayMinutes = Math.floor((now - scheduledStart) / (1000 * 60));
-        
-        // Vérifier si c'est un retard significatif
-        if (delayMinutes >= TIME_LIMITS.LATE_THRESHOLD_MINUTES) {
-          overdueCount++;
-          
-          // Chercher ou créer le timesheet correspondant
-          let timesheet = await Timesheet.findOne({
-            user: schedule.user._id,
-            agency: schedule.agency._id,
-            date: today
-          });
-
-          // Si pas de pointage du tout, ou pointage pas encore fait
-          if (!timesheet || !timesheet.startTime) {
-            // Créer ou mettre à jour le timesheet avec le retard
-            if (!timesheet) {
-              timesheet = new Timesheet({
-                user: schedule.user._id,
-                agency: schedule.agency._id,
-                date: today,
-                schedule: schedule._id,
-                delays: { startDelay: delayMinutes }
-              });
-            } else {
-              timesheet.schedule = schedule._id;
-              timesheet.delays.startDelay = delayMinutes;
-            }
-
-            await timesheet.save();
-
-            // Envoyer l'alerte si pas déjà envoyée
-            if (!timesheet.alertsSent.lateStart) {
-              try {
-                await sendAlertEmail({
-                  type: 'late_start',
-                  employee: schedule.user,
-                  agency: schedule.agency,
-                  scheduledTime: schedule.startTime,
-                  delayMinutes,
-                  schedule
-                });
-                
-                // Marquer l'alerte comme envoyée
-                timesheet.alertsSent.lateStart = true;
-                await timesheet.save();
-                
-                alertsSent++;
-                console.log(`📧 Alerte envoyée pour ${schedule.user.firstName} ${schedule.user.lastName} (${delayMinutes}min de retard)`);
-                
-              } catch (emailError) {
-                console.error('❌ Erreur envoi email pour:', schedule.user.email, emailError.message);
-              }
-            }
-          }
-        }
-      } catch (scheduleError) {
-        console.error('❌ Erreur traitement planning:', schedule._id, scheduleError.message);
-      }
-    }
-
-    // Vérifier aussi les préparations qui traînent trop
-    await checkOvertimePreparations();
+    // Vérifier les préparations trop longues
+    const alertsSent = await checkOvertimePreparations();
     
     // Vérifier les fins de service manquantes
     await checkMissingClockOuts();
@@ -109,7 +43,7 @@ const checkLateTimesheets = async () => {
 };
 
 /**
- * Vérifier les préparations qui dépassent le temps limite
+ * ✅ CORRECTION : Vérifier les préparations qui dépassent le temps limite avec gestion des dates invalides
  */
 const checkOvertimePreparations = async () => {
   try {
@@ -118,16 +52,37 @@ const checkOvertimePreparations = async () => {
     // Chercher les préparations en cours depuis plus de 30 minutes
     const cutoffTime = new Date(Date.now() - TIME_LIMITS.PREPARATION_MAX_MINUTES * 60 * 1000);
     
+    console.log('🔍 Recherche préparations longues avant:', cutoffTime.toISOString());
+
+    // ✅ CORRECTION : Requête avec protection contre les dates invalides
     const overtimePreparations = await Preparation.find({
       status: 'in_progress',
-      startTime: { $lt: cutoffTime }
+      startTime: { 
+        $exists: true,
+        $ne: null,
+        $type: 'date',  // ✅ S'assurer que c'est bien une date valide
+        $lt: cutoffTime 
+      }
     })
     .populate('user', 'firstName lastName email')
     .populate('vehicle', 'licensePlate')
     .populate('agency', 'name code');
 
+    console.log(`📊 ${overtimePreparations.length} préparations longues trouvées`);
+
+    let alertsSent = 0;
+
     for (const preparation of overtimePreparations) {
-      const duration = Math.floor((new Date() - preparation.startTime) / (1000 * 60));
+      // ✅ CORRECTION : Vérifier que startTime est une date valide
+      if (!preparation.startTime || !(preparation.startTime instanceof Date) || isNaN(preparation.startTime.getTime())) {
+        console.warn('⚠️ Préparation avec startTime invalide dans job:', {
+          id: preparation._id,
+          startTime: preparation.startTime
+        });
+        continue; // Ignorer cette préparation
+      }
+
+      const duration = Math.floor((new Date() - preparation.startTime.getTime()) / (1000 * 60));
       
       // Envoyer une alerte pour les préparations très longues (plus de 45 min)
       if (duration >= 45) {
@@ -142,15 +97,84 @@ const checkOvertimePreparations = async () => {
           });
           
           console.log(`⏰ Alerte préparation longue: ${preparation.user.firstName} ${preparation.user.lastName} - ${duration}min`);
+          alertsSent++;
           
         } catch (emailError) {
-          console.error('❌ Erreur envoi alerte préparation longue:', emailError.message);
+          console.error('❌ Erreur envoi email alerte préparation:', emailError);
         }
       }
     }
-    
+
+    return alertsSent;
   } catch (error) {
     console.error('❌ Erreur vérification préparations longues:', error);
+    return 0; // ✅ Retourner 0 au lieu de faire planter le job
+  }
+};
+
+/**
+ * Vérifier les retards de pointage
+ */
+const checkOverdueClockIns = async () => {
+  try {
+    const Schedule = require('../models/Schedule');
+    const Timesheet = require('../models/Timesheet');
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const now = new Date();
+    
+    // Chercher les plannings d'aujourd'hui sans pointage
+    const overdueSchedules = await Schedule.find({
+      date: today,
+      status: 'active'
+    })
+    .populate('user', 'firstName lastName email')
+    .populate('agency', 'name');
+
+    let overdueCount = 0;
+
+    for (const schedule of overdueSchedules) {
+      // Vérifier s'il y a déjà un pointage pour cet utilisateur aujourd'hui
+      const existingTimesheet = await Timesheet.findOne({
+        user: schedule.user._id,
+        date: today
+      });
+
+      if (!existingTimesheet || !existingTimesheet.clockInTime) {
+        // Calculer si l'employé est en retard
+        const [hour, minute] = schedule.startTime.split(':').map(Number);
+        const scheduledTime = new Date(today);
+        scheduledTime.setHours(hour, minute, 0, 0);
+        
+        const delayMinutes = Math.floor((now - scheduledTime) / (1000 * 60));
+        
+        if (delayMinutes > TIME_LIMITS.LATE_THRESHOLD) {
+          overdueCount++;
+          
+          // Envoyer une alerte email pour les retards importants (>30min)
+          if (delayMinutes > 30) {
+            try {
+              await sendAlertEmail({
+                type: 'late_start',
+                employee: schedule.user,
+                agency: schedule.agency,
+                delayMinutes,
+                scheduledTime: schedule.startTime
+              });
+            } catch (emailError) {
+              console.error('❌ Erreur envoi email retard:', emailError);
+            }
+          }
+        }
+      }
+    }
+
+    return overdueCount;
+  } catch (error) {
+    console.error('❌ Erreur vérification retards pointage:', error);
+    return 0;
   }
 };
 
@@ -159,22 +183,23 @@ const checkOvertimePreparations = async () => {
  */
 const checkMissingClockOuts = async () => {
   try {
+    const Timesheet = require('../models/Timesheet');
+    
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     yesterday.setHours(0, 0, 0, 0);
     
-    const yesterdayEnd = new Date(yesterday);
-    yesterdayEnd.setHours(23, 59, 59, 999);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // Chercher les timesheets d'hier sans pointage de fin
+    // Chercher les pointages d'hier sans fin de service
     const missingClockOuts = await Timesheet.find({
-      date: { $gte: yesterday, $lte: yesterdayEnd },
-      startTime: { $exists: true },
-      endTime: { $exists: false },
-      'alertsSent.missingClockOut': { $ne: true }
+      date: { $gte: yesterday, $lt: today },
+      clockInTime: { $exists: true },
+      clockOutTime: null
     })
     .populate('user', 'firstName lastName email')
-    .populate('agency', 'name code');
+    .populate('agency', 'name');
 
     for (const timesheet of missingClockOuts) {
       try {
@@ -182,24 +207,115 @@ const checkMissingClockOuts = async () => {
           type: 'missing_clock_out',
           employee: timesheet.user,
           agency: timesheet.agency,
-          date: timesheet.date,
-          clockInTime: timesheet.startTime
+          date: timesheet.date
         });
-        
-        // Marquer l'alerte comme envoyée
-        timesheet.alertsSent.missingClockOut = true;
-        await timesheet.save();
-        
-        console.log(`📤 Alerte fin manquante: ${timesheet.user.firstName} ${timesheet.user.lastName}`);
-        
       } catch (emailError) {
-        console.error('❌ Erreur envoi alerte fin manquante:', emailError.message);
+        console.error('❌ Erreur envoi email clock-out manquant:', emailError);
       }
     }
-    
+
+    if (missingClockOuts.length > 0) {
+      console.log(`📧 ${missingClockOuts.length} alertes envoyées pour fins de service manquantes`);
+    }
+
+    return missingClockOuts.length;
   } catch (error) {
-    console.error('❌ Erreur vérification fins manquantes:', error);
+    console.error('❌ Erreur vérification fins de service:', error);
+    return 0;
   }
 };
 
-module.exports = checkLateTimesheets;
+/**
+ * Envoyer un email d'alerte
+ */
+const sendAlertEmail = async (alertData) => {
+  try {
+    // ✅ CORRECTION : Récupérer les emails des admins depuis la DB
+    const User = require('../models/User');
+    
+    const adminUsers = await User.find({
+      role: 'admin',
+      isActive: true,
+      email: { $exists: true, $ne: null, $ne: '' }
+    }).select('email firstName lastName');
+    
+    if (adminUsers.length === 0) {
+      console.warn('⚠️ Aucun administrateur actif trouvé en base de données');
+      return;
+    }
+    
+    const adminEmails = adminUsers.map(admin => admin.email);
+    console.log(`📧 Envoi alerte à ${adminEmails.length} administrateur(s):`, adminEmails);
+
+    let subject, html;
+
+    switch (alertData.type) {
+      case 'late_start':
+        subject = `🚨 Retard de pointage - ${alertData.employee.firstName} ${alertData.employee.lastName}`;
+        html = `
+          <h3>Retard de pointage détecté</h3>
+          <p><strong>Employé:</strong> ${alertData.employee.firstName} ${alertData.employee.lastName}</p>
+          <p><strong>Email:</strong> ${alertData.employee.email}</p>
+          <p><strong>Agence:</strong> ${alertData.agency.name}</p>
+          <p><strong>Heure prévue:</strong> ${alertData.scheduledTime}</p>
+          <p><strong>Retard:</strong> ${alertData.delayMinutes} minutes</p>
+          <p><strong>Heure actuelle:</strong> ${new Date().toLocaleString('fr-FR')}</p>
+        `;
+        break;
+
+      case 'overtime_preparation':
+        subject = `⏰ Préparation en retard - ${alertData.employee.firstName} ${alertData.employee.lastName}`;
+        html = `
+          <h3>Préparation dépassant le temps limite</h3>
+          <p><strong>Préparateur:</strong> ${alertData.employee.firstName} ${alertData.employee.lastName}</p>
+          <p><strong>Email:</strong> ${alertData.employee.email}</p>
+          <p><strong>Agence:</strong> ${alertData.agency.name}</p>
+          <p><strong>Véhicule:</strong> ${alertData.vehicle.licensePlate}</p>
+          <p><strong>Durée:</strong> ${alertData.duration} minutes</p>
+          <p><strong>Limite normale:</strong> ${TIME_LIMITS.PREPARATION_MAX_MINUTES} minutes</p>
+        `;
+        break;
+
+      case 'missing_clock_out':
+        subject = `📊 Fin de service non pointée - ${alertData.employee.firstName} ${alertData.employee.lastName}`;
+        html = `
+          <h3>Fin de service non pointée</h3>
+          <p><strong>Employé:</strong> ${alertData.employee.firstName} ${alertData.employee.lastName}</p>
+          <p><strong>Email:</strong> ${alertData.employee.email}</p>
+          <p><strong>Agence:</strong> ${alertData.agency.name}</p>
+          <p><strong>Date:</strong> ${alertData.date.toLocaleDateString('fr-FR')}</p>
+        `;
+        break;
+
+      default:
+        return;
+    }
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: adminEmails.join(','),
+      subject,
+      html: html + `
+        <hr>
+        <p style="color: #666; font-size: 12px;">
+          <strong>Destinataires:</strong> ${adminUsers.map(admin => `${admin.firstName} ${admin.lastName} (${admin.email})`).join(', ')}<br>
+          <strong>Heure d'envoi:</strong> ${new Date().toLocaleString('fr-FR')}<br>
+          <strong>Système:</strong> Vehicle Prep - Alertes automatiques
+        </p>
+      `
+    });
+
+    console.log(`✅ Email d'alerte envoyé à ${adminEmails.length} administrateur(s) pour: ${alertData.type}`);
+
+  } catch (error) {
+    console.error('❌ Erreur envoi email:', error);
+    throw error;
+  }
+};
+
+module.exports = {
+  checkLateTimesheets,
+  checkOvertimePreparations,
+  checkOverdueClockIns,
+  checkMissingClockOuts
+};
