@@ -86,6 +86,14 @@ try {
 // ===== ROUTES ADMIN =====
 
 try {
+  // ===== NOUVEAU: ROUTES RAPPORTS AUTOMATIQUES =====
+  app.use('/api/admin/reports', require('./routes/admin/reports'));
+  console.log('✅ Routes rapports automatiques chargées avec succès');
+} catch (error) {
+  console.warn('⚠️ Erreur chargement routes rapports:', error.message);
+}
+
+try {
   // Users
   app.use('/api/admin/users', require('./routes/admin/users/users'));
   app.use('/api/admin/users', require('./routes/admin/users/bulk-actions'));

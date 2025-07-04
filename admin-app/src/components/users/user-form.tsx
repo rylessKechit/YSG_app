@@ -237,7 +237,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
     );
   }
 
-  const agencies = agenciesData?.data?.agencies || [];
+  const agencies = agenciesData?.agencies || [];
 
   return (
     <div className="space-y-6">

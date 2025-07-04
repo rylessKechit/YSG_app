@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const User = require('../models/User');
 const { EMAIL_CONFIG } = require('../utils/constants');
 
 /**
@@ -21,7 +22,7 @@ const createTransporter = () => {
     delete config.service;
   }
 
-  return nodemailer.createTransporter(config);
+  return nodemailer.createTransport(config);
 };
 
 /**
@@ -45,15 +46,45 @@ const verifyEmailConfig = async () => {
 };
 
 /**
- * Obtenir la liste des emails administrateurs
+ * Obtenir la liste des emails administrateurs depuis la base de données
  */
-const getAdminEmails = () => {
-  const adminEmails = process.env.ADMIN_EMAILS;
-  if (!adminEmails) {
-    console.warn('⚠️  Aucun email admin configuré');
+const getAdminEmails = async () => {
+  try {
+    const admins = await User.find({ 
+      role: 'admin', 
+      isActive: true 
+    }).select('email firstName lastName');
+    
+    if (admins.length === 0) {
+      console.warn('⚠️  Aucun administrateur actif trouvé en base');
+      return [];
+    }
+
+    const adminEmails = admins.map(admin => admin.email).filter(Boolean);
+    console.log(`📧 ${adminEmails.length} email(s) administrateur(s) trouvé(s)`);
+    
+    return adminEmails;
+  } catch (error) {
+    console.error('❌ Erreur récupération emails admin:', error);
     return [];
   }
-  return adminEmails.split(',').map(email => email.trim()).filter(Boolean);
+};
+
+/**
+ * Obtenir les détails complets des administrateurs
+ */
+const getAdminDetails = async () => {
+  try {
+    const admins = await User.find({ 
+      role: 'admin', 
+      isActive: true 
+    }).select('email firstName lastName');
+    
+    return admins;
+  } catch (error) {
+    console.error('❌ Erreur récupération détails admin:', error);
+    return [];
+  }
 };
 
 /**
@@ -84,72 +115,26 @@ const emailTemplates = {
               <td style="padding: 8px 0;">${data.agency.name} (${data.agency.code})</td>
             </tr>
             <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Date:</td>
+              <td style="padding: 8px 0;">${data.date.toLocaleDateString('fr-FR')}</td>
+            </tr>
+            <tr>
               <td style="padding: 8px 0; font-weight: bold;">Heure prévue:</td>
               <td style="padding: 8px 0;">${data.scheduledTime}</td>
             </tr>
             <tr>
+              <td style="padding: 8px 0; font-weight: bold;">Heure réelle:</td>
+              <td style="padding: 8px 0;">${data.actualTime}</td>
+            </tr>
+            <tr>
               <td style="padding: 8px 0; font-weight: bold;">Retard:</td>
-              <td style="padding: 8px 0; color: #dc3545; font-weight: bold;">${data.delayMinutes} minutes</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Heure actuelle:</td>
-              <td style="padding: 8px 0;">${new Date().toLocaleTimeString('fr-FR')}</td>
+              <td style="padding: 8px 0; color: #dc3545;"><strong>${data.delayMinutes} minutes</strong></td>
             </tr>
           </table>
           
-          <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
-            <p style="margin: 0; color: #6c757d;">
-              <strong>Action requise:</strong> L'employé n'a toujours pas pointé son début de service. 
-              Veuillez vérifier sa présence et prendre les mesures appropriées.
-            </p>
-          </div>
-        </div>
-        
-        <div style="margin-top: 20px; text-align: center; color: #6c757d; font-size: 12px;">
-          <p>Email automatique envoyé par le système de gestion des véhicules</p>
-          <p>Date: ${new Date().toLocaleString('fr-FR')}</p>
-        </div>
-      </div>
-    `
-  }),
-
-  overtime_preparation: (data) => ({
-    subject: `⏰ Préparation longue - ${data.employee.firstName} ${data.employee.lastName}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 20px; margin-bottom: 20px;">
-          <h2 style="color: #856404; margin: 0 0 15px 0;">⏰ Alerte de préparation prolongée</h2>
-        </div>
-        
-        <div style="background-color: #fff; border: 1px solid #ddd; border-radius: 5px; padding: 20px;">
-          <h3>Détails de la préparation</h3>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Employé:</td>
-              <td style="padding: 8px 0;">${data.employee.firstName} ${data.employee.lastName}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Véhicule:</td>
-              <td style="padding: 8px 0;">${data.vehicle.licensePlate}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Agence:</td>
-              <td style="padding: 8px 0;">${data.agency.name} (${data.agency.code})</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Durée actuelle:</td>
-              <td style="padding: 8px 0; color: #fd7e14; font-weight: bold;">${data.duration} minutes</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Limite normale:</td>
-              <td style="padding: 8px 0;">30 minutes</td>
-            </tr>
-          </table>
-          
-          <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
-            <p style="margin: 0; color: #6c757d;">
-              <strong>Attention:</strong> Cette préparation dépasse significativement le temps alloué. 
-              Veuillez vérifier s'il y a un problème particulier.
+          <div style="margin-top: 20px; padding: 15px; background-color: #fff3cd; border-radius: 5px;">
+            <p style="margin: 0; color: #856404;">
+              <strong>Action recommandée:</strong> Contacter l'employé pour comprendre la cause du retard.
             </p>
           </div>
         </div>
@@ -217,42 +202,37 @@ const emailTemplates = {
 };
 
 /**
- * Envoyer un email d'alerte
+ * Envoyer une alerte email
  */
 const sendAlertEmail = async (alertData) => {
   try {
-    // Vérifier la configuration
-    const adminEmails = getAdminEmails();
+    const adminEmails = await getAdminEmails();
     if (adminEmails.length === 0) {
-      console.warn('⚠️  Aucun email admin configuré, alerte non envoyée');
-      return { success: false, reason: 'No admin emails configured' };
+      console.warn('⚠️  Aucun email admin disponible - alerte non envoyée');
+      return { success: false, reason: 'No admin emails' };
     }
 
-    // Obtenir le template
-    const template = emailTemplates[alertData.type];
-    if (!template) {
-      throw new Error(`Template email non trouvé pour le type: ${alertData.type}`);
-    }
-
-    const { subject, html } = template(alertData);
-
-    // Créer le transporteur
     const transporter = createTransporter();
+    const template = emailTemplates[alertData.type];
+    
+    if (!template) {
+      throw new Error(`Template d'email non trouvé: ${alertData.type}`);
+    }
 
-    // Envoyer l'email
+    const emailContent = template(alertData);
+
     const result = await transporter.sendMail({
-      from: `"Système Véhicules" <${process.env.EMAIL_USER}>`,
+      from: `"Système Véhicules - Alerte" <${process.env.EMAIL_USER}>`,
       to: adminEmails,
-      subject,
-      html,
-      priority: 'high'
+      subject: emailContent.subject,
+      html: emailContent.html
     });
 
-    console.log(`📧 Email envoyé avec succès:`, result.messageId);
-    return { success: true, messageId: result.messageId };
+    console.log(`📧 Alerte ${alertData.type} envoyée à ${adminEmails.length} admin(s)`);
+    return { success: true, messageId: result.messageId, sentTo: adminEmails };
 
   } catch (error) {
-    console.error('❌ Erreur envoi email:', error);
+    console.error('❌ Erreur envoi alerte email:', error);
     return { success: false, error: error.message };
   }
 };
@@ -262,31 +242,49 @@ const sendAlertEmail = async (alertData) => {
  */
 const sendTestEmail = async () => {
   try {
-    const adminEmails = getAdminEmails();
+    const adminEmails = await getAdminEmails();
     if (adminEmails.length === 0) {
-      throw new Error('Aucun email admin configuré');
+      return { success: false, reason: 'No admin emails configured' };
     }
 
     const transporter = createTransporter();
 
     const result = await transporter.sendMail({
-      from: `"Système Véhicules" <${process.env.EMAIL_USER}>`,
+      from: `"Système Véhicules - Test" <${process.env.EMAIL_USER}>`,
       to: adminEmails,
-      subject: '✅ Test de configuration email',
+      subject: '🧪 Test Email - Configuration Rapports',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 20px;">
-            <h2 style="color: #155724; margin: 0 0 15px 0;">✅ Configuration email fonctionnelle</h2>
-            <p>Ce message confirme que la configuration email du système de gestion des véhicules fonctionne correctement.</p>
-            <p><strong>Date du test:</strong> ${new Date().toLocaleString('fr-FR')}</p>
-            <p><strong>Emails destinataires:</strong> ${adminEmails.join(', ')}</p>
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="margin: 0; font-size: 24px;">🧪 Test Email</h1>
+            <p style="margin: 10px 0 0 0;">Configuration des rapports automatiques</p>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 25px;">
+            <h2 style="color: #333;">✅ Configuration réussie !</h2>
+            <p>Ce test confirme que :</p>
+            <ul>
+              <li>✅ Le service email fonctionne correctement</li>
+              <li>✅ Les administrateurs sont bien configurés en base</li>
+              <li>✅ Les rapports automatiques peuvent être envoyés</li>
+            </ul>
+            
+            <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 20px;">
+              <h3>Administrateurs configurés :</h3>
+              <p>${adminEmails.join(', ')}</p>
+            </div>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 20px; text-align: center; border-radius: 0 0 10px 10px;">
+            <p style="margin: 0; font-size: 12px; color: #6c757d;">
+              Test envoyé le ${new Date().toLocaleString('fr-FR')}
+            </p>
           </div>
         </div>
       `
     });
 
-    console.log('✅ Email de test envoyé avec succès:', result.messageId);
-    return { success: true, messageId: result.messageId };
+    return { success: true, messageId: result.messageId, sentTo: adminEmails };
 
   } catch (error) {
     console.error('❌ Erreur envoi email de test:', error);
@@ -299,7 +297,7 @@ const sendTestEmail = async () => {
  */
 const sendDailyReport = async (reportData) => {
   try {
-    const adminEmails = getAdminEmails();
+    const adminEmails = await getAdminEmails();
     if (adminEmails.length === 0) {
       return { success: false, reason: 'No admin emails configured' };
     }
@@ -353,5 +351,7 @@ module.exports = {
   sendTestEmail,
   sendDailyReport,
   verifyEmailConfig,
-  getAdminEmails
+  getAdminEmails,
+  getAdminDetails,
+  createTransporter
 };
