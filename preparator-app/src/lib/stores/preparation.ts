@@ -1,22 +1,56 @@
+// lib/stores/preparation.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { preparationApi, handleApiError } from '../api/client';
-import { PreparationState, Preparation, Agency, VehicleFormData, StepCompletionData, IssueReportData } from '../types';
+import { 
+  preparationApi, 
+  VehicleFormData, 
+  Preparation, 
+  Agency, 
+  StepCompletionData, 
+  IssueReportData,
+  PreparationStats 
+} from '@/lib/api/preparations';
 
-interface PreparationStore extends PreparationState {
-  // Actions
+interface PreparationStore {
+  // État
+  currentPreparation: Preparation | null;
+  userAgencies: Agency[];
+  history: Preparation[];
+  stats: PreparationStats | null;
+  isLoading: boolean;
+  error: string | null;
+  lastSync: Date | null;
+
+  // Actions - Données de base
   getUserAgencies: () => Promise<void>;
   getCurrentPreparation: () => Promise<void>;
+  getHistory: (params?: any) => Promise<void>;
+  getMyStats: (params?: any) => Promise<PreparationStats>;
+
+  // Actions - Workflow
   startPreparation: (data: VehicleFormData) => Promise<void>;
   completeStep: (preparationId: string, data: StepCompletionData) => Promise<void>;
   completePreparation: (preparationId: string, notes?: string) => Promise<void>;
   reportIssue: (preparationId: string, data: IssueReportData) => Promise<void>;
-  getHistory: (params?: any) => Promise<void>;
-  getMyStats: (params?: any) => Promise<any>;
+  cancelPreparation: (preparationId: string, reason?: string) => Promise<void>;
+
+  // Actions - Utilitaires
   clearError: () => void;
   setLoading: (loading: boolean) => void;
   reset: () => void;
+  refreshCurrentPreparation: () => Promise<void>;
 }
+
+// Fonction utilitaire pour gérer les erreurs API
+const handleApiError = (error: any): string => {
+  if (error.response?.data?.message) {
+    return error.response.data.message;
+  }
+  if (error.message) {
+    return error.message;
+  }
+  return 'Une erreur inattendue s\'est produite';
+};
 
 export const usePreparationStore = create<PreparationStore>()(
   persist(
@@ -25,6 +59,7 @@ export const usePreparationStore = create<PreparationStore>()(
       currentPreparation: null,
       userAgencies: [],
       history: [],
+      stats: null,
       isLoading: false,
       error: null,
       lastSync: null,
@@ -71,6 +106,65 @@ export const usePreparationStore = create<PreparationStore>()(
         }
       },
 
+      // Rafraîchir la préparation courante
+      refreshCurrentPreparation: async () => {
+        const { currentPreparation } = get();
+        if (!currentPreparation) return;
+
+        try {
+          const data = await preparationApi.getPreparation(currentPreparation.id);
+          set({
+            currentPreparation: data.preparation,
+            lastSync: new Date()
+          });
+        } catch (error) {
+          console.error('Erreur rafraîchissement préparation:', error);
+        }
+      },
+
+      // Obtenir l'historique
+      getHistory: async (params = {}) => {
+        set({ isLoading: true, error: null });
+        
+        try {
+          const data = await preparationApi.getHistory(params);
+          set({
+            history: data.preparations || [],
+            isLoading: false,
+            lastSync: new Date()
+          });
+        } catch (error) {
+          const errorMessage = handleApiError(error);
+          set({
+            isLoading: false,
+            error: errorMessage
+          });
+          throw error;
+        }
+      },
+
+      // Obtenir les statistiques
+      getMyStats: async (params = {}) => {
+        set({ isLoading: true, error: null });
+        
+        try {
+          const stats = await preparationApi.getMyStats(params);
+          set({
+            stats,
+            isLoading: false,
+            lastSync: new Date()
+          });
+          return stats;
+        } catch (error) {
+          const errorMessage = handleApiError(error);
+          set({
+            isLoading: false,
+            error: errorMessage
+          });
+          throw error;
+        }
+      },
+
       // Démarrer une préparation
       startPreparation: async (data: VehicleFormData) => {
         set({ isLoading: true, error: null });
@@ -99,10 +193,12 @@ export const usePreparationStore = create<PreparationStore>()(
         set({ isLoading: true, error: null });
         
         try {
-          await preparationApi.completeStep(preparationId, data);
-          
-          // Recharger la préparation courante
-          await get().getCurrentPreparation();
+          const result = await preparationApi.completeStep(preparationId, data);
+          set({
+            currentPreparation: result.preparation,
+            isLoading: false,
+            lastSync: new Date()
+          });
           
           console.log('✅ Étape complétée:', data.stepType);
         } catch (error) {
@@ -120,15 +216,19 @@ export const usePreparationStore = create<PreparationStore>()(
         set({ isLoading: true, error: null });
         
         try {
-          await preparationApi.completePreparation(preparationId, notes);
+          const result = await preparationApi.completePreparation(preparationId, notes);
           
+          // Mettre à jour l'état
           set({
-            currentPreparation: null,
+            currentPreparation: null, // Plus de préparation en cours
             isLoading: false,
             lastSync: new Date()
           });
+
+          // Rafraîchir l'historique
+          await get().getHistory();
           
-          console.log('✅ Préparation terminée');
+          console.log('✅ Préparation terminée:', result.preparation.vehicle.licensePlate);
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({
@@ -146,8 +246,13 @@ export const usePreparationStore = create<PreparationStore>()(
         try {
           await preparationApi.reportIssue(preparationId, data);
           
-          // Recharger la préparation courante
-          await get().getCurrentPreparation();
+          // Rafraîchir la préparation courante pour voir l'incident
+          await get().refreshCurrentPreparation();
+          
+          set({
+            isLoading: false,
+            lastSync: new Date()
+          });
           
           console.log('✅ Incident signalé:', data.type);
         } catch (error) {
@@ -160,33 +265,29 @@ export const usePreparationStore = create<PreparationStore>()(
         }
       },
 
-      // Obtenir l'historique
-      getHistory: async (params = {}) => {
+      // Annuler une préparation
+      cancelPreparation: async (preparationId: string, reason?: string) => {
         set({ isLoading: true, error: null });
         
         try {
-          const data = await preparationApi.getHistory(params);
+          await preparationApi.cancelPreparation(preparationId, reason);
+          
           set({
-            history: data.preparations || [],
+            currentPreparation: null,
             isLoading: false,
             lastSync: new Date()
           });
+
+          // Rafraîchir l'historique
+          await get().getHistory();
+          
+          console.log('✅ Préparation annulée');
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({
             isLoading: false,
             error: errorMessage
           });
-          throw error;
-        }
-      },
-
-      // Obtenir les statistiques
-      getMyStats: async (params = {}) => {
-        try {
-          return await preparationApi.getMyStats(params);
-        } catch (error) {
-          console.error('Erreur récupération stats:', error);
           throw error;
         }
       },
@@ -201,12 +302,13 @@ export const usePreparationStore = create<PreparationStore>()(
         set({ isLoading: loading });
       },
 
-      // Reset du store
+      // Réinitialiser le store
       reset: () => {
         set({
           currentPreparation: null,
           userAgencies: [],
           history: [],
+          stats: null,
           isLoading: false,
           error: null,
           lastSync: null
@@ -214,8 +316,9 @@ export const usePreparationStore = create<PreparationStore>()(
       }
     }),
     {
-      name: 'preparation-storage',
+      name: 'preparation-store',
       partialize: (state) => ({
+        // Persister uniquement les données essentielles
         userAgencies: state.userAgencies,
         lastSync: state.lastSync
       })
