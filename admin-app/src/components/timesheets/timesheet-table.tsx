@@ -1,3 +1,4 @@
+// admin-app/src/components/timesheets/timesheet-table.tsx - VERSION COMPLÈTE ET CORRIGÉE
 'use client';
 
 import { useState } from 'react';
@@ -8,6 +9,8 @@ import {
   getSortedRowModel,
   SortingState,
   useReactTable,
+  OnChangeFn,
+  RowSelectionState,
 } from '@tanstack/react-table';
 import {
   Table,
@@ -37,15 +40,18 @@ import {
   History,
   Trash2,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  User,
+  Building,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 import { Timesheet } from '@/types/timesheet';
-import { formatTime, formatDuration, formatVariance, getTimesheetStatusClasses } from '@/lib/utils/timesheet-utils';
-import { STATUS_LABELS } from '@/lib/utils/constants';
 
+// ===== PROPS INTERFACE =====
 export interface TimesheetTableProps {
   timesheets: Timesheet[];
   isLoading?: boolean;
@@ -56,8 +62,59 @@ export interface TimesheetTableProps {
   onDispute: (timesheet: Timesheet) => void;
   onDelete: (timesheet: Timesheet) => void;
   onViewHistory: (userId: string) => void;
+  onViewDetails: (timesheet: Timesheet) => void;
 }
 
+// ===== FONCTIONS UTILITAIRES =====
+const formatTime = (timeString?: string | null): string => {
+  if (!timeString) return 'Non renseigné';
+  try {
+    if (timeString.includes('T')) {
+      // Format ISO date
+      return new Date(timeString).toLocaleTimeString('fr-FR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    }
+    // Format HH:MM direct
+    return timeString;
+  } catch {
+    return 'Format invalide';
+  }
+};
+
+const formatDuration = (minutes?: number | null): string => {
+  if (!minutes || minutes === 0) return '0h00';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h${mins.toString().padStart(2, '0')}`;
+};
+
+const formatVariance = (variance?: number | null): string => {
+  if (!variance || variance === 0) return 'À l\'heure';
+  const sign = variance > 0 ? '+' : '';
+  return `${sign}${variance}min`;
+};
+
+const getStatusBadge = (status: string) => {
+  const statusConfig = {
+    incomplete: { label: 'Incomplet', variant: 'destructive' as const },
+    complete: { label: 'Complet', variant: 'secondary' as const },
+    validated: { label: 'Validé', variant: 'default' as const }, // ✅ 'default' existe
+    disputed: { label: 'En litige', variant: 'destructive' as const },
+  };
+
+  const config = statusConfig[status as keyof typeof statusConfig] || 
+                 { label: status, variant: 'secondary' as const };
+
+  return (
+    <Badge variant={config.variant}>
+      {config.label}
+    </Badge>
+  );
+};
+
+// ===== COMPOSANT PRINCIPAL =====
 export function TimesheetTable({
   timesheets,
   isLoading = false,
@@ -68,12 +125,15 @@ export function TimesheetTable({
   onDispute,
   onDelete,
   onViewHistory,
+  onViewDetails,
 }: TimesheetTableProps) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'date', desc: true }
   ]);
 
+  // ===== DÉFINITION DES COLONNES =====
   const columns: ColumnDef<Timesheet>[] = [
+    // Colonne de sélection
     {
       id: 'select',
       header: ({ table }) => (
@@ -93,50 +153,163 @@ export function TimesheetTable({
       enableSorting: false,
       enableHiding: false,
     },
+
+    // Colonne Employé - CORRIGÉE
     {
       accessorKey: 'user',
-      header: 'Employé',
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-medium"
+        >
+          Employé
+          {column.getIsSorted() === 'asc' ? (
+            <ChevronUp className="ml-2 h-4 w-4" />
+          ) : column.getIsSorted() === 'desc' ? (
+            <ChevronDown className="ml-2 h-4 w-4" />
+          ) : null}
+        </Button>
+      ),
       cell: ({ row }) => {
         const user = row.original.user;
-        if (typeof user === 'string') return user;
+        
+        // ✅ CORRECTION : Vérifier si user existe et n'est pas null
+        if (!user || typeof user === 'string') {
+          return (
+            <div className="flex items-center gap-3">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>
+                  <User className="h-4 w-4 text-gray-400" />
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium text-gray-500">
+                  {typeof user === 'string' ? user : 'Utilisateur supprimé'}
+                </p>
+                <p className="text-sm text-gray-400">
+                  Données non disponibles
+                </p>
+              </div>
+            </div>
+          );
+        }
+        
+        // ✅ CORRECTION : Vérifier que firstName et lastName existent
+        const firstName = user.firstName || '';
+        const lastName = user.lastName || '';
+        const email = user.email || '';
         
         return (
           <div className="flex items-center gap-3">
             <Avatar className="h-8 w-8">
               <AvatarFallback>
-                {user.firstName[0]}{user.lastName[0]}
+                {firstName[0] || '?'}{lastName[0] || '?'}
               </AvatarFallback>
             </Avatar>
             <div>
               <p className="font-medium">
-                {user.firstName} {user.lastName}
+                {firstName} {lastName}
               </p>
               <p className="text-sm text-gray-500">
-                {user.email}
+                {email}
               </p>
             </div>
           </div>
         );
       },
+      sortingFn: (a, b) => {
+        const userA = a.original.user;
+        const userB = b.original.user;
+        
+        const nameA = typeof userA === 'object' && userA ? 
+          `${userA.firstName || ''} ${userA.lastName || ''}` : 
+          'Utilisateur supprimé';
+        const nameB = typeof userB === 'object' && userB ? 
+          `${userB.firstName || ''} ${userB.lastName || ''}` : 
+          'Utilisateur supprimé';
+          
+        return nameA.localeCompare(nameB);
+      },
     },
+
+    // Colonne Agence - CORRIGÉE
     {
       accessorKey: 'agency',
-      header: 'Agence',
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-medium"
+        >
+          Agence
+          {column.getIsSorted() === 'asc' ? (
+            <ChevronUp className="ml-2 h-4 w-4" />
+          ) : column.getIsSorted() === 'desc' ? (
+            <ChevronDown className="ml-2 h-4 w-4" />
+          ) : null}
+        </Button>
+      ),
       cell: ({ row }) => {
         const agency = row.original.agency;
-        if (typeof agency === 'string') return agency;
+        
+        // ✅ CORRECTION : Vérifier si agency existe
+        if (!agency || typeof agency === 'string') {
+          return (
+            <div className="flex items-center gap-2">
+              <Building className="h-4 w-4 text-gray-400" />
+              <div>
+                <p className="font-medium text-gray-500">
+                  {typeof agency === 'string' ? agency : 'Agence supprimée'}
+                </p>
+                <p className="text-sm text-gray-400">Code non disponible</p>
+              </div>
+            </div>
+          );
+        }
         
         return (
-          <div>
-            <p className="font-medium">{agency.name}</p>
-            <p className="text-sm text-gray-500">{agency.code}</p>
+          <div className="flex items-center gap-2">
+            <Building className="h-4 w-4 text-blue-500" />
+            <div>
+              <p className="font-medium">{agency.name || 'Nom non disponible'}</p>
+              <p className="text-sm text-gray-500">{agency.code || 'Code non disponible'}</p>
+            </div>
           </div>
         );
       },
+      sortingFn: (a, b) => {
+        const agencyA = a.original.agency;
+        const agencyB = b.original.agency;
+        
+        const nameA = typeof agencyA === 'object' && agencyA ? 
+          agencyA.name || 'Agence supprimée' : 
+          'Agence supprimée';
+        const nameB = typeof agencyB === 'object' && agencyB ? 
+          agencyB.name || 'Agence supprimée' : 
+          'Agence supprimée';
+          
+        return nameA.localeCompare(nameB);
+      },
     },
+
+    // Colonne Date
     {
       accessorKey: 'date',
-      header: 'Date',
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-medium"
+        >
+          Date
+          {column.getIsSorted() === 'asc' ? (
+            <ChevronUp className="ml-2 h-4 w-4" />
+          ) : column.getIsSorted() === 'desc' ? (
+            <ChevronDown className="ml-2 h-4 w-4" />
+          ) : null}
+        </Button>
+      ),
       cell: ({ row }) => {
         const date = new Date(row.original.date);
         return (
@@ -151,46 +324,20 @@ export function TimesheetTable({
         );
       },
     },
+
+    // Colonne Planning Prévu - CORRIGÉE
     {
       id: 'schedule',
       header: 'Planning Prévu',
       cell: ({ row }) => {
         const schedule = row.original.schedule;
+        
+        // ✅ CORRECTION : Vérifier si schedule existe
         if (!schedule || typeof schedule === 'string') {
-          return <span className="text-gray-400">Aucun planning</span>;
-        }
-        
-        return (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-blue-500" />
-              <span className="text-sm">
-                {schedule.startTime} - {schedule.endTime}
-              </span>
-            </div>
-            {schedule.breakStart && schedule.breakEnd && (
-              <div className="flex items-center gap-2 text-xs text-gray-600">
-                <Coffee className="h-3 h-3" />
-                <span>
-                  Pause {schedule.breakStart} - {schedule.breakEnd}
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      id: 'timesheet',
-      header: 'Pointage Réel',
-      cell: ({ row }) => {
-        const timesheet = row.original;
-        
-        if (!timesheet.startTime) {
           return (
-            <div className="flex items-center gap-2 text-red-600">
-              <AlertTriangle className="h-4 w-4" />
-              <span className="text-sm">Pointage manquant</span>
+            <div className="flex items-center gap-2 text-gray-400">
+              <Clock className="h-4 w-4" />
+              <span className="text-sm">Aucun planning</span>
             </div>
           );
         }
@@ -198,135 +345,185 @@ export function TimesheetTable({
         return (
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-green-500" />
-              <span className="text-sm">
-                {formatTime(timesheet.startTime)} - 
-                {timesheet.endTime ? formatTime(timesheet.endTime) : '...'}
+              <Clock className="h-4 w-4 text-blue-500" />
+              <span className="text-sm font-medium">
+                {schedule.startTime || '?'} - {schedule.endTime || '?'}
               </span>
             </div>
-            {timesheet.breakStart && (
-              <div className="flex items-center gap-2 text-xs text-gray-600">
+            {schedule.breakStart && schedule.breakEnd && (
+              <div className="flex items-center gap-2 text-gray-500">
                 <Coffee className="h-3 w-3" />
-                <span>
-                  Pause {formatTime(timesheet.breakStart)} - 
-                  {timesheet.breakEnd ? formatTime(timesheet.breakEnd) : '...'}
+                <span className="text-xs">
+                  Pause: {schedule.breakStart} - {schedule.breakEnd}
                 </span>
               </div>
             )}
-            <div className="text-xs text-gray-500">
-              Travaillé: {formatDuration(timesheet.totalWorkedMinutes)}
+          </div>
+        );
+      },
+    },
+
+    // Colonne Pointage Réel
+    {
+      id: 'timesheet',
+      header: 'Pointage Réel',
+      cell: ({ row }) => {
+        const timesheet = row.original;
+        
+        return (
+          <div className="space-y-1">
+            <div className="text-sm">
+              <span className="font-medium">Début:</span> {formatTime(timesheet.startTime)}
+            </div>
+            <div className="text-sm">
+              <span className="font-medium">Fin:</span> {formatTime(timesheet.endTime)}
+            </div>
+            {timesheet.breakStart && (
+              <div className="text-sm text-gray-500">
+                <Coffee className="h-3 w-3 inline mr-1" />
+                {formatTime(timesheet.breakStart)} - {formatTime(timesheet.breakEnd)}
+              </div>
+            )}
+            <div className="text-xs text-blue-600 font-medium">
+              Total: {formatDuration(timesheet.totalWorkedMinutes)}
             </div>
           </div>
         );
       },
     },
+
+    // Colonne Écarts
     {
       id: 'variance',
-      header: 'Écart',
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-medium"
+        >
+          Écarts
+          {column.getIsSorted() === 'asc' ? (
+            <ChevronUp className="ml-2 h-4 w-4" />
+          ) : column.getIsSorted() === 'desc' ? (
+            <ChevronDown className="ml-2 h-4 w-4" />
+          ) : null}
+        </Button>
+      ),
       cell: ({ row }) => {
-        const delay = row.original.delays.startDelay;
-        const variance = formatVariance(delay);
+        const delays = row.original.delays;
         
-        let badgeVariant: 'default' | 'destructive' | 'secondary' | 'outline' = 'default';
-        
-        if (delay === null || delay === 0) {
-          badgeVariant = 'default';
-        } else if (delay > 15) {
-          badgeVariant = 'destructive';
-        } else if (delay > 5) {
-          badgeVariant = 'secondary';
-        } else {
-          badgeVariant = 'outline';
+        if (!delays) {
+          return <span className="text-gray-400">Aucun calcul</span>;
         }
+
+        const hasDelays = delays.startDelay > 0 || delays.endDelay > 0;
         
         return (
-          <div className="flex items-center gap-2">
-            <Badge variant={badgeVariant}>
-              {variance.text}
-            </Badge>
-            {delay > 15 && <AlertTriangle className="h-4 w-4 text-red-500" />}
-            {delay === 0 && <CheckCircle className="h-4 w-4 text-green-500" />}
+          <div className="space-y-1">
+            <div className={`text-sm ${delays.startDelay > 0 ? 'text-red-600' : 'text-green-600'}`}>
+              Début: {formatVariance(delays.startDelay)}
+            </div>
+            <div className={`text-sm ${delays.endDelay > 0 ? 'text-red-600' : 'text-green-600'}`}>
+              Fin: {formatVariance(delays.endDelay)}
+            </div>
+            {hasDelays && (
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+            )}
           </div>
         );
       },
-    },
-    {
-      accessorKey: 'status',
-      header: 'Statut',
-      cell: ({ row }) => {
-        const status = row.original.status;
-        const statusClasses = getTimesheetStatusClasses(status);
-        
-        return (
-          <Badge variant="outline" className={statusClasses.badge}>
-            {STATUS_LABELS[status]}
-          </Badge>
-        );
+      sortingFn: (a, b) => {
+        const delayA = (a.original.delays?.startDelay || 0) + (a.original.delays?.endDelay || 0);
+        const delayB = (b.original.delays?.startDelay || 0) + (b.original.delays?.endDelay || 0);
+        return delayA - delayB;
       },
     },
+
+    // Colonne Statut
+    {
+      accessorKey: 'status',
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+          className="h-auto p-0 font-medium"
+        >
+          Statut
+          {column.getIsSorted() === 'asc' ? (
+            <ChevronUp className="ml-2 h-4 w-4" />
+          ) : column.getIsSorted() === 'desc' ? (
+            <ChevronDown className="ml-2 h-4 w-4" />
+          ) : null}
+        </Button>
+      ),
+      cell: ({ row }) => getStatusBadge(row.original.status),
+    },
+
+    // Colonne Actions
     {
       id: 'actions',
       header: 'Actions',
       cell: ({ row }) => {
         const timesheet = row.original;
-        const user = typeof timesheet.user === 'object' ? timesheet.user : null;
+        const canValidate = timesheet.status === 'complete';
+        const canDispute = timesheet.status === 'validated';
         
         return (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onEdit(timesheet)}
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-            
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {timesheet.status !== 'validated' && (
-                  <DropdownMenuItem onClick={() => onValidate(timesheet)}>
-                    <Check className="h-4 w-4 mr-2" />
-                    Valider
-                  </DropdownMenuItem>
-                )}
-                
-                {timesheet.status !== 'disputed' && (
-                  <DropdownMenuItem onClick={() => onDispute(timesheet)}>
-                    <Flag className="h-4 w-4 mr-2" />
-                    Marquer litige
-                  </DropdownMenuItem>
-                )}
-                
-                {user && (
-                  <DropdownMenuItem onClick={() => onViewHistory(user.id)}>
-                    <History className="h-4 w-4 mr-2" />
-                    Historique
-                  </DropdownMenuItem>
-                )}
-                
-                {timesheet.status !== 'validated' && (
-                  <DropdownMenuItem 
-                    onClick={() => onDelete(timesheet)}
-                    className="text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Supprimer
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Ouvrir le menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onViewDetails(timesheet)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Voir détails
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onEdit(timesheet)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Modifier
+              </DropdownMenuItem>
+              {canValidate && (
+                <DropdownMenuItem onClick={() => onValidate(timesheet)}>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Valider
+                </DropdownMenuItem>
+              )}
+              {canDispute && (
+                <DropdownMenuItem onClick={() => onDispute(timesheet)}>
+                  <Flag className="mr-2 h-4 w-4" />
+                  Contester
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem 
+                onClick={() => {
+                  const userId = typeof timesheet.user === 'object' && timesheet.user 
+                    ? timesheet.user.id 
+                    : null;
+                  if (userId) onViewHistory(userId);
+                }}
+                disabled={!timesheet.user || typeof timesheet.user === 'string'}
+              >
+                <History className="mr-2 h-4 w-4" />
+                Historique
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => onDelete(timesheet)}
+                className="text-red-600"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Supprimer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         );
       },
-      enableSorting: false,
     },
   ];
 
+  // ===== CONFIGURATION DE LA TABLE =====
   const table = useReactTable({
     data: timesheets,
     columns,
@@ -334,8 +531,9 @@ export function TimesheetTable({
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
     onRowSelectionChange: (updaterOrValue) => {
+      const currentSelection = table.getState().rowSelection;
       const newSelection = typeof updaterOrValue === 'function' 
-        ? updaterOrValue(table.getState().rowSelection)
+        ? updaterOrValue(currentSelection)
         : updaterOrValue;
       
       const selectedIds = Object.keys(newSelection).map(index => 
@@ -355,6 +553,7 @@ export function TimesheetTable({
     },
   });
 
+  // ===== RENDU LOADING =====
   if (isLoading) {
     return (
       <div className="rounded-md border">
@@ -386,6 +585,7 @@ export function TimesheetTable({
     );
   }
 
+  // ===== RENDU PRINCIPAL =====
   return (
     <div className="rounded-md border">
       <Table>

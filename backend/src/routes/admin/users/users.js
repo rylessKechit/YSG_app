@@ -92,14 +92,10 @@ router.post('/', validateBody(userCreateSchema), async (req, res) => {
       }
     }
 
-    // Hasher le mot de passe
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
     // Créer l'utilisateur
     const user = new User({
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password: password,
       firstName,
       lastName,
       phone,

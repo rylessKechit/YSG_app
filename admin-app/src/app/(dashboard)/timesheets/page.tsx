@@ -1,4 +1,4 @@
-// admin-app/src/app/(dashboard)/timesheets/page.tsx - VERSION CORRIGÉE
+// admin-app/src/app/(dashboard)/timesheets/page.tsx - VERSION COMPLÈTEMENT CORRIGÉE
 'use client';
 
 import { useState } from 'react';
@@ -151,36 +151,7 @@ export default function TimesheetsPage() {
         </Card>
       </div>
 
-      {/* Alert for pending reviews */}
-      {data?.stats && (data.stats.incompleteTimesheets > 0 || data.stats.disputedTimesheets > 0) && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="text-orange-800 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Pointages nécessitant votre attention
-            </CardTitle>
-            <CardDescription className="text-orange-700">
-              Plusieurs pointages sont en attente de validation ou présentent des anomalies
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              {data.stats.incompleteTimesheets > 0 && (
-                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                  {data.stats.incompleteTimesheets} incomplets
-                </Badge>
-              )}
-              {data.stats.disputedTimesheets > 0 && (
-                <Badge variant="secondary" className="bg-red-100 text-red-800">
-                  {data.stats.disputedTimesheets} en litige
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ✅ Filtres simplifiés (en attendant le composant TimesheetTable) */}
+      {/* Filtres */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
@@ -220,7 +191,7 @@ export default function TimesheetsPage() {
         </CardContent>
       </Card>
 
-      {/* ✅ Table temporaire en attendant TimesheetTable */}
+      {/* Contenu principal */}
       <Card>
         <CardContent className="pt-6">
           {isLoading ? (
@@ -242,62 +213,114 @@ export default function TimesheetsPage() {
                 {data.timesheets.length} pointage(s) trouvé(s)
               </p>
               
-              {/* ✅ Liste simplifiée en attendant le composant table */}
+              {/* ✅ CORRECTION : Liste avec vérifications null */}
               <div className="space-y-2">
-                {data.timesheets.slice(0, 5).map((timesheet) => (
-                  <div 
-                    key={timesheet.id} 
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleViewDetailedTimesheet(timesheet)}
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {typeof timesheet.user === 'object' 
-                          ? `${timesheet.user.firstName} ${timesheet.user.lastName}`
-                          : 'Utilisateur'
-                        }
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(timesheet.date).toLocaleDateString('fr-FR')}
-                      </p>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Badge 
-                        variant={timesheet.status === 'validated' ? 'default' : 'secondary'}
-                        className={
-                          timesheet.status === 'complete' ? 'bg-blue-100 text-blue-800' :
-                          timesheet.status === 'validated' ? 'bg-green-100 text-green-800' :
-                          timesheet.status === 'disputed' ? 'bg-red-100 text-red-800' :
-                          'bg-orange-100 text-orange-800'
-                        }
-                      >
-                        {timesheet.status === 'incomplete' ? 'Incomplet' :
-                         timesheet.status === 'complete' ? 'Complet' :
-                         timesheet.status === 'validated' ? 'Validé' :
-                         'En litige'}
-                      </Badge>
+                {data.timesheets.slice(0, 10).map((timesheet) => {
+                  // ✅ CORRECTION : Vérifier si timesheet.user existe et n'est pas null
+                  const userName = timesheet.user && typeof timesheet.user === 'object' 
+                    ? `${timesheet.user.firstName || ''} ${timesheet.user.lastName || ''}`.trim()
+                    : typeof timesheet.user === 'string' 
+                      ? timesheet.user 
+                      : 'Utilisateur supprimé';
+
+                  // ✅ CORRECTION : Vérifier si timesheet.agency existe et n'est pas null
+                  const agencyName = timesheet.agency && typeof timesheet.agency === 'object'
+                    ? timesheet.agency.name || 'Agence sans nom'
+                    : typeof timesheet.agency === 'string'
+                      ? timesheet.agency
+                      : 'Agence supprimée';
+
+                  return (
+                    <div 
+                      key={timesheet.id} 
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => handleViewDetailedTimesheet(timesheet)}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {userName}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {agencyName}
+                            </p>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {new Date(timesheet.date).toLocaleDateString('fr-FR', {
+                              weekday: 'long',
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric'
+                            })}
+                          </div>
+                        </div>
+                      </div>
                       
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditTimesheet(timesheet);
-                        }}
-                      >
-                        Modifier
-                      </Button>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right text-sm">
+                          <p className="text-gray-900">
+                            {timesheet.startTime 
+                              ? new Date(timesheet.startTime).toLocaleTimeString('fr-FR', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })
+                              : 'Non pointé'
+                            }
+                            {' - '}
+                            {timesheet.endTime 
+                              ? new Date(timesheet.endTime).toLocaleTimeString('fr-FR', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })
+                              : 'En cours'
+                            }
+                          </p>
+                          <p className="text-gray-500">
+                            {timesheet.totalWorkedMinutes 
+                              ? `${Math.floor(timesheet.totalWorkedMinutes / 60)}h${(timesheet.totalWorkedMinutes % 60).toString().padStart(2, '0')}`
+                              : 'Durée inconnue'
+                            }
+                          </p>
+                        </div>
+                        
+                        <Badge 
+                          variant={
+                            timesheet.status === 'validated' ? 'default' :
+                            timesheet.status === 'complete' ? 'secondary' :
+                            timesheet.status === 'disputed' ? 'destructive' :
+                            'outline'
+                          }
+                        >
+                          {timesheet.status === 'incomplete' && 'Incomplet'}
+                          {timesheet.status === 'complete' && 'Complet'}
+                          {timesheet.status === 'validated' && 'Validé'}
+                          {timesheet.status === 'disputed' && 'En litige'}
+                        </Badge>
+                        
+                        {/* Indicateur de retard */}
+                        {timesheet.delays?.startDelay && timesheet.delays.startDelay > 0 && (
+                          <div className="flex items-center gap-1">
+                            <AlertTriangle className="h-4 w-4 text-orange-500" />
+                            <span className="text-xs text-orange-600">
+                              +{timesheet.delays.startDelay}min
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                
-                {data.timesheets.length > 5 && (
-                  <p className="text-center text-sm text-gray-500 pt-4">
-                    ... et {data.timesheets.length - 5} autres pointages
-                  </p>
-                )}
+                  );
+                })}
               </div>
+
+              {/* Pagination simple */}
+              {data.timesheets.length > 10 && (
+                <div className="flex justify-center pt-4">
+                  <Button variant="outline" size="sm">
+                    Voir plus de pointages
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

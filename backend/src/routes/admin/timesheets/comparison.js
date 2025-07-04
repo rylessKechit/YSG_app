@@ -1,4 +1,4 @@
-// backend/src/routes/admin/timesheets/comparison.js
+// backend/src/routes/admin/timesheets/comparison.js - VERSION CORRIGÉE
 const express = require('express');
 const Joi = require('joi');
 const Timesheet = require('../../../models/Timesheet');
@@ -53,14 +53,26 @@ router.get('/', validateQuery(comparisonFiltersSchema), async (req, res) => {
       .populate('agency', 'name code client')
       .sort({ date: 1 });
 
-    // Créer un index des timesheets par clé unique
+    // ✅ CORRECTION : Créer un index des timesheets par clé unique avec vérifications null
     const timesheetMap = new Map();
     timesheets.forEach(timesheet => {
-      const key = `${timesheet.user._id}-${timesheet.agency._id}-${timesheet.date.toISOString().split('T')[0]}`;
-      timesheetMap.set(key, timesheet);
+      // ✅ Vérifier que timesheet.user et timesheet.agency existent
+      if (timesheet.user && timesheet.agency && timesheet.date) {
+        const userId = timesheet.user._id || timesheet.user;
+        const agencyId = timesheet.agency._id || timesheet.agency;
+        const key = `${userId}-${agencyId}-${timesheet.date.toISOString().split('T')[0]}`;
+        timesheetMap.set(key, timesheet);
+      } else {
+        console.warn('⚠️ Timesheet avec données manquantes:', {
+          id: timesheet._id,
+          hasUser: !!timesheet.user,
+          hasAgency: !!timesheet.agency,
+          hasDate: !!timesheet.date
+        });
+      }
     });
 
-    // Générer les comparaisons
+    // ✅ CORRECTION : Générer les comparaisons avec vérifications null
     const comparisons = [];
     let onTimeCount = 0;
     let lateCount = 0;
@@ -69,7 +81,20 @@ router.get('/', validateQuery(comparisonFiltersSchema), async (req, res) => {
     let earlyLeaveCount = 0;
 
     for (const schedule of schedules) {
-      const key = `${schedule.user._id}-${schedule.agency._id}-${schedule.date.toISOString().split('T')[0]}`;
+      // ✅ Vérifier que schedule.user et schedule.agency existent
+      if (!schedule.user || !schedule.agency || !schedule.date) {
+        console.warn('⚠️ Schedule avec données manquantes:', {
+          id: schedule._id,
+          hasUser: !!schedule.user,
+          hasAgency: !!schedule.agency,
+          hasDate: !!schedule.date
+        });
+        continue; // Ignorer ce schedule
+      }
+
+      const userId = schedule.user._id || schedule.user;
+      const agencyId = schedule.agency._id || schedule.agency;
+      const key = `${userId}-${agencyId}-${schedule.date.toISOString().split('T')[0]}`;
       const timesheet = timesheetMap.get(key);
 
       const comparison = {
@@ -196,18 +221,36 @@ router.get('/missing', validateQuery(comparisonFiltersSchema), async (req, res) 
     
     const timesheets = await Timesheet.find(timesheetFilters);
     
-    // Créer un Set des clés de timesheets existants
+    // ✅ CORRECTION : Créer un Set des clés de timesheets existants avec vérifications null
     const timesheetKeys = new Set();
     timesheets.forEach(timesheet => {
-      const key = `${timesheet.user}-${timesheet.agency}-${timesheet.date.toISOString().split('T')[0]}`;
-      timesheetKeys.add(key);
+      // ✅ Vérifier que les propriétés existent
+      if (timesheet.user && timesheet.agency && timesheet.date) {
+        const userId = timesheet.user._id || timesheet.user;
+        const agencyId = timesheet.agency._id || timesheet.agency;
+        const key = `${userId}-${agencyId}-${timesheet.date.toISOString().split('T')[0]}`;
+        timesheetKeys.add(key);
+      }
     });
 
-    // Identifier les plannings sans timesheet
+    // ✅ CORRECTION : Identifier les plannings sans timesheet avec vérifications null
     const missingTimesheets = [];
     
     schedules.forEach(schedule => {
-      const key = `${schedule.user._id}-${schedule.agency._id}-${schedule.date.toISOString().split('T')[0]}`;
+      // ✅ Vérifier que schedule.user et schedule.agency existent
+      if (!schedule.user || !schedule.agency || !schedule.date) {
+        console.warn('⚠️ Schedule avec données manquantes dans missing:', {
+          id: schedule._id,
+          hasUser: !!schedule.user,
+          hasAgency: !!schedule.agency,
+          hasDate: !!schedule.date
+        });
+        return; // Ignorer ce schedule
+      }
+
+      const userId = schedule.user._id || schedule.user;
+      const agencyId = schedule.agency._id || schedule.agency;
+      const key = `${userId}-${agencyId}-${schedule.date.toISOString().split('T')[0]}`;
       
       if (!timesheetKeys.has(key)) {
         const now = new Date();
@@ -256,19 +299,32 @@ router.get('/missing', validateQuery(comparisonFiltersSchema), async (req, res) 
 function calculateMinutes(startTime, endTime, breakStart, breakEnd) {
   if (!startTime || !endTime) return 0;
   
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  let totalMinutes = Math.floor((end - start) / (1000 * 60));
-  
-  // Soustraire les pauses
-  if (breakStart && breakEnd) {
-    const breakStartTime = new Date(breakStart);
-    const breakEndTime = new Date(breakEnd);
-    const breakMinutes = Math.floor((breakEndTime - breakStartTime) / (1000 * 60));
-    totalMinutes -= breakMinutes;
+  try {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return 0;
+    }
+    
+    let totalMinutes = Math.floor((end - start) / (1000 * 60));
+    
+    // Soustraire les pauses
+    if (breakStart && breakEnd) {
+      const breakStartTime = new Date(breakStart);
+      const breakEndTime = new Date(breakEnd);
+      
+      if (!isNaN(breakStartTime.getTime()) && !isNaN(breakEndTime.getTime())) {
+        const breakMinutes = Math.floor((breakEndTime - breakStartTime) / (1000 * 60));
+        totalMinutes -= breakMinutes;
+      }
+    }
+    
+    return Math.max(0, totalMinutes);
+  } catch (error) {
+    console.error('Erreur calcul minutes:', error);
+    return 0;
   }
-  
-  return Math.max(0, totalMinutes);
 }
 
 /**
@@ -279,10 +335,10 @@ function analyzeComparison(schedule, timesheet) {
   if (!timesheet) {
     return {
       status: 'missing',
-      severity: 'critical',
+      severity: 'high',
       startVariance: null,
       endVariance: null,
-      message: 'Pointage manquant',
+      message: 'Aucun pointage trouvé pour ce planning',
       details: {
         scheduledStart: schedule.startTime,
         actualStart: null,
@@ -302,52 +358,66 @@ function analyzeComparison(schedule, timesheet) {
       message: 'Pointage en litige',
       details: {
         scheduledStart: schedule.startTime,
-        actualStart: timesheet.startTime,
+        actualStart: timesheet.startTime ? new Date(timesheet.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null,
         scheduledEnd: schedule.endTime,
-        actualEnd: timesheet.endTime
+        actualEnd: timesheet.endTime ? new Date(timesheet.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null
       }
     };
   }
 
-  // Calculer les écarts
+  // Calculer les écarts de temps
   let startVariance = null;
   let endVariance = null;
-  
+  let status = 'on_time';
+  let severity = 'low';
+  let message = 'Pointage conforme au planning';
+
+  // Calculer l'écart au début
   if (schedule.startTime && timesheet.startTime) {
-    const scheduledStart = new Date(schedule.startTime);
-    const actualStart = new Date(timesheet.startTime);
-    startVariance = Math.floor((actualStart - scheduledStart) / (1000 * 60)); // en minutes
-  }
-  
-  if (schedule.endTime && timesheet.endTime) {
-    const scheduledEnd = new Date(schedule.endTime);
-    const actualEnd = new Date(timesheet.endTime);
-    endVariance = Math.floor((actualEnd - scheduledEnd) / (1000 * 60)); // en minutes
+    try {
+      const scheduledStart = new Date(`1970-01-01T${schedule.startTime}:00`);
+      const actualStart = new Date(timesheet.startTime);
+      
+      if (!isNaN(scheduledStart.getTime()) && !isNaN(actualStart.getTime())) {
+        startVariance = Math.floor((actualStart - scheduledStart) / (1000 * 60));
+        
+        if (startVariance > 15) {
+          status = 'late';
+          severity = 'high';
+          message = `Retard important de ${startVariance} minutes`;
+        } else if (startVariance > 5) {
+          status = 'slight_delay';
+          severity = 'medium';
+          message = `Léger retard de ${startVariance} minutes`;
+        } else if (startVariance < -15) {
+          status = 'early_leave';
+          severity = 'medium';
+          message = `Arrivée très en avance (${Math.abs(startVariance)} minutes)`;
+        }
+      }
+    } catch (error) {
+      console.error('Erreur calcul variance début:', error);
+    }
   }
 
-  // Déterminer le statut principal
-  let status, severity, message;
-  
-  if (startVariance !== null && startVariance > 15) {
-    status = 'late';
-    severity = 'high';
-    message = `Retard de ${startVariance} minutes`;
-  } else if (startVariance !== null && startVariance > 5) {
-    status = 'slight_delay';
-    severity = 'medium';
-    message = `Léger retard de ${startVariance} minutes`;
-  } else if (endVariance !== null && endVariance < -15) {
-    status = 'early_leave';
-    severity = 'medium';
-    message = `Parti ${Math.abs(endVariance)} minutes plus tôt`;
-  } else if (startVariance !== null && startVariance <= 5 && startVariance >= -5) {
-    status = 'on_time';
-    severity = 'low';
-    message = 'Ponctuel';
-  } else {
-    status = 'on_time';
-    severity = 'low';
-    message = 'Ponctuel';
+  // Calculer l'écart à la fin
+  if (schedule.endTime && timesheet.endTime) {
+    try {
+      const scheduledEnd = new Date(`1970-01-01T${schedule.endTime}:00`);
+      const actualEnd = new Date(timesheet.endTime);
+      
+      if (!isNaN(scheduledEnd.getTime()) && !isNaN(actualEnd.getTime())) {
+        endVariance = Math.floor((actualEnd - scheduledEnd) / (1000 * 60));
+        
+        if (endVariance < -15) {
+          status = 'early_leave';
+          severity = 'medium';
+          message = `Départ anticipé de ${Math.abs(endVariance)} minutes`;
+        }
+      }
+    } catch (error) {
+      console.error('Erreur calcul variance fin:', error);
+    }
   }
 
   return {
@@ -358,9 +428,9 @@ function analyzeComparison(schedule, timesheet) {
     message,
     details: {
       scheduledStart: schedule.startTime,
-      actualStart: timesheet.startTime,
+      actualStart: timesheet.startTime ? new Date(timesheet.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null,
       scheduledEnd: schedule.endTime,
-      actualEnd: timesheet.endTime
+      actualEnd: timesheet.endTime ? new Date(timesheet.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null
     }
   };
 }
@@ -369,14 +439,16 @@ function analyzeComparison(schedule, timesheet) {
  * Calculer le retard moyen
  */
 function calculateAverageDelay(comparisons) {
-  const delays = comparisons
-    .map(c => c.analysis.startVariance)
-    .filter(variance => variance !== null && variance > 0);
+  const delayedComparisons = comparisons.filter(c => 
+    ['late', 'slight_delay'].includes(c.analysis.status) && 
+    c.analysis.startVariance !== null && 
+    c.analysis.startVariance > 0
+  );
   
-  if (delays.length === 0) return 0;
+  if (delayedComparisons.length === 0) return 0;
   
-  const sum = delays.reduce((acc, delay) => acc + delay, 0);
-  return Math.round((sum / delays.length) * 100) / 100;
+  const totalDelay = delayedComparisons.reduce((sum, c) => sum + c.analysis.startVariance, 0);
+  return Math.round(totalDelay / delayedComparisons.length);
 }
 
 module.exports = router;
