@@ -1,4 +1,4 @@
-// preparator-app/src/lib/types.ts
+// preparator-app/src/lib/types/index.ts
 // ✅ Types harmonisés avec le backend
 
 export interface User {
@@ -24,20 +24,17 @@ export interface Agency {
   isActive?: boolean;
 }
 
+// ✅ Interface simplifiée pour le véhicule (suppression color, condition)
 export interface Vehicle {
   id?: string;
   licensePlate: string;
   brand: string;
   model: string;
-  color?: string;
-  year?: number;
-  fuelType?: 'essence' | 'diesel' | 'electrique' | 'hybride';
-  condition?: 'excellent' | 'bon' | 'correct' | 'mediocre';
   status?: 'available' | 'in_preparation' | 'ready' | 'rented';
   agency?: Agency;
 }
 
-// ✅ CORRIGÉ: Utilisation de 'step' comme dans le backend
+// ✅ Étapes de préparation - harmonisées avec le backend
 export interface PreparationStep {
   step: string; // ✅ 'step' au lieu de 'type'
   completed: boolean;
@@ -83,24 +80,19 @@ export interface Issue {
   resolved: boolean;
 }
 
-// ✅ CORRIGÉ: Data pour compléter une étape
+// ✅ Data pour compléter une étape
 export interface StepCompletionData {
   step: string; // Sera mappé vers 'step' dans l'API
   photo: File;
   notes?: string;
 }
 
-// ✅ Data pour commencer une préparation avec véhicule
+// ✅ Data pour commencer une préparation avec véhicule (SIMPLIFIÉ)
 export interface VehicleFormData {
   agencyId: string;
   licensePlate: string;
   brand: string;
   model: string;
-  color?: string;
-  year?: number;
-  fuelType?: 'essence' | 'diesel' | 'electrique' | 'hybride';
-  condition?: 'excellent' | 'bon' | 'correct' | 'mediocre';
-  notes?: string;
 }
 
 // ✅ Data pour signaler un incident
@@ -240,4 +232,67 @@ export enum IssueSeverity {
   LOW = 'low',
   MEDIUM = 'medium',
   HIGH = 'high'
+}
+
+// ✅ Types pour les hooks et stores
+export interface UsePreparationReturn {
+  currentPreparation: Preparation | null;
+  isLoading: boolean;
+  error: string | null;
+  startPreparation: (data: VehicleFormData) => Promise<boolean>;
+  completeStep: (preparationId: string, data: StepCompletionData) => Promise<boolean>;
+  completePreparation: (preparationId: string, notes?: string) => Promise<boolean>;
+  reportIssue: (preparationId: string, data: IssueReportData) => Promise<boolean>;
+  clearError: () => void;
+}
+
+export interface UseTimesheetReturn {
+  status: TimesheetStatus | null;
+  isLoading: boolean;
+  error: string | null;
+  clockIn: (agencyId: string) => Promise<boolean>;
+  clockOut: (agencyId: string) => Promise<boolean>;
+  startBreak: (agencyId: string) => Promise<boolean>;
+  endBreak: (agencyId: string) => Promise<boolean>;
+  refreshStatus: () => Promise<void>;
+  clearError: () => void;
+}
+
+// ✅ Types pour les statistiques
+export interface PreparationStats {
+  totalPreparations: number;
+  averageTime: number;
+  onTimeRate: number;
+  completionRate: number;
+  bestTime: number;
+  worstTime: number;
+  weeklyStats: {
+    date: string;
+    count: number;
+    averageTime: number;
+  }[];
+  stepStats: {
+    stepType: string;
+    averageTime: number;
+    completionRate: number;
+  }[];
+}
+
+// ✅ Types pour l'historique
+export interface PreparationHistory {
+  preparations: Preparation[];
+  filters: {
+    startDate: Date;
+    endDate: Date;
+    agencyId?: string;
+    search?: string;
+  };
+  pagination: {
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
 }

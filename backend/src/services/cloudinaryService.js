@@ -50,60 +50,76 @@ const FILE_CONFIG = {
  */
 class CloudinaryService {
   
-  /**
-   * Upload une image vers Cloudinary
-   * @param {Buffer} buffer - Buffer de l'image
-   * @param {Object} options - Options d'upload
-   * @returns {Promise<Object>} - Résultat de l'upload
-   */
-  static async uploadImage(buffer, options = {}) {
-    try {
-      const {
-        folder = CLOUDINARY_CONFIG.FOLDERS.PREPARATIONS,
-        filename = null,
-        tags = []
-      } = options;
 
-      return new Promise((resolve, reject) => {
-        const uploadOptions = {
-          resource_type: 'image',
-          folder: folder,
-          tags: ['vehicle-prep', ...tags]
-        };
+/**
+ * Upload une image vers Cloudinary
+ * @param {Buffer} buffer - Buffer de l'image
+ * @param {Object} options - Options d'upload
+ * @returns {Promise<Object>} - Résultat de l'upload
+ */
+static async uploadImage(buffer, options = {}) {
+  try {
+    const {
+      folder = CLOUDINARY_CONFIG.FOLDERS.PREPARATIONS,
+      filename = null,
+      tags = []
+    } = options;
 
-        // Ajouter un nom de fichier personnalisé si fourni
-        if (filename) {
-          uploadOptions.public_id = `${folder}/${filename}`;
-        }
+    console.log('🔄 Début upload Cloudinary:', { folder, filename, bufferSize: buffer?.length });
 
-        const uploadStream = cloudinary.uploader.upload_stream(
-          uploadOptions,
-          (error, result) => {
-            if (error) {
-              console.error('Erreur upload Cloudinary:', error);
-              reject(new Error(`Échec de l'upload: ${error.message}`));
-            } else {
-              resolve({
-                url: result.secure_url,
-                publicId: result.public_id,
-                width: result.width,
-                height: result.height,
-                format: result.format,
-                bytes: result.bytes,
-                createdAt: result.created_at
-              });
-            }
+    return new Promise((resolve, reject) => {
+      const uploadOptions = {
+        resource_type: 'image',
+        folder: folder,
+        tags: ['vehicle-prep', ...tags],
+        // ✅ AJOUT: Options de qualité et format
+        quality: 'auto:good',
+        fetch_format: 'auto'
+      };
+
+      // Ajouter un nom de fichier personnalisé si fourni
+      if (filename) {
+        uploadOptions.public_id = `${folder}/${filename}`;
+      }
+
+      console.log('📤 Options upload Cloudinary:', uploadOptions);
+
+      const uploadStream = cloudinary.uploader.upload_stream(
+        uploadOptions,
+        (error, result) => {
+          if (error) {
+            console.error('❌ Erreur upload Cloudinary:', error);
+            reject(new Error(`Échec de l'upload: ${error.message}`));
+          } else {
+            console.log('✅ Upload Cloudinary réussi:', {
+              url: result.secure_url,
+              publicId: result.public_id,
+              bytes: result.bytes
+            });
+            
+            // ✅ CORRECTION: Retourner à la fois 'url' et 'secure_url' pour compatibilité
+            resolve({
+              url: result.secure_url,           // ← Pour processCloudinaryUpload
+              secure_url: result.secure_url,   // ← Pour la route handler
+              publicId: result.public_id,
+              width: result.width,
+              height: result.height,
+              format: result.format,
+              bytes: result.bytes,
+              createdAt: result.created_at
+            });
           }
-        );
+        }
+      );
 
-        uploadStream.end(buffer);
-      });
+      uploadStream.end(buffer);
+    });
 
-    } catch (error) {
-      console.error('Erreur service upload:', error);
-      throw new Error('Erreur lors de l\'upload de l\'image');
-    }
+  } catch (error) {
+    console.error('❌ Erreur service upload:', error);
+    throw new Error('Erreur lors de l\'upload de l\'image');
   }
+}
 
   /**
    * Upload une photo de préparation

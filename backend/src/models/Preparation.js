@@ -1,12 +1,12 @@
-// ===== backend/src/models/Preparation.js - VERSION CORRIGÉE =====
-
+// backend/src/models/Preparation.js
 const mongoose = require('mongoose');
-const { PREPARATION_STATUS, PREPARATION_STEPS, TIME_LIMITS } = require('../utils/constants');
+const { PREPARATION_STATUS, TIME_LIMITS } = require('../utils/constants');
 
+// Schéma pour les étapes de préparation
 const preparationStepSchema = new mongoose.Schema({
   step: {
     type: String,
-    enum: Object.values(PREPARATION_STEPS),
+    enum: ['exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'],
     required: true
   },
   completed: {
@@ -29,7 +29,7 @@ const preparationStepSchema = new mongoose.Schema({
   }]
 }, { _id: true });
 
-// ✅ Schéma véhicule intégré pour les nouvelles préparations
+// Schéma véhicule intégré
 const vehicleInfoSchema = new mongoose.Schema({
   licensePlate: {
     type: String,
@@ -47,11 +47,6 @@ const vehicleInfoSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  color: {
-    type: String,
-    trim: true,
-    default: ''
-  },
   year: {
     type: Number,
     min: 1990,
@@ -61,39 +56,31 @@ const vehicleInfoSchema = new mongoose.Schema({
     type: String,
     enum: ['essence', 'diesel', 'electrique', 'hybride'],
     default: 'essence'
-  },
-  condition: {
-    type: String,
-    enum: ['excellent', 'bon', 'correct', 'mediocre'],
-    default: 'bon'
-  },
-  notes: {
-    type: String,
-    default: ''
   }
 }, { _id: false });
 
 const preparationSchema = new mongoose.Schema({
-  // ✅ CHANGEMENT: Support des deux modes (ObjectId ET objet intégré)
+  // Support des deux modes (ObjectId ET objet intégré)
   vehicle: {
-    type: mongoose.Schema.Types.Mixed, // Peut être ObjectId ou objet
+    type: mongoose.Schema.Types.Mixed,
     required: [true, 'Le véhicule est requis']
   },
 
-  // Alternative : informations véhicule intégrées
+  // Informations véhicule intégrées
   vehicleInfo: vehicleInfoSchema,
 
-  preparateur: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Le préparateur est requis']
-  },
-
-  // Alias pour compatibilité (req.user.userId → user)
+  // ✅ CORRECTION: Champ principal requis
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: [true, 'Le préparateur est requis']
+  },
+
+  // ✅ CORRECTION: Champ compatibilité NON requis
+  preparateur: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // ← CHANGEMENT CRITIQUE
   },
 
   agency: {
@@ -187,7 +174,7 @@ const preparationSchema = new mongoose.Schema({
     transform: function(doc, ret) {
       delete ret.__v;
       
-      // ✅ Normaliser les données véhicule pour l'API
+      // Normaliser les données véhicule pour l'API
       if (ret.vehicle && typeof ret.vehicle === 'object' && !mongoose.Types.ObjectId.isValid(ret.vehicle)) {
         // C'est un objet véhicule intégré, on le garde tel quel
       } else if (ret.vehicleInfo) {
@@ -209,8 +196,9 @@ preparationSchema.index({ status: 1, createdAt: -1 });
 
 // ===== MIDDLEWARE PRE-SAVE =====
 
-// Synchroniser user et preparateur
+// ✅ AMÉLIORER le middleware de synchronisation
 preparationSchema.pre('save', function(next) {
+  // Synchroniser user et preparateur
   if (this.user && !this.preparateur) {
     this.preparateur = this.user;
   } else if (this.preparateur && !this.user) {
@@ -238,18 +226,6 @@ preparationSchema.pre('save', function(next) {
 
 // Initialiser les étapes par défaut
 preparationSchema.pre('save', function(next) {
-  if (this.isNew && (!this.steps || this.steps.length === 0)) {
-    this.steps = Object.values(PREPARATION_STEPS).map(step => ({
-      step,
-      completed: false
-    }));
-  }
-  next();
-});
-
-// Middleware pre-save pour initialiser les étapes par défaut
-preparationSchema.pre('save', function(next) {
-  // Si c'est une nouvelle préparation sans étapes, initialiser les étapes par défaut
   if (this.isNew && (!this.steps || this.steps.length === 0)) {
     this.steps = [
       { step: 'exterior', completed: false },
@@ -292,7 +268,7 @@ preparationSchema.virtual('currentDuration').get(function() {
 
 // Respect du délai (30 minutes)
 preparationSchema.virtual('isOnTime').get(function() {
-  return this.currentDuration <= TIME_LIMITS.PREPARATION_TIME;
+  return this.currentDuration <= (TIME_LIMITS.PREPARATION_TIME || 30);
 });
 
 // Informations résumées

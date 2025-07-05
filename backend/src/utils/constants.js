@@ -1,5 +1,84 @@
 // backend/src/utils/constants.js
-// ✅ Fichier de constantes complet pour l'application
+// ✅ Fichier de constantes harmonisé avec le frontend
+
+/**
+ * Limites de temps (en minutes)
+ */
+const TIME_LIMITS = {
+  PREPARATION_TIME: 30,           // Temps max pour une préparation
+  BREAK_MIN_DURATION: 15,         // Pause minimum 15min
+  BREAK_MAX_DURATION: 90,         // Pause maximum 1h30
+  SHIFT_MIN_DURATION: 240,        // Service minimum 4h
+  SHIFT_MAX_DURATION: 600,        // Service maximum 10h
+  LATE_THRESHOLD: 15,             // Retard considéré à partir de 15min
+  OVERTIME_THRESHOLD: 480         // Heures sup à partir de 8h
+};
+
+/**
+ * Limites de fichiers
+ */
+const FILE_LIMITS = {
+  MAX_SIZE: 5 * 1024 * 1024,      // 5MB
+  MAX_FILES: 5,                   // 5 fichiers max
+  ALLOWED_TYPES: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+  ALLOWED_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.webp']
+};
+
+/**
+ * Messages d'erreur standardisés
+ */
+const ERROR_MESSAGES = {
+  // Authentification
+  INVALID_CREDENTIALS: 'Email ou mot de passe incorrect',
+  TOKEN_EXPIRED: 'Session expirée, veuillez vous reconnecter',
+  ACCESS_DENIED: 'Accès refusé',
+  USER_NOT_FOUND: 'Utilisateur non trouvé',
+  
+  // Validation
+  INVALID_DATA: 'Données invalides',
+  MISSING_REQUIRED_FIELD: 'Champ requis manquant',
+  INVALID_EMAIL: 'Format d\'email invalide',
+  INVALID_PASSWORD: 'Mot de passe trop faible',
+  
+  // Préparations
+  PREPARATION_NOT_FOUND: 'Préparation non trouvée',
+  PREPARATION_ALREADY_COMPLETED: 'Préparation déjà terminée',
+  STEP_ALREADY_COMPLETED: 'Étape déjà complétée',
+  PHOTO_REQUIRED: 'Photo requise pour compléter l\'étape',
+  
+  // Véhicules
+  VEHICLE_NOT_FOUND: 'Véhicule non trouvé',
+  VEHICLE_ALREADY_IN_USE: 'Véhicule déjà en cours de préparation',
+  LICENSE_PLATE_EXISTS: 'Cette plaque d\'immatriculation existe déjà',
+  
+  // Pointage
+  ALREADY_CLOCKED_IN: 'Déjà pointé',
+  NOT_CLOCKED_IN: 'Pas encore pointé',
+  ALREADY_ON_BREAK: 'Déjà en pause',
+  NOT_ON_BREAK: 'Pas en pause actuellement',
+  
+  // Système
+  SERVER_ERROR: 'Erreur interne du serveur',
+  DATABASE_ERROR: 'Erreur de base de données',
+  UPLOAD_FAILED: 'Échec de l\'upload du fichier'
+};
+
+/**
+ * Messages de succès
+ */
+const SUCCESS_MESSAGES = {
+  USER_CREATED: 'Utilisateur créé avec succès',
+  LOGIN_SUCCESS: 'Connexion réussie',
+  LOGOUT_SUCCESS: 'Déconnexion réussie',
+  PREPARATION_STARTED: 'Préparation démarrée avec succès',
+  PREPARATION_COMPLETED: 'Préparation terminée avec succès',
+  STEP_COMPLETED: 'Étape complétée avec succès',
+  PHOTO_UPLOADED: 'Photo uploadée avec succès',
+  CLOCK_IN_SUCCESS: 'Pointage d\'arrivée enregistré',
+  CLOCK_OUT_SUCCESS: 'Pointage de départ enregistré',
+  BREAK_START_SUCCESS: 'Début de pause enregistré',
+  BREAK_END_SUCCESS: 'Fin de pause enregistrée'
+};
 
 /**
  * Rôles utilisateurs
@@ -32,35 +111,64 @@ const PREPARATION_TYPES = {
 };
 
 /**
- * Étapes de préparation
+ * ✅ ÉTAPES DE PRÉPARATION - HARMONISÉES AVEC LE FRONTEND
+ * Ces valeurs correspondent exactement à celles utilisées dans le frontend
  */
 const PREPARATION_STEPS = {
-  EXTERIOR_WASH: 'exterior_wash',
-  INTERIOR_CLEAN: 'interior_clean',
-  VACUUM: 'vacuum',
-  WINDOWS: 'windows',
-  TIRES: 'tires',
-  FUEL_CHECK: 'fuel_check',
-  FLUIDS_CHECK: 'fluids_check',
-  LIGHTS_CHECK: 'lights_check',
-  INSPECTION: 'inspection',
-  FINAL_CHECK: 'final_check'
+  EXTERIOR: 'exterior',
+  INTERIOR: 'interior', 
+  FUEL: 'fuel',
+  TIRES_FLUIDS: 'tires_fluids',
+  SPECIAL_WASH: 'special_wash',
+  PARKING: 'parking'
 };
 
 /**
- * Labels des étapes en français
+ * ✅ LISTE ORDONNÉE DES ÉTAPES (pour validation et initialisation)
+ */
+const PREPARATION_STEPS_ORDER = [
+  PREPARATION_STEPS.EXTERIOR,      // 'exterior'
+  PREPARATION_STEPS.INTERIOR,      // 'interior'
+  PREPARATION_STEPS.FUEL,          // 'fuel'
+  PREPARATION_STEPS.TIRES_FLUIDS,  // 'tires_fluids'
+  PREPARATION_STEPS.SPECIAL_WASH,  // 'special_wash'
+  PREPARATION_STEPS.PARKING        // 'parking'
+];
+
+/**
+ * ✅ LABELS DES ÉTAPES EN FRANÇAIS (harmonisés avec le frontend)
  */
 const STEP_LABELS = {
-  [PREPARATION_STEPS.EXTERIOR_WASH]: 'Lavage extérieur',
-  [PREPARATION_STEPS.INTERIOR_CLEAN]: 'Nettoyage intérieur',
-  [PREPARATION_STEPS.VACUUM]: 'Aspirateur',
-  [PREPARATION_STEPS.WINDOWS]: 'Vitres',
-  [PREPARATION_STEPS.TIRES]: 'Pneus',
-  [PREPARATION_STEPS.FUEL_CHECK]: 'Contrôle carburant',
-  [PREPARATION_STEPS.FLUIDS_CHECK]: 'Contrôle fluides',
-  [PREPARATION_STEPS.LIGHTS_CHECK]: 'Contrôle éclairage',
-  [PREPARATION_STEPS.INSPECTION]: 'Inspection générale',
-  [PREPARATION_STEPS.FINAL_CHECK]: 'Contrôle final'
+  [PREPARATION_STEPS.EXTERIOR]: 'Extérieur',
+  [PREPARATION_STEPS.INTERIOR]: 'Intérieur',
+  [PREPARATION_STEPS.FUEL]: 'Carburant',
+  [PREPARATION_STEPS.TIRES_FLUIDS]: 'Pneus & Fluides',
+  [PREPARATION_STEPS.SPECIAL_WASH]: 'Lavage Spécial',
+  [PREPARATION_STEPS.PARKING]: 'Stationnement'
+};
+
+/**
+ * ✅ DESCRIPTIONS DES ÉTAPES (harmonisées avec le frontend)
+ */
+const STEP_DESCRIPTIONS = {
+  [PREPARATION_STEPS.EXTERIOR]: 'Nettoyage carrosserie, vitres, jantes',
+  [PREPARATION_STEPS.INTERIOR]: 'Aspirateur, nettoyage surfaces, désinfection',
+  [PREPARATION_STEPS.FUEL]: 'Vérification niveau, ajout si nécessaire',
+  [PREPARATION_STEPS.TIRES_FLUIDS]: 'Pression pneus, niveaux huile/liquides',
+  [PREPARATION_STEPS.SPECIAL_WASH]: 'Traitement anti-bactérien, parfums',
+  [PREPARATION_STEPS.PARKING]: 'Positionnement final, vérification clés'
+};
+
+/**
+ * ✅ ICÔNES DES ÉTAPES (harmonisées avec le frontend)
+ */
+const STEP_ICONS = {
+  [PREPARATION_STEPS.EXTERIOR]: '🚗',
+  [PREPARATION_STEPS.INTERIOR]: '🧽',
+  [PREPARATION_STEPS.FUEL]: '⛽',
+  [PREPARATION_STEPS.TIRES_FLUIDS]: '🔧',
+  [PREPARATION_STEPS.SPECIAL_WASH]: '✨',
+  [PREPARATION_STEPS.PARKING]: '🅿️'
 };
 
 /**
@@ -80,54 +188,51 @@ const VEHICLE_STATUS = {
  * Types de carburant
  */
 const FUEL_TYPES = {
-  PETROL: 'petrol',
+  ESSENCE: 'essence',
   DIESEL: 'diesel',
-  HYBRID: 'hybrid',
-  ELECTRIC: 'electric',
-  LPG: 'lpg'
+  ELECTRIQUE: 'electrique',
+  HYBRIDE: 'hybride'
 };
 
 /**
- * États des véhicules
+ * Conditions des véhicules
  */
 const VEHICLE_CONDITIONS = {
   EXCELLENT: 'excellent',
-  GOOD: 'good',
-  FAIR: 'fair',
-  POOR: 'poor',
-  DAMAGED: 'damaged'
+  BON: 'bon',
+  CORRECT: 'correct',
+  MEDIOCRE: 'mediocre'
 };
 
 /**
  * Statuts des pointages
  */
 const TIMESHEET_STATUS = {
-  CLOCKED_OUT: 'clocked_out',
-  CLOCKED_IN: 'clocked_in',
+  WORKING: 'working',
   ON_BREAK: 'on_break',
-  FINISHED: 'finished'
+  FINISHED: 'finished',
+  ABSENT: 'absent'
 };
 
 /**
  * Types d'incidents
  */
 const ISSUE_TYPES = {
-  DAMAGE: 'damage',
-  CLEANLINESS: 'cleanliness',
-  MECHANICAL: 'mechanical',
-  MISSING_ITEMS: 'missing_items',
-  FUEL: 'fuel',
-  OTHER: 'other'
+  DAMAGE: 'damage',              // Dommage
+  MISSING_ITEM: 'missing_item',  // Objet manquant
+  MALFUNCTION: 'malfunction',    // Dysfonctionnement
+  CLEANLINESS: 'cleanliness',    // Propreté insuffisante
+  FUEL: 'fuel',                  // Problème carburant
+  OTHER: 'other'                 // Autre
 };
 
 /**
  * Niveaux de gravité des incidents
  */
 const ISSUE_SEVERITY = {
-  LOW: 'low',
-  MEDIUM: 'medium',
-  HIGH: 'high',
-  CRITICAL: 'critical'
+  LOW: 'low',        // Faible
+  MEDIUM: 'medium',  // Moyen
+  HIGH: 'high'       // Élevé
 };
 
 /**
@@ -138,170 +243,45 @@ const STATS_PERIODS = {
   WEEK: 'week',
   MONTH: 'month',
   QUARTER: 'quarter',
-  YEAR: 'year',
-  CUSTOM: 'custom'
+  YEAR: 'year'
 };
 
 /**
  * Types de notifications
  */
 const NOTIFICATION_TYPES = {
-  INFO: 'info',
-  SUCCESS: 'success',
-  WARNING: 'warning',
-  ERROR: 'error',
-  URGENT: 'urgent'
-};
-
-/**
- * Messages d'erreur standardisés
- */
-const ERROR_MESSAGES = {
-  // Authentification
-  INVALID_CREDENTIALS: 'Email ou mot de passe incorrect',
-  TOKEN_EXPIRED: 'Session expirée, veuillez vous reconnecter',
-  TOKEN_INVALID: 'Token invalide',
-  ACCESS_DENIED: 'Accès refusé',
-  UNAUTHORIZED: 'Non autorisé',
-  
-  // Utilisateurs
-  USER_NOT_FOUND: 'Utilisateur non trouvé',
-  USER_ALREADY_EXISTS: 'Un utilisateur avec cet email existe déjà',
-  USER_INACTIVE: 'Compte utilisateur désactivé',
-  
-  // Agences
-  AGENCY_NOT_FOUND: 'Agence non trouvée',
-  AGENCY_ALREADY_EXISTS: 'Une agence avec ce code existe déjà',
-  
-  // Véhicules
-  VEHICLE_NOT_FOUND: 'Véhicule non trouvé',
-  VEHICLE_NOT_AVAILABLE: 'Véhicule non disponible',
-  
-  // Préparations
-  PREPARATION_NOT_FOUND: 'Préparation non trouvée',
-  PREPARATION_ALREADY_STARTED: 'Une préparation est déjà en cours',
-  PREPARATION_COMPLETED: 'Préparation déjà terminée',
-  
-  // Pointages
-  ALREADY_CLOCKED_IN: 'Déjà pointé',
-  NOT_CLOCKED_IN: 'Pas encore pointé',
-  ALREADY_ON_BREAK: 'Déjà en pause',
-  NOT_ON_BREAK: 'Pas en pause',
-  
-  // Plannings
-  SCHEDULE_NOT_FOUND: 'Planning non trouvé',
-  SCHEDULE_CONFLICT: 'Conflit de planning détecté',
-  
-  // Validation
-  INVALID_DATA: 'Données invalides',
-  REQUIRED_FIELD: 'Champ requis',
-  INVALID_FORMAT: 'Format invalide',
-  INVALID_DATE: 'Date invalide',
-  INVALID_TIME: 'Heure invalide',
-  
-  // Fichiers
-  FILE_TOO_LARGE: 'Fichier trop volumineux',
-  INVALID_FILE_TYPE: 'Type de fichier non autorisé',
-  UPLOAD_FAILED: 'Échec du téléchargement',
-  
-  // Général
-  SERVER_ERROR: 'Erreur interne du serveur',
-  SERVICE_UNAVAILABLE: 'Service temporairement indisponible',
-  MAINTENANCE_MODE: 'Application en maintenance',
-  RATE_LIMIT: 'Trop de requêtes, veuillez patienter'
-};
-
-/**
- * Messages de succès standardisés
- */
-const SUCCESS_MESSAGES = {
-  // Authentification
-  LOGIN_SUCCESS: 'Connexion réussie',
-  LOGOUT_SUCCESS: 'Déconnexion réussie',
-  
-  // Utilisateurs
-  USER_CREATED: 'Utilisateur créé avec succès',
-  USER_UPDATED: 'Utilisateur modifié avec succès',
-  USER_DELETED: 'Utilisateur supprimé avec succès',
-  
-  // Agences
-  AGENCY_CREATED: 'Agence créée avec succès',
-  AGENCY_UPDATED: 'Agence modifiée avec succès',
-  AGENCY_DELETED: 'Agence supprimée avec succès',
-  
-  // Préparations
-  PREPARATION_STARTED: 'Préparation démarrée avec succès',
-  PREPARATION_COMPLETED: 'Préparation terminée avec succès',
-  STEP_COMPLETED: 'Étape complétée avec succès',
-  
-  // Pointages
-  CLOCK_IN_SUCCESS: 'Pointage d\'arrivée enregistré',
-  CLOCK_OUT_SUCCESS: 'Pointage de départ enregistré',
-  BREAK_START_SUCCESS: 'Début de pause enregistré',
-  BREAK_END_SUCCESS: 'Fin de pause enregistrée',
-  
-  // Plannings
-  SCHEDULE_CREATED: 'Planning créé avec succès',
-  SCHEDULE_UPDATED: 'Planning modifié avec succès',
-  SCHEDULE_DELETED: 'Planning supprimé avec succès',
-  
-  // Fichiers
-  FILE_UPLOADED: 'Fichier téléchargé avec succès',
-  
-  // Général
-  OPERATION_SUCCESS: 'Opération réussie',
-  DATA_SAVED: 'Données sauvegardées avec succès'
-};
-
-/**
- * Limites temporelles
- */
-const TIME_LIMITS = {
-  MAX_PREPARATION_DURATION: 4 * 60, // 4 heures en minutes
-  MAX_BREAK_DURATION: 2 * 60, // 2 heures en minutes
-  MAX_SHIFT_DURATION: 12 * 60, // 12 heures en minutes
-  MIN_BREAK_INTERVAL: 2 * 60, // 2 heures minimum entre pauses
-  LATE_THRESHOLD: 15, // 15 minutes de retard toléré
-  PUNCTUALITY_WINDOW: 5 // 5 minutes avant/après pour être à l'heure
-};
-
-/**
- * Limites de fichiers
- */
-const FILE_LIMITS = {
-  MAX_SIZE: 5 * 1024 * 1024, // 5MB
-  MAX_FILES_PER_UPLOAD: 10,
-  ALLOWED_IMAGE_TYPES: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
-  ALLOWED_DOCUMENT_TYPES: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+  LATE_ARRIVAL: 'late_arrival',
+  LATE_DEPARTURE: 'late_departure',
+  PREPARATION_DELAY: 'preparation_delay',
+  ISSUE_REPORTED: 'issue_reported',
+  SYSTEM_ALERT: 'system_alert'
 };
 
 /**
  * Formats de date
  */
 const DATE_FORMATS = {
-  ISO: 'YYYY-MM-DD',
-  FRENCH: 'DD/MM/YYYY',
-  TIME_24H: 'HH:mm',
-  DATETIME_FR: 'DD/MM/YYYY HH:mm',
-  ISO_DATETIME: 'YYYY-MM-DDTHH:mm:ss.sssZ'
+  DATE: 'YYYY-MM-DD',
+  TIME: 'HH:mm',
+  DATETIME: 'YYYY-MM-DD HH:mm:ss',
+  DISPLAY_DATE: 'DD/MM/YYYY',
+  DISPLAY_TIME: 'HH:mm',
+  DISPLAY_DATETIME: 'DD/MM/YYYY à HH:mm'
 };
 
 /**
  * Configuration par défaut
  */
 const DEFAULT_CONFIG = {
-  PAGINATION_LIMIT: 20,
-  MAX_PAGINATION_LIMIT: 100,
-  DEFAULT_SORT: 'createdAt',
-  DEFAULT_ORDER: 'desc',
-  SESSION_TIMEOUT: 24 * 60 * 60 * 1000, // 24h en millisecondes
-  BCRYPT_ROUNDS: 12,
-  JWT_EXPIRES_IN: '24h',
-  REFRESH_TOKEN_EXPIRES_IN: '7d'
+  PREPARATION_TIMEOUT: 30,        // 30 minutes max
+  BREAK_REMINDER: 4 * 60,         // Rappel pause après 4h
+  LATE_ALERT_DELAY: 15,           // Alerte retard après 15min
+  PAGINATION_LIMIT: 20,           // 20 éléments par page
+  MAX_PREPARATION_HISTORY: 100    // 100 préparations max dans l'historique
 };
 
 /**
- * Expressions régulières
+ * Expressions régulières de validation
  */
 const REGEX_PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
@@ -326,14 +306,53 @@ const EXTERNAL_APIS = {
  * Configurations Cloudinary
  */
 const CLOUDINARY_CONFIG = {
-  FOLDER_PREPARATIONS: 'preparations',
-  FOLDER_INCIDENTS: 'incidents',
-  FOLDER_PROFILES: 'profiles',
+  FOLDERS: {
+    PREPARATIONS: 'vehicle-prep/preparations',
+    INCIDENTS: 'vehicle-prep/incidents',
+    PROFILES: 'vehicle-prep/profiles'
+  },
   MAX_FILE_SIZE: FILE_LIMITS.MAX_SIZE,
   ALLOWED_FORMATS: ['jpg', 'jpeg', 'png', 'webp'],
   QUALITY: 'auto:good',
   FETCH_FORMAT: 'auto'
 };
+
+/**
+ * ✅ FONCTION UTILITAIRE : Obtenir les étapes par défaut pour une nouvelle préparation
+ */
+const getDefaultPreparationSteps = () => {
+  return PREPARATION_STEPS_ORDER.map(step => ({
+    step,
+    completed: false,
+    notes: '',
+    photos: []
+  }));
+};
+
+/**
+ * ✅ FONCTION UTILITAIRE : Valider qu'une étape est valide
+ */
+const isValidPreparationStep = (stepName) => {
+  return PREPARATION_STEPS_ORDER.includes(stepName);
+};
+
+/**
+ * ✅ FONCTION UTILITAIRE : Obtenir les informations d'une étape
+ */
+const getStepInfo = (stepName) => {
+  if (!isValidPreparationStep(stepName)) {
+    return null;
+  }
+  
+  return {
+    step: stepName,
+    label: STEP_LABELS[stepName],
+    description: STEP_DESCRIPTIONS[stepName],
+    icon: STEP_ICONS[stepName]
+  };
+};
+
+// ===== EXPORTS =====
 
 module.exports = {
   // Limites
@@ -348,8 +367,15 @@ module.exports = {
   USER_ROLES,
   PREPARATION_STATUS,
   PREPARATION_TYPES,
+  
+  // ✅ Étapes harmonisées avec le frontend
   PREPARATION_STEPS,
+  PREPARATION_STEPS_ORDER,
   STEP_LABELS,
+  STEP_DESCRIPTIONS,
+  STEP_ICONS,
+  
+  // Autres enums
   VEHICLE_STATUS,
   FUEL_TYPES,
   VEHICLE_CONDITIONS,
@@ -364,5 +390,36 @@ module.exports = {
   DEFAULT_CONFIG,
   REGEX_PATTERNS,
   EXTERNAL_APIS,
-  CLOUDINARY_CONFIG
+  CLOUDINARY_CONFIG,
+  
+  // ✅ Fonctions utilitaires
+  getDefaultPreparationSteps,
+  isValidPreparationStep,
+  getStepInfo
 };
+
+// ===== USAGE EXAMPLES =====
+
+/*
+// ✅ Initialiser une nouvelle préparation avec les bonnes étapes :
+const newPreparation = new Preparation({
+  // ... autres champs
+  steps: getDefaultPreparationSteps()
+});
+
+// ✅ Valider une étape :
+if (isValidPreparationStep('exterior')) {
+  console.log('✅ Étape valide');
+}
+
+// ✅ Obtenir les infos d'une étape :
+const stepInfo = getStepInfo('exterior');
+// Retourne : { step: 'exterior', label: 'Extérieur', description: '...', icon: '🚗' }
+
+// ✅ Utiliser les constantes pour validation :
+const validSteps = PREPARATION_STEPS_ORDER; 
+// ['exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking']
+
+// ✅ Obtenir le label d'une étape :
+const label = STEP_LABELS[PREPARATION_STEPS.EXTERIOR]; // 'Extérieur'
+*/

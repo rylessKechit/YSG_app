@@ -278,9 +278,9 @@ const PreparationWorkflowPage = () => {
 
       console.log('📸 Completion étape avec photo réelle:', selectedStep, 'Photo:', photo.name, 'Taille:', photo.size);
       
-      // Appel API réel avec photo
+      // ✅ CORRECTION: Utiliser 'step' au lieu de 'stepType'
       await completeStep(currentPreparation.id, {
-        step: selectedStep,
+        step: selectedStep, // ✅ CORRECTION: 'step' au lieu de 'stepType'
         photo: photo,
         notes: notes || ''
       });

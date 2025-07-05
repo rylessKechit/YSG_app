@@ -111,8 +111,20 @@ const handleUploadError = (error, req, res, next) => {
 const processCloudinaryUpload = (uploadType = 'preparation') => {
   return async (req, res, next) => {
     try {
+      console.log('🔍 Début processCloudinaryUpload:', {
+        uploadType,
+        hasFile: !!req.file,
+        hasFiles: !!req.files,
+        fileInfo: req.file ? {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size
+        } : 'none'
+      });
+
       // Si pas de fichier, continuer (upload optionnel)
       if (!req.file && !req.files) {
+        console.log('⚠️ Aucun fichier à uploader');
         return next();
       }
 
@@ -120,9 +132,17 @@ const processCloudinaryUpload = (uploadType = 'preparation') => {
       const uploadedFiles = [];
 
       for (const file of files) {
+        console.log('🔎 Traitement fichier:', {
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+          hasBuffer: !!file.buffer
+        });
+
         // Validation supplémentaire
         const validation = CloudinaryService.validateImageFile(file);
         if (!validation.isValid) {
+          console.error('❌ Validation fichier échouée:', validation.errors);
           return res.status(400).json({
             success: false,
             message: validation.errors.join(', ')
@@ -140,7 +160,7 @@ const processCloudinaryUpload = (uploadType = 'preparation') => {
             metadata = {
               ...metadata,
               vehicleId: req.body.vehicleId || req.params.vehicleId,
-              stepType: req.body.stepType,
+              stepType: req.body.step, // ✅ Utilise 'step' au lieu de 'stepType'
               preparationId: req.params.id || req.params.preparationId || req.body.preparationId
             };
             break;
@@ -154,46 +174,68 @@ const processCloudinaryUpload = (uploadType = 'preparation') => {
             break;
         }
 
+        console.log('📋 Métadonnées upload:', metadata);
+
         // Upload vers Cloudinary
         let uploadResult;
-        switch (uploadType) {
-          case 'preparation':
-            uploadResult = await CloudinaryService.uploadPreparationPhoto(file.buffer, metadata);
-            break;
-          case 'incident':
-            uploadResult = await CloudinaryService.uploadIncidentPhoto(file.buffer, metadata);
-            break;
-          default:
-            uploadResult = await CloudinaryService.uploadImage(file.buffer, { tags: [uploadType] });
-        }
-
-        uploadedFiles.push({
-          originalName: file.originalname,
-          url: uploadResult.url,
-          publicId: uploadResult.publicId,
-          size: uploadResult.bytes,
-          dimensions: {
-            width: uploadResult.width,
-            height: uploadResult.height
+        
+        try {
+          switch (uploadType) {
+            case 'preparation':
+              uploadResult = await CloudinaryService.uploadPreparationPhoto(file.buffer, metadata);
+              break;
+            case 'incident':
+              uploadResult = await CloudinaryService.uploadIncidentPhoto(file.buffer, metadata);
+              break;
+            default:
+              uploadResult = await CloudinaryService.uploadImage(file.buffer, {
+                folder: 'general',
+                tags: ['upload', req.user?.userId]
+              });
           }
-        });
+          
+          console.log('✅ Résultat upload Cloudinary:', {
+            url: uploadResult.url,
+            secure_url: uploadResult.secure_url,
+            publicId: uploadResult.publicId,
+            bytes: uploadResult.bytes
+          });
+          
+          uploadedFiles.push({
+            ...uploadResult,
+            originalName: file.originalname,
+            size: file.size,
+            mimetype: file.mimetype
+          });
+          
+        } catch (cloudinaryError) {
+          console.error('❌ Erreur upload Cloudinary:', cloudinaryError);
+          return res.status(500).json({
+            success: false,
+            message: 'Erreur lors de l\'upload de l\'image vers Cloudinary'
+          });
+        }
       }
 
-      // Ajouter les résultats à la requête
-      if (req.file) {
+      // ✅ Définir req.uploadedFile pour compatibilité
+      if (uploadedFiles.length === 1) {
         req.uploadedFile = uploadedFiles[0];
-      } else {
-        req.uploadedFiles = uploadedFiles;
       }
+      req.uploadedFiles = uploadedFiles;
+
+      console.log('✅ Upload terminé, uploadedFile défini:', {
+        hasUploadedFile: !!req.uploadedFile,
+        url: req.uploadedFile?.url,
+        secure_url: req.uploadedFile?.secure_url
+      });
 
       next();
 
     } catch (error) {
-      console.error('Erreur upload Cloudinary:', error);
-      res.status(500).json({
+      console.error('❌ Erreur processCloudinaryUpload:', error);
+      return res.status(500).json({
         success: false,
-        message: ERROR_MESSAGES.UPLOAD_FAILED,
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: error.message || 'Erreur lors de l\'upload du fichier'
       });
     }
   };

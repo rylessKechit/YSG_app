@@ -42,7 +42,7 @@ export function usePreparation() {
     preparationId: string, 
     data: StepCompletionData
   ): Promise<boolean> => {
-    setLocalLoading(`step-${data.stepType}`);
+    setLocalLoading(`step-${data.step}`);
     try {
       await completeStep(preparationId, data);
       return true;
