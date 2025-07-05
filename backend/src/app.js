@@ -97,11 +97,20 @@ try {
 // ===== ROUTES ADMIN =====
 
 try {
-  // Users
+  // Users - ✅ CORRIGÉ: Utilise le nouveau fichier index.js
   app.use('/api/admin/users', require('./routes/admin/users/index'));
   console.log('✅ Routes admin/users chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Erreur chargement routes admin/users:', error.message);
+  console.error('❌ Erreur chargement routes admin/users:', error.message);
+  
+  // Route de fallback pour éviter le crash complet
+  app.use('/api/admin/users', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service utilisateurs temporairement indisponible',
+      error: 'Module routes/admin/users/index non trouvé'
+    });
+  });
 }
 
 try {
@@ -113,11 +122,20 @@ try {
 }
 
 try {
-  // Schedules
+  // Schedules - ✅ CORRIGÉ: Utilise le nouveau fichier index.js
   app.use('/api/admin/schedules', require('./routes/admin/schedules/index'));
   console.log('✅ Routes admin/schedules chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Erreur chargement routes admin/schedules:', error.message);
+  console.error('❌ Erreur chargement routes admin/schedules:', error.message);
+  
+  // Route de fallback pour éviter le crash complet
+  app.use('/api/admin/schedules', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service plannings temporairement indisponible',
+      error: 'Module routes/admin/schedules/index non trouvé'
+    });
+  });
 }
 
 try {
@@ -129,11 +147,11 @@ try {
 }
 
 try {
-  // Preparations
+  // Preparations admin
   app.use('/api/admin/preparations', require('./routes/preparateur/preparations'));
   console.log('✅ Routes admin/preparations chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Erreur chargement routes preparateur/preparations:', error.message);
+  console.warn('⚠️ Erreur chargement routes admin/preparations:', error.message);
 }
 
 try {
@@ -141,153 +159,113 @@ try {
   app.use('/api/admin/dashboard/overview', require('./routes/admin/dashboard/overview'));
   app.use('/api/admin/dashboard/charts', require('./routes/admin/dashboard/charts'));
   app.use('/api/admin/dashboard/alerts', require('./routes/admin/dashboard/alerts'));
-  console.log('✅ Routes dashboard chargées avec succès');
+  console.log('✅ Routes admin/dashboard chargées avec succès');
 } catch (error) {
-  console.warn('⚠️ Erreur chargement routes dashboard:', error.message);
+  console.warn('⚠️ Erreur chargement routes admin/dashboard:', error.message);
 }
 
 try {
   // Reports
   app.use('/api/admin/reports', require('./routes/admin/reports/index'));
-  console.log('✅ Routes reports chargées avec succès');
+  console.log('✅ Routes admin/reports chargées avec succès');
 } catch (error) {
-  console.error('❌ Erreur chargement routes reports:', error.message);
-  console.warn('⚠️ Vérifiez que le dossier routes/admin/reports/ existe avec tous les fichiers');
-}
-
-try {
-  // Settings
-  app.use('/api/admin/settings', require('./routes/admin/settings'));
-  console.log('✅ Routes settings chargées avec succès');
-} catch (error) {
-  console.warn('⚠️ Route admin/settings non trouvée');
-}
-
-// ===== ROUTES COMMUNES =====
-
-try {
-  // Routes communes agencies (pour préparateurs aussi)
-  app.use('/api/agencies', require('./routes/common/agencies'));
-  console.log('✅ Routes communes agencies chargées avec succès');
-} catch (error) {
-  console.warn('⚠️ Routes communes agencies non trouvées');
+  console.warn('⚠️ Erreur chargement routes admin/reports:', error.message);
 }
 
 // ===== ROUTES PRÉPARATEUR =====
 
 try {
-  // ✅ CORRECTION: Routes directes (pas via index préparateur)
+  // Timesheets préparateur
   app.use('/api/timesheets', require('./routes/preparateur/timesheets'));
-  app.use('/api/preparations', require('./routes/preparateur/preparations'));
-  app.use('/api/profile', require('./routes/preparateur/profile'));
-  console.log('✅ Routes préparateur chargées avec succès');
+  console.log('✅ Routes timesheets chargées avec succès');
 } catch (error) {
-  console.error('❌ Erreur chargement routes préparateur:', error);
-  console.error('Stack trace:', error.stack);
+  console.warn('⚠️ Erreur chargement routes timesheets:', error.message);
+}
+
+try {
+  // Preparations préparateur
+  app.use('/api/preparations', require('./routes/preparateur/preparations'));
+  console.log('✅ Routes preparations chargées avec succès');
+} catch (error) {
+  console.warn('⚠️ Erreur chargement routes preparations:', error.message);
+}
+
+try {
+  // Profile préparateur
+  app.use('/api/profile', require('./routes/preparateur/profile'));
+  console.log('✅ Routes profile chargées avec succès');
+} catch (error) {
+  console.warn('⚠️ Erreur chargement routes profile:', error.message);
 }
 
 // ===== GESTION DES ERREURS =====
 
-// Route non trouvée
+// Middleware pour les routes non trouvées
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route non trouvée',
     data: {
       method: req.method,
-      path: req.originalUrl,
-      timestamp: new Date().toISOString()
+      url: req.originalUrl,
+      availableEndpoints: [
+        '/api/auth/*',
+        '/api/admin/*',
+        '/api/timesheets/*',
+        '/api/preparations/*',
+        '/api/profile/*'
+      ]
     }
   });
 });
 
-// Middleware de gestion d'erreurs global
+// Middleware de gestion globale des erreurs
 app.use((error, req, res, next) => {
-  console.error('❌ Erreur globale:', error);
+  console.error('❌ Erreur non gérée:', error);
   
   // Erreur de validation Joi
   if (error.isJoi) {
     return res.status(400).json({
       success: false,
-      message: 'Erreur de validation',
-      errors: error.details.map(detail => ({
-        field: detail.path.join('.'),
+      message: 'Données invalides',
+      errors: error.details?.map(detail => ({
+        field: detail.path?.join('.'),
         message: detail.message
       }))
     });
   }
-  
-  // Erreur de cast MongoDB
-  if (error.name === 'CastError') {
+
+  // Erreur MongoDB
+  if (error.name === 'MongoError' || error.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
-      message: 'ID invalide',
-      data: {
-        field: error.path,
-        value: error.value
-      }
+      message: 'Erreur de base de données',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-  
-  // Erreur de duplication MongoDB
-  if (error.code === 11000) {
-    const field = Object.keys(error.keyPattern)[0];
-    return res.status(409).json({
+
+  // Erreur JWT
+  if (error.name === 'JsonWebTokenError') {
+    return res.status(401).json({
       success: false,
-      message: `${field} déjà utilisé`,
-      data: {
-        field,
-        value: error.keyValue[field]
-      }
+      message: 'Token invalide'
     });
   }
-  
-  // Erreur de validation MongoDB
-  if (error.name === 'ValidationError') {
-    const errors = Object.values(error.errors).map(err => ({
-      field: err.path,
-      message: err.message
-    }));
-    
-    return res.status(400).json({
+
+  if (error.name === 'TokenExpiredError') {
+    return res.status(401).json({
       success: false,
-      message: 'Erreur de validation',
-      errors
+      message: 'Token expiré'
     });
   }
-  
-  // Erreur de timeout
-  if (error.code === 'ETIMEDOUT') {
-    return res.status(408).json({
-      success: false,
-      message: 'Timeout de la requête'
-    });
-  }
-  
+
   // Erreur générique
-  const status = error.status || error.statusCode || 500;
-  const message = error.message || 'Erreur serveur interne';
-  
-  res.status(status).json({
+  res.status(error.status || 500).json({
     success: false,
-    message,
-    ...(process.env.NODE_ENV === 'development' && {
-      stack: error.stack,
-      details: error
-    })
+    message: error.message || 'Erreur interne du serveur',
+    error: process.env.NODE_ENV === 'development' ? error.stack : undefined
   });
 });
 
-// Gestion des promesses non gérées
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Promesse rejetée non gérée:', reason);
-  console.error('À la promesse:', promise);
-});
-
-// Gestion des exceptions non gérées
-process.on('uncaughtException', (error) => {
-  console.error('❌ Exception non gérée:', error);
-  process.exit(1);
-});
-
+// ===== EXPORT =====
 module.exports = app;

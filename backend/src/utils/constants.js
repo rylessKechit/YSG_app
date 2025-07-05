@@ -1,142 +1,13 @@
 // backend/src/utils/constants.js
-// ✅ Constantes complètes et corrigées
-
-/**
- * Limites de temps (en minutes)
- */
-const TIME_LIMITS = {
-  PREPARATION_TIME: 30,        // Temps maximum pour une préparation
-  BREAK_TIME: 60,              // Temps maximum de pause
-  LATE_THRESHOLD: 15,          // Seuil de retard en minutes
-  SESSION_TIMEOUT: 480,        // Timeout session (8h)
-  TOKEN_EXPIRE: 10080          // Expiration token (7 jours en minutes)
-};
-
-/**
- * Limites de fichiers pour les uploads
- */
-const FILE_LIMITS = {
-  MAX_SIZE: 5 * 1024 * 1024,   // 5MB
-  MAX_FILES: 10,               // Maximum 10 fichiers par upload
-  ALLOWED_TYPES: [
-    'image/jpeg',
-    'image/jpg', 
-    'image/png',
-    'image/webp'
-  ]
-};
-
-/**
- * Messages d'erreur standardisés
- */
-const ERROR_MESSAGES = {
-  // Authentification
-  TOKEN_REQUIRED: 'Token d\'authentification requis',
-  TOKEN_INVALID: 'Token invalide',
-  TOKEN_EXPIRED: 'Token expiré',
-  CREDENTIALS_INVALID: 'Identifiants invalides',
-  USER_NOT_FOUND: 'Utilisateur non trouvé',
-  ACCOUNT_DISABLED: 'Compte désactivé',
-  ACCESS_DENIED: 'Accès refusé',
-  ADMIN_REQUIRED: 'Droits administrateur requis',
-  
-  // Validation
-  VALIDATION_ERROR: 'Erreur de validation',
-  REQUIRED_FIELD: 'Champ requis',
-  INVALID_FORMAT: 'Format invalide',
-  INVALID_EMAIL: 'Format d\'email invalide',
-  PASSWORD_TOO_SHORT: 'Mot de passe trop court (minimum 6 caractères)',
-  
-  // Ressources
-  RESOURCE_NOT_FOUND: 'Ressource non trouvée',
-  DUPLICATE_ENTRY: 'Entrée déjà existante',
-  REFERENCE_ERROR: 'Référence invalide',
-  
-  // Préparations
-  PREPARATION_NOT_FOUND: 'Préparation non trouvée',
-  PREPARATION_ALREADY_EXISTS: 'Une préparation est déjà en cours',
-  PREPARATION_COMPLETED: 'Préparation déjà terminée',
-  INVALID_PREPARATION_STATUS: 'Statut de préparation invalide',
-  INVALID_PREPARATION_STEP: 'Étape de préparation invalide',
-  STEP_ALREADY_COMPLETED: 'Cette étape est déjà complétée',
-  STEP_NOT_AVAILABLE: 'Cette étape n\'est pas encore disponible',
-  
-  // Véhicules
-  VEHICLE_NOT_FOUND: 'Véhicule non trouvé',
-  VEHICLE_IN_USE: 'Véhicule en cours d\'utilisation',
-  INVALID_LICENSE_PLATE: 'Plaque d\'immatriculation invalide',
-  
-  // Agences
-  AGENCY_NOT_FOUND: 'Agence non trouvée',
-  AGENCY_ACCESS_DENIED: 'Accès à cette agence non autorisé',
-  INVALID_AGENCY: 'Agence invalide',
-  
-  // Pointage
-  ALREADY_CLOCKED_IN: 'Vous êtes déjà pointé',
-  NOT_CLOCKED_IN: 'Vous n\'êtes pas pointé',
-  ALREADY_ON_BREAK: 'Vous êtes déjà en pause',
-  NOT_ON_BREAK: 'Vous n\'êtes pas en pause',
-  INVALID_TIMESHEET: 'Feuille de temps invalide',
-  
-  // Upload
-  UPLOAD_FAILED: 'Échec de l\'upload du fichier',
-  FILE_TOO_LARGE: 'Fichier trop volumineux',
-  INVALID_FILE_TYPE: 'Type de fichier non autorisé',
-  PHOTO_REQUIRED: 'Photo requise',
-  
-  // Serveur
-  SERVER_ERROR: 'Erreur serveur interne',
-  DATABASE_ERROR: 'Erreur de base de données',
-  EXTERNAL_API_ERROR: 'Erreur API externe'
-};
-
-/**
- * Messages de succès standardisés
- */
-const SUCCESS_MESSAGES = {
-  // Utilisateurs
-  USER_CREATED: 'Utilisateur créé avec succès',
-  USER_UPDATED: 'Utilisateur modifié avec succès',
-  USER_DELETED: 'Utilisateur supprimé avec succès',
-  
-  // Authentification
-  LOGIN_SUCCESS: 'Connexion réussie',
-  LOGOUT_SUCCESS: 'Déconnexion réussie',
-  PASSWORD_CHANGED: 'Mot de passe modifié avec succès',
-  
-  // Agences
-  AGENCY_CREATED: 'Agence créée avec succès',
-  AGENCY_UPDATED: 'Agence modifiée avec succès',
-  AGENCY_DELETED: 'Agence supprimée avec succès',
-  
-  // Plannings
-  SCHEDULE_CREATED: 'Planning créé avec succès',
-  SCHEDULE_UPDATED: 'Planning modifié avec succès',
-  SCHEDULE_DELETED: 'Planning supprimé avec succès',
-  
-  // Préparations
-  PREPARATION_STARTED: 'Préparation démarrée avec succès',
-  PREPARATION_COMPLETED: 'Préparation terminée avec succès',
-  STEP_COMPLETED: 'Étape complétée avec succès',
-  ISSUE_REPORTED: 'Incident signalé avec succès',
-  
-  // Pointage
-  CLOCK_IN_SUCCESS: 'Pointage d\'arrivée enregistré',
-  CLOCK_OUT_SUCCESS: 'Pointage de départ enregistré',
-  BREAK_START_SUCCESS: 'Début de pause enregistré',
-  BREAK_END_SUCCESS: 'Fin de pause enregistrée',
-  
-  // Upload
-  UPLOAD_SUCCESS: 'Fichier uploadé avec succès',
-  PHOTO_UPLOADED: 'Photo uploadée avec succès'
-};
+// ✅ Fichier de constantes complet pour l'application
 
 /**
  * Rôles utilisateurs
  */
 const USER_ROLES = {
   ADMIN: 'admin',
-  PREPARATEUR: 'preparateur'
+  PREPARATEUR: 'preparateur',
+  SUPERVISEUR: 'superviseur'
 };
 
 /**
@@ -146,41 +17,50 @@ const PREPARATION_STATUS = {
   PENDING: 'pending',
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
-  CANCELLED: 'cancelled'
+  CANCELLED: 'cancelled',
+  ON_HOLD: 'on_hold'
 };
 
 /**
  * Types de préparations
  */
 const PREPARATION_TYPES = {
-  ARRIVAL: 'arrival',           // Préparation d'arrivée
-  DEPARTURE: 'departure',       // Préparation de départ
-  MAINTENANCE: 'maintenance',   // Maintenance
-  CLEANING: 'cleaning'          // Nettoyage seul
+  STANDARD: 'standard',
+  EXPRESS: 'express',
+  DEEP_CLEAN: 'deep_clean',
+  MAINTENANCE: 'maintenance'
 };
 
 /**
- * ✅ Étapes de préparation (CORRIGÉ pour correspondre au modèle)
+ * Étapes de préparation
  */
 const PREPARATION_STEPS = {
-  EXTERIOR: 'exterior',
-  INTERIOR: 'interior', 
-  FUEL: 'fuel',
-  TIRES_FLUIDS: 'tires_fluids',
-  SPECIAL_WASH: 'special_wash',
-  PARKING: 'parking'
+  EXTERIOR_WASH: 'exterior_wash',
+  INTERIOR_CLEAN: 'interior_clean',
+  VACUUM: 'vacuum',
+  WINDOWS: 'windows',
+  TIRES: 'tires',
+  FUEL_CHECK: 'fuel_check',
+  FLUIDS_CHECK: 'fluids_check',
+  LIGHTS_CHECK: 'lights_check',
+  INSPECTION: 'inspection',
+  FINAL_CHECK: 'final_check'
 };
 
 /**
- * Labels des étapes de préparation
+ * Labels des étapes en français
  */
 const STEP_LABELS = {
-  [PREPARATION_STEPS.EXTERIOR]: 'Préparation extérieure',
-  [PREPARATION_STEPS.INTERIOR]: 'Préparation intérieure', 
-  [PREPARATION_STEPS.FUEL]: 'Mise à niveau carburant',
-  [PREPARATION_STEPS.TIRES_FLUIDS]: 'Pression pneus & fluides',
-  [PREPARATION_STEPS.SPECIAL_WASH]: 'Lavage spécial',
-  [PREPARATION_STEPS.PARKING]: 'Stationnement final'
+  [PREPARATION_STEPS.EXTERIOR_WASH]: 'Lavage extérieur',
+  [PREPARATION_STEPS.INTERIOR_CLEAN]: 'Nettoyage intérieur',
+  [PREPARATION_STEPS.VACUUM]: 'Aspirateur',
+  [PREPARATION_STEPS.WINDOWS]: 'Vitres',
+  [PREPARATION_STEPS.TIRES]: 'Pneus',
+  [PREPARATION_STEPS.FUEL_CHECK]: 'Contrôle carburant',
+  [PREPARATION_STEPS.FLUIDS_CHECK]: 'Contrôle fluides',
+  [PREPARATION_STEPS.LIGHTS_CHECK]: 'Contrôle éclairage',
+  [PREPARATION_STEPS.INSPECTION]: 'Inspection générale',
+  [PREPARATION_STEPS.FINAL_CHECK]: 'Contrôle final'
 };
 
 /**
@@ -188,6 +68,7 @@ const STEP_LABELS = {
  */
 const VEHICLE_STATUS = {
   AVAILABLE: 'available',
+  RESERVED: 'reserved',
   IN_PREPARATION: 'in_preparation',
   READY: 'ready',
   RENTED: 'rented',
@@ -199,11 +80,11 @@ const VEHICLE_STATUS = {
  * Types de carburant
  */
 const FUEL_TYPES = {
-  ESSENCE: 'essence',
+  PETROL: 'petrol',
   DIESEL: 'diesel',
-  ELECTRIQUE: 'electrique',
-  HYBRIDE: 'hybride',
-  GAZ: 'gaz'
+  HYBRID: 'hybrid',
+  ELECTRIC: 'electric',
+  LPG: 'lpg'
 };
 
 /**
@@ -211,52 +92,54 @@ const FUEL_TYPES = {
  */
 const VEHICLE_CONDITIONS = {
   EXCELLENT: 'excellent',
-  BON: 'bon',
-  CORRECT: 'correct',
-  MEDIOCRE: 'mediocre',
-  MAUVAIS: 'mauvais'
+  GOOD: 'good',
+  FAIR: 'fair',
+  POOR: 'poor',
+  DAMAGED: 'damaged'
 };
 
 /**
  * Statuts des pointages
  */
 const TIMESHEET_STATUS = {
-  CLOCKED_IN: 'clocked_in',
   CLOCKED_OUT: 'clocked_out',
+  CLOCKED_IN: 'clocked_in',
   ON_BREAK: 'on_break',
-  NOT_WORKING: 'not_working'
+  FINISHED: 'finished'
 };
 
 /**
  * Types d'incidents
  */
 const ISSUE_TYPES = {
-  DAMAGE: 'damage',                // Dommage
-  MISSING_ITEM: 'missing_item',    // Élément manquant
-  CLEANLINESS: 'cleanliness',      // Propreté
-  MECHANICAL: 'mechanical',        // Mécanique
-  ELECTRICAL: 'electrical',        // Électrique
-  OTHER: 'other'                   // Autre
+  DAMAGE: 'damage',
+  CLEANLINESS: 'cleanliness',
+  MECHANICAL: 'mechanical',
+  MISSING_ITEMS: 'missing_items',
+  FUEL: 'fuel',
+  OTHER: 'other'
 };
 
 /**
  * Niveaux de gravité des incidents
  */
 const ISSUE_SEVERITY = {
-  LOW: 'low',      // Faible
-  MEDIUM: 'medium', // Moyen
-  HIGH: 'high'     // Élevé
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'critical'
 };
 
 /**
  * Périodes pour les statistiques
  */
 const STATS_PERIODS = {
-  DAY: 'day',
+  TODAY: 'today',
   WEEK: 'week',
   MONTH: 'month',
   QUARTER: 'quarter',
-  YEAR: 'year'
+  YEAR: 'year',
+  CUSTOM: 'custom'
 };
 
 /**
@@ -266,35 +149,159 @@ const NOTIFICATION_TYPES = {
   INFO: 'info',
   SUCCESS: 'success',
   WARNING: 'warning',
-  ERROR: 'error'
+  ERROR: 'error',
+  URGENT: 'urgent'
+};
+
+/**
+ * Messages d'erreur standardisés
+ */
+const ERROR_MESSAGES = {
+  // Authentification
+  INVALID_CREDENTIALS: 'Email ou mot de passe incorrect',
+  TOKEN_EXPIRED: 'Session expirée, veuillez vous reconnecter',
+  TOKEN_INVALID: 'Token invalide',
+  ACCESS_DENIED: 'Accès refusé',
+  UNAUTHORIZED: 'Non autorisé',
+  
+  // Utilisateurs
+  USER_NOT_FOUND: 'Utilisateur non trouvé',
+  USER_ALREADY_EXISTS: 'Un utilisateur avec cet email existe déjà',
+  USER_INACTIVE: 'Compte utilisateur désactivé',
+  
+  // Agences
+  AGENCY_NOT_FOUND: 'Agence non trouvée',
+  AGENCY_ALREADY_EXISTS: 'Une agence avec ce code existe déjà',
+  
+  // Véhicules
+  VEHICLE_NOT_FOUND: 'Véhicule non trouvé',
+  VEHICLE_NOT_AVAILABLE: 'Véhicule non disponible',
+  
+  // Préparations
+  PREPARATION_NOT_FOUND: 'Préparation non trouvée',
+  PREPARATION_ALREADY_STARTED: 'Une préparation est déjà en cours',
+  PREPARATION_COMPLETED: 'Préparation déjà terminée',
+  
+  // Pointages
+  ALREADY_CLOCKED_IN: 'Déjà pointé',
+  NOT_CLOCKED_IN: 'Pas encore pointé',
+  ALREADY_ON_BREAK: 'Déjà en pause',
+  NOT_ON_BREAK: 'Pas en pause',
+  
+  // Plannings
+  SCHEDULE_NOT_FOUND: 'Planning non trouvé',
+  SCHEDULE_CONFLICT: 'Conflit de planning détecté',
+  
+  // Validation
+  INVALID_DATA: 'Données invalides',
+  REQUIRED_FIELD: 'Champ requis',
+  INVALID_FORMAT: 'Format invalide',
+  INVALID_DATE: 'Date invalide',
+  INVALID_TIME: 'Heure invalide',
+  
+  // Fichiers
+  FILE_TOO_LARGE: 'Fichier trop volumineux',
+  INVALID_FILE_TYPE: 'Type de fichier non autorisé',
+  UPLOAD_FAILED: 'Échec du téléchargement',
+  
+  // Général
+  SERVER_ERROR: 'Erreur interne du serveur',
+  SERVICE_UNAVAILABLE: 'Service temporairement indisponible',
+  MAINTENANCE_MODE: 'Application en maintenance',
+  RATE_LIMIT: 'Trop de requêtes, veuillez patienter'
+};
+
+/**
+ * Messages de succès standardisés
+ */
+const SUCCESS_MESSAGES = {
+  // Authentification
+  LOGIN_SUCCESS: 'Connexion réussie',
+  LOGOUT_SUCCESS: 'Déconnexion réussie',
+  
+  // Utilisateurs
+  USER_CREATED: 'Utilisateur créé avec succès',
+  USER_UPDATED: 'Utilisateur modifié avec succès',
+  USER_DELETED: 'Utilisateur supprimé avec succès',
+  
+  // Agences
+  AGENCY_CREATED: 'Agence créée avec succès',
+  AGENCY_UPDATED: 'Agence modifiée avec succès',
+  AGENCY_DELETED: 'Agence supprimée avec succès',
+  
+  // Préparations
+  PREPARATION_STARTED: 'Préparation démarrée avec succès',
+  PREPARATION_COMPLETED: 'Préparation terminée avec succès',
+  STEP_COMPLETED: 'Étape complétée avec succès',
+  
+  // Pointages
+  CLOCK_IN_SUCCESS: 'Pointage d\'arrivée enregistré',
+  CLOCK_OUT_SUCCESS: 'Pointage de départ enregistré',
+  BREAK_START_SUCCESS: 'Début de pause enregistré',
+  BREAK_END_SUCCESS: 'Fin de pause enregistrée',
+  
+  // Plannings
+  SCHEDULE_CREATED: 'Planning créé avec succès',
+  SCHEDULE_UPDATED: 'Planning modifié avec succès',
+  SCHEDULE_DELETED: 'Planning supprimé avec succès',
+  
+  // Fichiers
+  FILE_UPLOADED: 'Fichier téléchargé avec succès',
+  
+  // Général
+  OPERATION_SUCCESS: 'Opération réussie',
+  DATA_SAVED: 'Données sauvegardées avec succès'
+};
+
+/**
+ * Limites temporelles
+ */
+const TIME_LIMITS = {
+  MAX_PREPARATION_DURATION: 4 * 60, // 4 heures en minutes
+  MAX_BREAK_DURATION: 2 * 60, // 2 heures en minutes
+  MAX_SHIFT_DURATION: 12 * 60, // 12 heures en minutes
+  MIN_BREAK_INTERVAL: 2 * 60, // 2 heures minimum entre pauses
+  LATE_THRESHOLD: 15, // 15 minutes de retard toléré
+  PUNCTUALITY_WINDOW: 5 // 5 minutes avant/après pour être à l'heure
+};
+
+/**
+ * Limites de fichiers
+ */
+const FILE_LIMITS = {
+  MAX_SIZE: 5 * 1024 * 1024, // 5MB
+  MAX_FILES_PER_UPLOAD: 10,
+  ALLOWED_IMAGE_TYPES: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+  ALLOWED_DOCUMENT_TYPES: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
 };
 
 /**
  * Formats de date
  */
 const DATE_FORMATS = {
-  DATE_ONLY: 'YYYY-MM-DD',
-  DATETIME: 'YYYY-MM-DD HH:mm:ss',
-  TIME_ONLY: 'HH:mm',
-  DISPLAY_DATE: 'DD/MM/YYYY',
-  DISPLAY_DATETIME: 'DD/MM/YYYY HH:mm'
+  ISO: 'YYYY-MM-DD',
+  FRENCH: 'DD/MM/YYYY',
+  TIME_24H: 'HH:mm',
+  DATETIME_FR: 'DD/MM/YYYY HH:mm',
+  ISO_DATETIME: 'YYYY-MM-DDTHH:mm:ss.sssZ'
 };
 
 /**
- * Configurations par défaut
+ * Configuration par défaut
  */
 const DEFAULT_CONFIG = {
   PAGINATION_LIMIT: 20,
   MAX_PAGINATION_LIMIT: 100,
   DEFAULT_SORT: 'createdAt',
   DEFAULT_ORDER: 'desc',
-  SESSION_DURATION: 8, // heures
-  MAX_LOGIN_ATTEMPTS: 5,
-  LOCKOUT_DURATION: 30 // minutes
+  SESSION_TIMEOUT: 24 * 60 * 60 * 1000, // 24h en millisecondes
+  BCRYPT_ROUNDS: 12,
+  JWT_EXPIRES_IN: '24h',
+  REFRESH_TOKEN_EXPIRES_IN: '7d'
 };
 
 /**
- * Expressions régulières utiles
+ * Expressions régulières
  */
 const REGEX_PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
@@ -302,7 +309,8 @@ const REGEX_PATTERNS = {
   PHONE: /^[\+]?[1-9][\d]{0,15}$/,
   TIME: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/,
   AGENCY_CODE: /^[A-Z0-9]{2,10}$/,
-  OBJECT_ID: /^[0-9a-fA-F]{24}$/
+  OBJECT_ID: /^[0-9a-fA-F]{24}$/,
+  PASSWORD: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/
 };
 
 /**

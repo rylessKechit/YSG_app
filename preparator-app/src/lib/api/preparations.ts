@@ -63,7 +63,7 @@ export interface Preparation {
 }
 
 export interface StepCompletionData {
-  stepType: string;
+  step: string;
   photo: File;
   notes?: string;
 }
@@ -151,7 +151,7 @@ class PreparationAPI {
    */
   async completeStep(preparationId: string, data: StepCompletionData): Promise<{ preparation: Preparation }> {
     const formData = new FormData();
-    formData.append('stepType', data.stepType);
+    formData.append('stepType', data.step);
     formData.append('photo', data.photo);
     if (data.notes) {
       formData.append('notes', data.notes);

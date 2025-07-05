@@ -85,7 +85,7 @@ export interface Issue {
 
 // ✅ CORRIGÉ: Data pour compléter une étape
 export interface StepCompletionData {
-  stepType: string; // Sera mappé vers 'step' dans l'API
+  step: string; // Sera mappé vers 'step' dans l'API
   photo: File;
   notes?: string;
 }
