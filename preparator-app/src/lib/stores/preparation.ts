@@ -1,243 +1,84 @@
 // preparator-app/src/lib/stores/preparation.ts
+// ✅ MODIFICATION: Store avec support du workflow flexible
+
 import { create } from 'zustand';
-import { apiClient } from '../api/client';
-import type { 
-  Preparation, 
-  Agency, 
-  VehicleFormData, 
-  StepCompletionData, 
-  IssueReportData,
-  ApiResponse 
-} from '../types';
+import { preparationApi } from '../api/preparations';
+
+interface PreparationStep {
+  step: string;
+  label: string;
+  completed: boolean;
+  completedAt?: string;
+  notes?: string;
+  photos?: Array<{
+    url: string;
+    description: string;
+    uploadedAt: string;
+  }>;
+}
+
+interface Preparation {
+  id: string;
+  vehicle: {
+    id: string;
+    licensePlate: string;
+    brand: string;
+    model: string;
+  };
+  agency: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  status: 'in_progress' | 'completed' | 'cancelled';
+  startTime: string;
+  endTime?: string;
+  steps: PreparationStep[];
+  progress: number;
+  currentDuration: number;
+  isOnTime?: boolean;
+  notes?: string;
+  totalTime?: number;
+}
 
 interface PreparationStore {
   // État
   currentPreparation: Preparation | null;
-  userAgencies: Agency[];
+  preparations: Preparation[];
   isLoading: boolean;
   error: string | null;
 
   // Actions
-  startPreparation: (data: VehicleFormData) => Promise<void>;
-  completeStep: (preparationId: string, data: StepCompletionData) => Promise<void>;
-  completePreparation: (preparationId: string, notes?: string) => Promise<void>;
-  reportIssue: (preparationId: string, data: IssueReportData) => Promise<void>;
   getCurrentPreparation: () => Promise<void>;
-  getUserAgencies: () => Promise<void>;
+  startPreparation: (vehicleData: any) => Promise<Preparation>;
+  completeStep: (preparationId: string, stepType: string, photo: File, notes?: string) => Promise<void>;
+  completePreparation: (preparationId: string, notes?: string, skipRemainingSteps?: boolean) => Promise<void>;
+  reportIssue: (preparationId: string, issueData: any) => Promise<void>;
+  getMyPreparations: () => Promise<void>;
   clearError: () => void;
   reset: () => void;
 }
 
 export const usePreparationStore = create<PreparationStore>((set, get) => ({
-  // ===== ÉTAT INITIAL =====
+  // État initial
   currentPreparation: null,
-  userAgencies: [],
+  preparations: [],
   isLoading: false,
   error: null,
 
-  // ===== ACTIONS DE GESTION =====
-
-  // Nettoyer les erreurs
-  clearError: () => set({ error: null }),
-
-  // Réinitialiser le store
-  reset: () => set({
-    currentPreparation: null,
-    userAgencies: [],
-    isLoading: false,
-    error: null
-  }),
-
-  // ===== ACTIONS DE DONNÉES =====
-
-  // ✅ Récupérer les agences utilisateur
-  getUserAgencies: async () => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      const response = await apiClient.get<ApiResponse<{ agencies: Agency[] }>>('/preparations/user-agencies');
-      
-      if (response.data.success && response.data.data) {
-        set({ 
-          userAgencies: response.data.data.agencies,
-          isLoading: false 
-        });
-      } else {
-        throw new Error(response.data.message || 'Erreur lors de la récupération des agences');
-      }
-    } catch (error: any) {
-      console.error('❌ Erreur récupération agences:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Erreur lors de la récupération des agences';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
-    }
-  },
-
-  // ✅ Démarrer une préparation
-  startPreparation: async (data: VehicleFormData) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      console.log('🚀 Démarrage préparation:', data);
-      
-      const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
-        '/preparations/start',
-        data
-      );
-
-      if (response.data.success && response.data.data) {
-        set({ 
-          currentPreparation: response.data.data.preparation,
-          isLoading: false 
-        });
-        console.log('✅ Préparation démarrée:', response.data.data.preparation.id);
-      } else {
-        throw new Error(response.data.message || 'Erreur lors du démarrage');
-      }
-    } catch (error: any) {
-      console.error('❌ Erreur démarrage préparation:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Erreur lors du démarrage de la préparation';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
-    }
-  },
-
-  // ✅ Compléter une étape - CORRIGÉ pour utiliser 'step'
-  completeStep: async (preparationId: string, data: StepCompletionData) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      console.log('📸 Complétion étape:', data.step, 'pour préparation:', preparationId);
-      
-      const formData = new FormData();
-      
-      // ✅ CORRECTION CRITIQUE: Utiliser 'step' comme attendu par le backend
-      formData.append('step', data.step); // ✅ Backend attend 'step'
-      
-      if (data.photo) {
-        formData.append('photo', data.photo);
-        console.log('📷 Photo ajoutée:', data.photo.name, `(${(data.photo.size / 1024 / 1024).toFixed(2)}MB)`);
-      }
-      
-      if (data.notes) {
-        formData.append('notes', data.notes);
-      }
-
-      const response = await apiClient.put<ApiResponse<{ preparation: Preparation }>>(
-        `/preparations/${preparationId}/step`, 
-        formData,
-        {
-          headers: { 
-            'Content-Type': 'multipart/form-data' 
-          }
-        }
-      );
-
-      if (response.data.success && response.data.data) {
-        set({ 
-          currentPreparation: response.data.data.preparation,
-          isLoading: false 
-        });
-        console.log('✅ Étape complétée:', data.step);
-      } else {
-        throw new Error(response.data.message || 'Erreur lors de la complétion');
-      }
-    } catch (error: any) {
-      console.error('❌ Erreur complétion étape:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Erreur lors de la complétion de l\'étape';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
-    }
-  },
-
-  // ✅ Terminer une préparation
-  completePreparation: async (preparationId: string, notes?: string) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      console.log('🏁 Finalisation préparation:', preparationId);
-      
-      const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
-        `/preparations/${preparationId}/complete`,
-        { notes: notes || '' }
-      );
-
-      if (response.data.success && response.data.data) {
-        set({ 
-          currentPreparation: response.data.data.preparation,
-          isLoading: false 
-        });
-        console.log('✅ Préparation terminée');
-      } else {
-        throw new Error(response.data.message || 'Erreur lors de la finalisation');
-      }
-    } catch (error: any) {
-      console.error('❌ Erreur finalisation:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Erreur lors de la finalisation';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
-    }
-  },
-
-  // ✅ Signaler un incident
-  reportIssue: async (preparationId: string, data: IssueReportData) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      console.log('⚠️ Signalement incident:', data.type);
-      
-      const formData = new FormData();
-      formData.append('type', data.type);
-      formData.append('description', data.description);
-      formData.append('severity', data.severity || 'medium');
-      
-      if (data.photo) {
-        formData.append('photo', data.photo);
-      }
-
-      const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
-        `/preparations/${preparationId}/issue`,
-        formData,
-        {
-          headers: { 
-            'Content-Type': 'multipart/form-data' 
-          }
-        }
-      );
-
-      if (response.data.success && response.data.data) {
-        set({ 
-          currentPreparation: response.data.data.preparation,
-          isLoading: false 
-        });
-        console.log('✅ Incident signalé');
-      } else {
-        throw new Error(response.data.message || 'Erreur lors du signalement');
-      }
-    } catch (error: any) {
-      console.error('❌ Erreur signalement incident:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Erreur lors du signalement';
-      set({ error: errorMessage, isLoading: false });
-      throw error;
-    }
-  },
-
-  // ===== ACTIONS DE RÉCUPÉRATION =====
-
-  // ✅ Récupérer la préparation en cours
+  // Récupérer la préparation en cours
   getCurrentPreparation: async () => {
-    set({ isLoading: true, error: null });
-    
     try {
-      const response = await apiClient.get<ApiResponse<{ preparation: Preparation }>>('/preparations/current');
+      set({ isLoading: true, error: null });
       
-      if (response.data.success && response.data.data) {
+      const response = await preparationApi.getCurrent();
+      
+      if (response.success && response.data.preparation) {
         set({ 
-          currentPreparation: response.data.data.preparation,
+          currentPreparation: response.data.preparation,
           isLoading: false 
         });
       } else {
-        // Pas de préparation en cours n'est pas une erreur
         set({ 
           currentPreparation: null,
           isLoading: false 
@@ -245,112 +86,204 @@ export const usePreparationStore = create<PreparationStore>((set, get) => ({
       }
     } catch (error: any) {
       console.error('❌ Erreur récupération préparation courante:', error);
-      // Ne pas mettre d'erreur si pas de préparation en cours
-      if (error.response?.status === 404) {
+      set({ 
+        error: error.message || 'Erreur lors de la récupération de la préparation',
+        isLoading: false 
+      });
+    }
+  },
+
+  // Démarrer une nouvelle préparation
+  startPreparation: async (vehicleData) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const response = await preparationApi.start(vehicleData);
+      
+      if (response.success) {
+        const preparation = response.data.preparation;
+        
+        set({ 
+          currentPreparation: preparation,
+          isLoading: false 
+        });
+
+        return preparation;
+      } else {
+        throw new Error(response.message || 'Erreur lors du démarrage');
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur démarrage préparation:', error);
+      set({ 
+        error: error.message || 'Erreur lors du démarrage de la préparation',
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  // ✅ MODIFICATION: Compléter une étape avec photo (flexible)
+  completeStep: async (preparationId, stepType, photo, notes = '') => {
+    try {
+      set({ isLoading: true, error: null });
+
+      console.log('📸 Envoi photo pour étape:', stepType);
+
+      const response = await preparationApi.completeStep(preparationId, {
+        step: stepType,
+        photo,
+        notes,
+        stepType // Pour le middleware backend
+      });
+
+      if (response.success) {
+        // Mettre à jour la préparation courante
+        const updatedPreparation = response.data.preparation;
+        set({ 
+          currentPreparation: updatedPreparation,
+          isLoading: false 
+        });
+
+        console.log('✅ Étape complétée avec succès:', stepType);
+      } else {
+        throw new Error(response.message || 'Erreur lors de la completion');
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur completion étape:', error);
+      set({ 
+        error: error.message || 'Erreur lors de la completion de l\'étape',
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  // ✅ MODIFICATION: Finaliser préparation (même partiellement)
+  completePreparation: async (preparationId, notes = '', skipRemainingSteps = true) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const response = await preparationApi.complete(preparationId, {
+        notes,
+        skipRemainingSteps
+      });
+
+      if (response.success) {
+        console.log('✅ Préparation terminée:', response.data);
+        
+        // Réinitialiser la préparation courante
         set({ 
           currentPreparation: null,
           isLoading: false 
         });
       } else {
-        const errorMessage = error.response?.data?.message || error.message || 'Erreur lors de la récupération';
-        set({ error: errorMessage, isLoading: false });
+        throw new Error(response.message || 'Erreur lors de la finalisation');
       }
+    } catch (error: any) {
+      console.error('❌ Erreur finalisation préparation:', error);
+      set({ 
+        error: error.message || 'Erreur lors de la finalisation de la préparation',
+        isLoading: false 
+      });
+      throw error;
     }
+  },
+
+  // Signaler un incident
+  reportIssue: async (preparationId, issueData) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const response = await preparationApi.reportIssue(preparationId, issueData);
+
+      if (response.success) {
+        // Recharger la préparation pour avoir les incidents mis à jour
+        await get().getCurrentPreparation();
+      } else {
+        throw new Error(response.message || 'Erreur lors du signalement');
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur signalement incident:', error);
+      set({ 
+        error: error.message || 'Erreur lors du signalement de l\'incident',
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  // Récupérer mes préparations
+  getMyPreparations: async () => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const response = await preparationApi.getMyPreparations();
+      
+      if (response.success) {
+        set({ 
+          preparations: response.data.preparations || [],
+          isLoading: false 
+        });
+      } else {
+        throw new Error(response.message || 'Erreur lors de la récupération');
+      }
+    } catch (error: any) {
+      console.error('❌ Erreur récupération préparations:', error);
+      set({ 
+        error: error.message || 'Erreur lors de la récupération des préparations',
+        isLoading: false 
+      });
+    }
+  },
+
+  // Effacer l'erreur
+  clearError: () => {
+    set({ error: null });
+  },
+
+  // Réinitialiser le store
+  reset: () => {
+    set({
+      currentPreparation: null,
+      preparations: [],
+      isLoading: false,
+      error: null
+    });
   }
 }));
 
-// ===== HOOKS DÉRIVÉS =====
-
-// Hook pour les statistiques de préparation
+// Hook pour les statistiques de la préparation courante
 export const usePreparationStats = () => {
   const { currentPreparation } = usePreparationStore();
-  
+
   if (!currentPreparation) {
     return {
-      completedSteps: 0,
       totalSteps: 0,
+      completedSteps: 0,
+      remainingSteps: 0,
       progress: 0,
-      canComplete: false,
-      nextStep: null
+      hasAtLeastOneStep: false,
+      canComplete: false
     };
   }
 
-  const completedSteps = currentPreparation.steps.filter(step => step.completed).length;
+  const completedSteps = currentPreparation.steps.filter(s => s.completed).length;
   const totalSteps = currentPreparation.steps.length;
-  const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-  const canComplete = completedSteps === totalSteps;
-  
-  // Trouver la prochaine étape
-  const nextStep = currentPreparation.steps.find(step => !step.completed);
+  const remainingSteps = totalSteps - completedSteps;
+  const hasAtLeastOneStep = completedSteps > 0;
 
   return {
-    completedSteps,
     totalSteps,
-    progress,
-    canComplete,
-    nextStep: nextStep?.step || null
-  };
-};
-
-// Hook simplifié pour les actions courantes
-export const usePreparation = () => {
-  const {
-    currentPreparation,
-    isLoading,
-    error,
-    startPreparation,
-    completeStep,
-    completePreparation,
-    reportIssue,
-    getCurrentPreparation,
-    clearError
-  } = usePreparationStore();
-
-  return {
-    // État
-    currentPreparation,
-    isLoading,
-    error,
-    
-    // Actions
-    startPreparation: async (data: VehicleFormData): Promise<boolean> => {
-      try {
-        await startPreparation(data);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    
-    completeStep: async (preparationId: string, data: StepCompletionData): Promise<boolean> => {
-      try {
-        await completeStep(preparationId, data);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    
-    completePreparation: async (preparationId: string, notes?: string): Promise<boolean> => {
-      try {
-        await completePreparation(preparationId, notes);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    
-    reportIssue: async (preparationId: string, data: IssueReportData): Promise<boolean> => {
-      try {
-        await reportIssue(preparationId, data);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    
-    // Utilitaires
-    refresh: getCurrentPreparation,
-    clearError
+    completedSteps,
+    remainingSteps,
+    progress: currentPreparation.progress,
+    hasAtLeastOneStep,
+    canComplete: hasAtLeastOneStep, // ✅ Peut terminer avec au moins 1 étape
+    completedStepsList: currentPreparation.steps
+      .filter(s => s.completed)
+      .map(s => s.step),
+    remainingStepsList: currentPreparation.steps
+      .filter(s => !s.completed)
+      .map(s => s.step)
   };
 };

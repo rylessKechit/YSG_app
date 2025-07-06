@@ -1,57 +1,44 @@
 // backend/src/routes/preparateur/preparations.js
+// ✅ VERSION ALLÉGÉE ET PROPRE
+
 const express = require('express');
 const router = express.Router();
 
-// ===== IMPORTATIONS =====
-
-// Middlewares d'authentification
+// Imports
 const { auth } = require('../../middleware/auth');
 const { preparateurAuth } = require('../../middleware/adminAuth');
-
-// Middlewares de validation
-const { 
-  validateBody, 
-  validateObjectId, 
-  preparationSchemas, 
-  validatePreparationUpload 
-} = require('../../middleware/validation');
-
-// Middlewares d'upload
-const { 
-  uploadPreparationPhoto
-} = require('../../middleware/upload');
-
-// Modèles
+const { validateBody, validateObjectId, preparationSchemas, validatePreparationUpload } = require('../../middleware/validation');
+const { uploadPreparationPhoto } = require('../../middleware/upload');
 const Preparation = require('../../models/Preparation');
 const Agency = require('../../models/Agency');
 const Vehicle = require('../../models/Vehicle');
 const User = require('../../models/User');
+const { PREPARATION_STATUS, VEHICLE_STATUS } = require('../../utils/constants');
 
-// Utilitaires
-const { PREPARATION_STATUS } = require('../../utils/constants');
-
-// ===== APPLICATION DES MIDDLEWARES =====
-
-// Appliquer l'authentification et l'autorisation préparateur sur toutes les routes
+// Middlewares globaux
 router.use(auth);
 router.use(preparateurAuth);
 
-// ===== ROUTES =====
-
 /**
- * @route   GET /api/preparations/user-agencies
- * @desc    Récupérer les agences assignées à l'utilisateur
- * @access  Preparateur
+ * GET /api/preparations/user-agencies
+ * Récupérer les agences de l'utilisateur
  */
 router.get('/user-agencies', async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const { userId, role } = req.user;
     
-    console.log('🏢 Récupération agences utilisateur:', userId);
+    if (role === 'admin') {
+      const agencies = await Agency.find({ isActive: true })
+        .select('name code client workingHours')
+        .sort({ name: 1 });
+      
+      return res.json({
+        success: true,
+        data: { agencies }
+      });
+    }
     
-    // Récupérer l'utilisateur avec ses agences
     const user = await User.findById(userId).populate('agencies', 'name code client workingHours isActive');
-    
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -59,20 +46,14 @@ router.get('/user-agencies', async (req, res) => {
       });
     }
     
-    // Filtrer les agences actives
     const activeAgencies = user.agencies.filter(agency => agency.isActive);
     
-    console.log('✅ Agences récupérées:', activeAgencies.length);
-
     res.json({
       success: true,
-      data: {
-        agencies: activeAgencies
-      }
+      data: { agencies: activeAgencies }
     });
 
   } catch (error) {
-    console.error('❌ Erreur récupération agences:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur lors de la récupération des agences'
@@ -81,15 +62,20 @@ router.get('/user-agencies', async (req, res) => {
 });
 
 /**
- * @route   GET /api/preparations/current
- * @desc    Récupérer la préparation en cours de l'utilisateur
- * @access  Preparateur
+ * GET /api/preparations/current
+ * Récupérer la préparation en cours
  */
 router.get('/current', async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const { userId, role } = req.user;
     
-    console.log('🔍 Recherche préparation en cours:', userId);
+    if (role === 'admin') {
+      return res.json({
+        success: true,
+        data: { preparation: null },
+        message: 'Aucune préparation en cours (utilisateur administrateur)'
+      });
+    }
     
     const preparation = await Preparation.findOne({
       user: userId,
@@ -103,27 +89,48 @@ router.get('/current', async (req, res) => {
     if (!preparation) {
       return res.json({
         success: true,
-        data: {
-          preparation: null
-        }
+        data: { preparation: null }
       });
     }
 
-    console.log('✅ Préparation en cours trouvée:', preparation._id);
+    // Calculs
+    const startTime = new Date(preparation.startTime);
+    const now = new Date();
+    const currentDuration = Math.round((now.getTime() - startTime.getTime()) / (1000 * 60));
+    const completedSteps = preparation.steps.filter(step => step.completed).length;
+    const totalSteps = preparation.steps.length;
+    const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
     res.json({
       success: true,
       data: {
         preparation: {
           id: preparation._id,
-          vehicle: preparation.vehicle || preparation.vehicleInfo,
-          agency: preparation.agency,
+          vehicle: preparation.vehicle ? {
+            id: preparation.vehicle._id,
+            licensePlate: preparation.vehicle.licensePlate,
+            brand: preparation.vehicle.brand,
+            model: preparation.vehicle.model
+          } : preparation.vehicleInfo,
+          agency: {
+            id: preparation.agency._id,
+            name: preparation.agency.name,
+            code: preparation.agency.code,
+            client: preparation.agency.client
+          },
           startTime: preparation.startTime,
           status: preparation.status,
-          steps: preparation.steps,
-          progress: preparation.progress,
-          currentDuration: preparation.currentDuration,
-          isOnTime: preparation.isOnTime,
+          steps: preparation.steps.map(step => ({
+            step: step.step,
+            label: step.label,
+            completed: step.completed,
+            completedAt: step.completedAt,
+            notes: step.notes,
+            photos: step.photos || []
+          })),
+          progress,
+          currentDuration,
+          isOnTime: currentDuration <= 45,
           issues: preparation.issues || [],
           notes: preparation.notes
         }
@@ -131,158 +138,148 @@ router.get('/current', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur récupération préparation courante:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur lors de la récupération de la préparation'
+      message: 'Erreur lors de la récupération de la préparation en cours'
     });
   }
 });
 
 /**
- * @route   POST /api/preparations/start
- * @desc    Démarrer une nouvelle préparation avec véhicule
- * @access  Preparateur
+ * POST /api/preparations/start
+ * Démarrer une nouvelle préparation
  */
-router.post('/start',
-  validateBody(preparationSchemas.startWithVehicle),
-  async (req, res) => {
-    try {
-      const { 
-        agencyId, 
-        licensePlate, 
-        brand, 
-        model
-        // ❌ SUPPRIMÉ: year, fuelType, notes, color, condition
-      } = req.body;
-      const userId = req.user.userId;
+router.post('/start', validateBody(preparationSchemas.startWithVehicle), async (req, res) => {
+  try {
+    const { agencyId, licensePlate, brand, model, year, fuelType, color, condition, notes } = req.body;
+    const { userId, role } = req.user;
 
-      console.log('🚀 Démarrage préparation:', { agencyId, licensePlate, userId });
+    // Vérifier qu'il n'y a pas de préparation en cours
+    const existingPreparation = await Preparation.findOne({
+      user: userId,
+      status: PREPARATION_STATUS.IN_PROGRESS
+    });
 
-      // Vérifier qu'il n'y a pas déjà une préparation en cours pour cet utilisateur
-      const existingPreparation = await Preparation.findOne({
-        user: userId,
-        status: PREPARATION_STATUS.IN_PROGRESS
-      });
-
-      if (existingPreparation) {
-        return res.status(400).json({
-          success: false,
-          message: 'Une préparation est déjà en cours'
-        });
-      }
-
-      // Vérifier l'autorisation sur l'agence
-      const user = await User.findById(userId).populate('agencies');
-      const assignedAgency = user.agencies.find(agency => agency._id.toString() === agencyId);
-      if (!assignedAgency) {
-        return res.status(403).json({
-          success: false,
-          message: 'Agence non autorisée pour cet utilisateur'
-        });
-      }
-
-      // ✅ ÉTAPE 1: Créer ou récupérer le véhicule SIMPLIFIÉ
-      let vehicle = await Vehicle.findOne({ licensePlate: licensePlate.toUpperCase() });
-      
-      if (!vehicle) {
-        vehicle = await Vehicle.create({
-          licensePlate: licensePlate.toUpperCase(),
-          brand,
-          model,
-          agency: agencyId,
-          status: 'available' // ✅ Créer d'abord en available
-          // ❌ SUPPRIMÉ: year, fuelType
-        });
-        console.log('🚗 Nouveau véhicule créé:', vehicle.licensePlate);
-      } else {
-        // Mettre à jour les informations du véhicule (MINIMAL)
-        vehicle.brand = brand;
-        vehicle.model = model;
-        vehicle.agency = agencyId;
-        await vehicle.save();
-        console.log('🔄 Véhicule mis à jour:', vehicle.licensePlate);
-      }
-
-      // ✅ ÉTAPE 2: Créer la préparation SIMPLIFIÉE
-      const preparation = await Preparation.create({
-        vehicle: vehicle._id,
-        // ✅ Sauvegarder les infos véhicule minimales
-        vehicleInfo: {
-          licensePlate: vehicle.licensePlate,
-          brand: vehicle.brand,
-          model: vehicle.model
-          // ❌ SUPPRIMÉ: year, fuelType
-        },
-        user: userId,           // ✅ Champ principal
-        preparateur: userId,    // ✅ Champ pour compatibilité
-        agency: agencyId,
-        status: PREPARATION_STATUS.IN_PROGRESS
-        // ❌ SUPPRIMÉ: notes
-      });
-
-      console.log('✅ Préparation créée:', preparation._id);
-
-      // ✅ ÉTAPE 3: Maintenant mettre à jour le véhicule avec la préparation
-      vehicle.status = 'in_preparation';
-      vehicle.currentPreparation = preparation._id;
-      await vehicle.save();
-
-      console.log('✅ Véhicule mis à jour avec la préparation');
-
-      // Recharger avec les relations pour la réponse
-      await preparation.populate([
-        { path: 'vehicle' },
-        { path: 'agency', select: 'name code client' },
-        { path: 'user', select: 'firstName lastName' }
-      ]);
-
-      console.log('✅ Préparation démarrée:', preparation._id);
-
-      res.status(201).json({
-        success: true,
-        message: 'Préparation démarrée avec succès',
-        data: {
-          preparation: {
-            id: preparation._id,
-            vehicle: {
-              id: preparation.vehicle._id,
-              licensePlate: preparation.vehicle.licensePlate,
-              brand: preparation.vehicle.brand,
-              model: preparation.vehicle.model
-              // ❌ SUPPRIMÉ: year, fuelType
-            },
-            agency: {
-              id: preparation.agency._id,
-              name: preparation.agency.name,
-              code: preparation.agency.code,
-              client: preparation.agency.client
-            },
-            startTime: preparation.startTime,
-            status: preparation.status,
-            steps: preparation.steps,
-            progress: preparation.progress,
-            currentDuration: preparation.currentDuration,
-            isOnTime: preparation.isOnTime,
-            notes: preparation.notes
-          }
-        }
-      });
-
-    } catch (error) {
-      console.error('❌ Erreur démarrage préparation:', error);
-      res.status(500).json({
+    if (existingPreparation) {
+      return res.status(400).json({
         success: false,
-        message: 'Erreur lors du démarrage de la préparation'
+        message: 'Une préparation est déjà en cours'
       });
     }
+
+    // Vérifier l'agence
+    const agency = await Agency.findById(agencyId);
+    if (!agency) {
+      return res.status(404).json({
+        success: false,
+        message: 'Agence non trouvée'
+      });
+    }
+
+    // Vérifier l'accès à l'agence pour les préparateurs
+    if (role === 'preparateur') {
+      const user = await User.findById(userId).populate('agencies');
+      const hasAccess = user.agencies.some(userAgency => 
+        userAgency._id.toString() === agencyId.toString()
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          message: 'Accès refusé à cette agence'
+        });
+      }
+    }
+
+    // Gérer le véhicule
+    let vehicle = await Vehicle.findOne({ licensePlate: licensePlate.trim() });
+    let vehicleInfo = null;
+
+    if (vehicle) {
+      if (vehicle.currentPreparation) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ce véhicule est déjà en cours de préparation'
+        });
+      }
+      vehicle.status = VEHICLE_STATUS.IN_PREPARATION;
+    } else {
+      vehicleInfo = {
+        licensePlate: licensePlate.trim(),
+        brand: brand.trim(),
+        model: model.trim(),
+        year: year || null,
+        fuelType: fuelType || null,
+        color: color?.trim() || null,
+        condition: condition || 'bon'
+      };
+    }
+
+    // Créer la préparation
+    const preparation = new Preparation({
+      user: userId,
+      agency: agencyId,
+      vehicle: vehicle ? vehicle._id : null,
+      vehicleInfo,
+      status: PREPARATION_STATUS.IN_PROGRESS,
+      startTime: new Date(),
+      notes: notes?.trim() || ''
+    });
+
+    await preparation.save();
+
+    if (vehicle) {
+      vehicle.currentPreparation = preparation._id;
+      await vehicle.save();
+    }
+
+    // Recharger avec relations
+    await preparation.populate([
+      { path: 'vehicle' },
+      { path: 'agency', select: 'name code client' },
+      { path: 'user', select: 'firstName lastName' }
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Préparation démarrée avec succès',
+      data: {
+        preparation: {
+          id: preparation._id,
+          vehicle: vehicle ? {
+            id: preparation.vehicle._id,
+            licensePlate: preparation.vehicle.licensePlate,
+            brand: preparation.vehicle.brand,
+            model: preparation.vehicle.model
+          } : vehicleInfo,
+          agency: {
+            id: preparation.agency._id,
+            name: preparation.agency.name,
+            code: preparation.agency.code,
+            client: preparation.agency.client
+          },
+          startTime: preparation.startTime,
+          status: preparation.status,
+          steps: preparation.steps,
+          progress: preparation.progress,
+          currentDuration: preparation.currentDuration,
+          isOnTime: preparation.isOnTime,
+          notes: preparation.notes
+        }
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors du démarrage de la préparation'
+    });
   }
-);
+});
 
 /**
- * @route   PUT /api/preparations/:id/step
- * @desc    Compléter une étape de préparation avec photo
- * @access  Preparateur
+ * PUT /api/preparations/:id/step
+ * Compléter une étape avec photo
  */
 router.put('/:id/step',
   validateObjectId(),
@@ -292,14 +289,8 @@ router.put('/:id/step',
     try {
       const { id } = req.params;
       const { step, notes } = req.body;
-      const userId = req.user.userId;
+      const { userId, role } = req.user;
       const photoUrl = req.uploadedFile?.url || req.uploadedFile?.secure_url;
-
-      console.log('📸 Complétion étape:', { 
-        preparationId: id, 
-        step, 
-        hasPhoto: !!photoUrl 
-      });
 
       if (!photoUrl) {
         return res.status(400).json({
@@ -309,12 +300,12 @@ router.put('/:id/step',
       }
 
       // Récupérer la préparation
-      const preparation = await Preparation.findOne({
-        _id: id,
-        user: userId,
-        status: PREPARATION_STATUS.IN_PROGRESS
-      });
+      const query = { _id: id, status: PREPARATION_STATUS.IN_PROGRESS };
+      if (role !== 'admin') {
+        query.user = userId;
+      }
 
+      const preparation = await Preparation.findOne(query);
       if (!preparation) {
         return res.status(404).json({
           success: false,
@@ -322,7 +313,7 @@ router.put('/:id/step',
         });
       }
 
-      // Trouver l'étape avec la propriété 'step'
+      // Trouver et compléter l'étape
       const stepToComplete = preparation.steps.find(s => s.step === step);
       if (!stepToComplete) {
         return res.status(400).json({
@@ -338,12 +329,10 @@ router.put('/:id/step',
         });
       }
 
-      // Marquer l'étape comme complétée
       stepToComplete.completed = true;
       stepToComplete.completedAt = new Date();
       stepToComplete.notes = notes || '';
       
-      // Ajouter la photo
       if (!stepToComplete.photos) stepToComplete.photos = [];
       stepToComplete.photos.push({
         url: photoUrl,
@@ -352,27 +341,15 @@ router.put('/:id/step',
       });
 
       await preparation.save();
-
-      // Recharger avec les relations pour la réponse
       await preparation.populate(['vehicle', 'agency', 'user']);
 
-      console.log('✅ Étape complétée:', step, 'Photo URL:', photoUrl);
-
-      // ✅ CORRECTION: Structure manuelle au lieu de toApiResponse()
       res.json({
         success: true,
         message: `Étape "${step}" complétée avec succès`,
         data: {
           preparation: {
             id: preparation._id,
-            vehicle: {
-              id: preparation.vehicle._id,
-              licensePlate: preparation.vehicle.licensePlate,
-              brand: preparation.vehicle.brand,
-              model: preparation.vehicle.model,
-              year: preparation.vehicle.year,
-              fuelType: preparation.vehicle.fuelType
-            },
+            vehicle: preparation.vehicle || preparation.vehicleInfo,
             agency: {
               id: preparation.agency._id,
               name: preparation.agency.name,
@@ -380,9 +357,15 @@ router.put('/:id/step',
               client: preparation.agency.client
             },
             startTime: preparation.startTime,
-            endTime: preparation.endTime,
             status: preparation.status,
-            steps: preparation.steps,
+            steps: preparation.steps.map(s => ({
+              step: s.step,
+              label: s.label,
+              completed: s.completed,
+              completedAt: s.completedAt,
+              notes: s.notes,
+              photos: s.photos || []
+            })),
             progress: preparation.progress,
             currentDuration: preparation.currentDuration,
             isOnTime: preparation.isOnTime,
@@ -393,7 +376,6 @@ router.put('/:id/step',
       });
 
     } catch (error) {
-      console.error('❌ Erreur complétion étape:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la complétion de l\'étape'
@@ -403,28 +385,25 @@ router.put('/:id/step',
 );
 
 /**
- * @route   POST /api/preparations/:id/complete
- * @desc    Terminer une préparation
- * @access  Preparateur
+ * POST /api/preparations/:id/complete
+ * Terminer une préparation (workflow flexible)
  */
-router.post('/:id/complete', 
+router.post('/:id/complete',
   validateObjectId(),
   validateBody(preparationSchemas.completePreparation),
   async (req, res) => {
     try {
       const { id } = req.params;
       const { notes } = req.body;
-      const userId = req.user.userId;
-
-      console.log('🏁 Finalisation préparation:', id);
+      const { userId, role } = req.user;
 
       // Récupérer la préparation
-      const preparation = await Preparation.findOne({
-        _id: id,
-        user: userId,
-        status: PREPARATION_STATUS.IN_PROGRESS
-      });
+      const query = { _id: id, status: PREPARATION_STATUS.IN_PROGRESS };
+      if (role !== 'admin') {
+        query.user = userId;
+      }
 
+      const preparation = await Preparation.findOne(query);
       if (!preparation) {
         return res.status(404).json({
           success: false,
@@ -432,78 +411,66 @@ router.post('/:id/complete',
         });
       }
 
-      // Vérifier que toutes les étapes sont complétées
-      const incompleteSteps = preparation.steps.filter(step => !step.completed);
-      if (incompleteSteps.length > 0) {
+      // Validation flexible: au moins une étape complétée
+      const completedSteps = preparation.steps.filter(step => step.completed);
+      if (completedSteps.length === 0) {
         return res.status(400).json({
           success: false,
-          message: `${incompleteSteps.length} étape(s) non complétée(s)`,
-          data: { 
-            incompleteSteps: incompleteSteps.map(s => s.step) 
-          }
+          message: 'Au moins une étape doit être complétée pour terminer la préparation'
         });
       }
 
-      // Finaliser la préparation
+      const remainingSteps = preparation.steps.filter(step => !step.completed);
+
+      // Finaliser
       preparation.status = PREPARATION_STATUS.COMPLETED;
       preparation.endTime = new Date();
-      preparation.totalTime = Math.floor((preparation.endTime - preparation.startTime) / (1000 * 60)); // en minutes
-      preparation.notes = notes || '';
-      
+      preparation.notes = notes || preparation.notes || '';
+
+      const startTime = new Date(preparation.startTime);
+      const endTime = new Date(preparation.endTime);
+      preparation.totalTime = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+
       await preparation.save();
 
-      // Mettre à jour le statut du véhicule
-      await Vehicle.findByIdAndUpdate(preparation.vehicle, {
-        status: 'ready',
-        currentPreparation: null
-      });
+      // Mettre à jour le véhicule
+      if (preparation.vehicle) {
+        await Vehicle.findByIdAndUpdate(preparation.vehicle, {
+          status: VEHICLE_STATUS.READY,
+          currentPreparation: null,
+          lastPreparationDate: new Date()
+        });
+      }
 
-      // Recharger avec les relations pour la réponse
-      await preparation.populate([
-        { path: 'vehicle' },
-        { path: 'agency', select: 'name code client' },
-        { path: 'user', select: 'firstName lastName' }
-      ]);
+      await preparation.populate(['vehicle', 'agency', 'user']);
 
-      console.log('✅ Préparation terminée:', preparation._id, `(${preparation.totalTime}min)`);
-
-      // ✅ CORRECTION: Structure manuelle au lieu de toApiResponse()
       res.json({
         success: true,
-        message: 'Préparation terminée avec succès',
+        message: `Préparation terminée avec succès (${completedSteps.length}/${preparation.steps.length} étapes complétées)`,
         data: {
           preparation: {
             id: preparation._id,
-            vehicle: {
-              id: preparation.vehicle._id,
-              licensePlate: preparation.vehicle.licensePlate,
-              brand: preparation.vehicle.brand,
-              model: preparation.vehicle.model,
-              year: preparation.vehicle.year,
-              fuelType: preparation.vehicle.fuelType
-            },
+            status: preparation.status,
+            startTime: preparation.startTime,
+            endTime: preparation.endTime,
+            totalTime: preparation.totalTime,
+            progress: preparation.progress,
+            completedSteps: completedSteps.length,
+            totalSteps: preparation.steps.length,
+            stepsCompleted: completedSteps.map(step => step.step),
+            stepsSkipped: remainingSteps.map(step => step.step),
+            notes: preparation.notes,
+            vehicle: preparation.vehicle || preparation.vehicleInfo,
             agency: {
               id: preparation.agency._id,
               name: preparation.agency.name,
-              code: preparation.agency.code,
-              client: preparation.agency.client
-            },
-            startTime: preparation.startTime,
-            endTime: preparation.endTime,
-            status: preparation.status,
-            steps: preparation.steps,
-            progress: preparation.progress,
-            currentDuration: preparation.currentDuration,
-            totalTime: preparation.totalTime,
-            isOnTime: preparation.isOnTime,
-            issues: preparation.issues || [],
-            notes: preparation.notes
+              code: preparation.agency.code
+            }
           }
         }
       });
 
     } catch (error) {
-      console.error('❌ Erreur finalisation préparation:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors de la finalisation de la préparation'
@@ -513,58 +480,149 @@ router.post('/:id/complete',
 );
 
 /**
- * @route   POST /api/preparations/:id/issue
- * @desc    Signaler un incident sur une préparation
- * @access  Preparateur
+ * GET /api/preparations/my-stats
+ * Statistiques personnelles
+ */
+router.get('/my-stats', async (req, res) => {
+  try {
+    const { userId, role } = req.user;
+    
+    if (role === 'admin') {
+      const [totalPreparations, completedToday, inProgress] = await Promise.all([
+        Preparation.countDocuments(),
+        Preparation.countDocuments({ 
+          status: PREPARATION_STATUS.COMPLETED,
+          endTime: { $gte: new Date().setHours(0, 0, 0, 0) }
+        }),
+        Preparation.countDocuments({ status: PREPARATION_STATUS.IN_PROGRESS })
+      ]);
+      
+      return res.json({
+        success: true,
+        data: {
+          stats: {
+            totalPreparations,
+            completedToday,
+            inProgress,
+            averageTime: 0,
+            completionRate: 100,
+            isAdmin: true
+          }
+        }
+      });
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay() + 1);
+    
+    const [totalPreparations, completedToday, weekPreparations, avgTimeResult] = await Promise.all([
+      Preparation.countDocuments({ user: userId }),
+      Preparation.countDocuments({ 
+        user: userId, 
+        status: PREPARATION_STATUS.COMPLETED,
+        endTime: { $gte: today }
+      }),
+      Preparation.countDocuments({ 
+        user: userId,
+        startTime: { $gte: weekStart }
+      }),
+      Preparation.aggregate([
+        { $match: { user: userId, totalTime: { $exists: true } } },
+        { $group: { _id: null, avgTime: { $avg: '$totalTime' } } }
+      ])
+    ]);
+    
+    const averageTime = avgTimeResult[0]?.avgTime || 0;
+    
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          totalPreparations,
+          completedToday,
+          weekPreparations,
+          averageTime: Math.round(averageTime),
+          completionRate: 95,
+          isAdmin: false
+        }
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des statistiques'
+    });
+  }
+});
+
+/**
+ * POST /api/preparations/:id/issue
+ * Signaler un incident
  */
 router.post('/:id/issue',
   validateObjectId(),
-  uploadPreparationPhoto, // Photo optionnelle pour les incidents
+  uploadPreparationPhoto,
   validateBody(preparationSchemas.reportIssue),
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { type, description, severity } = req.body;
-      const userId = req.user.userId;
+      const { type, description, severity = 'medium' } = req.body;
+      const { userId, role } = req.user;
       const photoUrl = req.uploadedFile?.url || req.uploadedFile?.secure_url;
 
-      console.log('⚠️ Signalement incident:', { preparationId: id, type, severity });
+      const query = { _id: id };
+      if (role !== 'admin') {
+        query.user = userId;
+      }
 
-      const preparation = await Preparation.findOne({
-        _id: id,
-        user: userId,
-        status: PREPARATION_STATUS.IN_PROGRESS
-      });
-
+      const preparation = await Preparation.findOne(query);
       if (!preparation) {
         return res.status(404).json({
           success: false,
-          message: 'Préparation non trouvée ou déjà terminée'
+          message: 'Préparation non trouvée'
         });
       }
 
-      // Ajouter l'incident
-      const issueData = {
-        type,
-        description,
+      const incident = {
+        type: type.trim(),
+        description: description.trim(),
         severity,
-        photos: photoUrl ? [photoUrl] : []
+        reportedAt: new Date(),
+        reportedBy: userId,
+        resolved: false
       };
 
-      await preparation.addIssue(issueData);
+      if (photoUrl) {
+        incident.photos = [photoUrl];
+      }
 
-      console.log('✅ Incident signalé:', type);
+      if (!preparation.issues) {
+        preparation.issues = [];
+      }
+      preparation.issues.push(incident);
+
+      await preparation.save();
 
       res.json({
         success: true,
         message: 'Incident signalé avec succès',
         data: {
-          issue: issueData
+          incident: {
+            id: preparation.issues[preparation.issues.length - 1]._id,
+            type: incident.type,
+            description: incident.description,
+            severity: incident.severity,
+            reportedAt: incident.reportedAt,
+            hasPhoto: !!photoUrl
+          }
         }
       });
 
     } catch (error) {
-      console.error('❌ Erreur signalement incident:', error);
       res.status(500).json({
         success: false,
         message: 'Erreur lors du signalement de l\'incident'
@@ -572,5 +630,87 @@ router.post('/:id/issue',
     }
   }
 );
+
+/**
+ * GET /api/preparations/:id
+ * Récupérer une préparation par ID
+ */
+router.get('/:id', validateObjectId(), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role } = req.user;
+
+    const query = { _id: id };
+    if (role !== 'admin') {
+      query.user = userId;
+    }
+
+    const preparation = await Preparation.findOne(query)
+      .populate('vehicle')
+      .populate('agency', 'name code client')
+      .populate('user', 'firstName lastName email');
+
+    if (!preparation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Préparation non trouvée'
+      });
+    }
+
+    let currentDuration = 0;
+    if (preparation.status === PREPARATION_STATUS.IN_PROGRESS) {
+      const startTime = new Date(preparation.startTime);
+      const now = new Date();
+      currentDuration = Math.round((now.getTime() - startTime.getTime()) / (1000 * 60));
+    }
+
+    res.json({
+      success: true,
+      data: {
+        preparation: {
+          id: preparation._id,
+          vehicle: preparation.vehicle || preparation.vehicleInfo,
+          agency: {
+            id: preparation.agency._id,
+            name: preparation.agency.name,
+            code: preparation.agency.code,
+            client: preparation.agency.client
+          },
+          user: role === 'admin' && preparation.user ? {
+            id: preparation.user._id,
+            firstName: preparation.user.firstName,
+            lastName: preparation.user.lastName,
+            email: preparation.user.email
+          } : undefined,
+          startTime: preparation.startTime,
+          endTime: preparation.endTime,
+          status: preparation.status,
+          steps: preparation.steps.map(step => ({
+            step: step.step,
+            label: step.label,
+            completed: step.completed,
+            completedAt: step.completedAt,
+            notes: step.notes,
+            photos: step.photos || []
+          })),
+          progress: preparation.progress,
+          currentDuration,
+          totalTime: preparation.totalTime,
+          isOnTime: preparation.isOnTime,
+          issues: preparation.issues || [],
+          notes: preparation.notes,
+          createdAt: preparation.createdAt,
+          updatedAt: preparation.updatedAt
+        }
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération de la préparation'
+    });
+  }
+});
 
 module.exports = router;

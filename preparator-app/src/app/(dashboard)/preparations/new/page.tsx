@@ -1,4 +1,6 @@
-// app/(dashboard)/preparations/new/page.tsx
+// preparator-app/src/app/(dashboard)/preparations/new/page.tsx
+// ✅ CORRECTION: Utiliser la route d'agences qui fonctionne
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -10,40 +12,30 @@ import {
   ArrowLeft, 
   Car, 
   Building2, 
-  CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 
 import { usePreparationStore } from '@/lib/stores/preparation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 
-// Interface TypeScript pour les données du formulaire
-interface VehicleFormData {
-  agencyId: string;
-  licensePlate: string;
-  brand: string;
-  model: string;
-  color?: string;
-  year?: number | null;
-  fuelType?: string;
-  condition?: string;
-  notes?: string;
+// Interfaces TypeScript
+interface Agency {
+  id: string;
+  name: string;
+  code: string;
+  client?: string;
 }
 
-// Schéma de validation simplifié
+// Schéma Zod
 const vehicleSchema = z.object({
   agencyId: z.string().min(1, 'Veuillez sélectionner une agence'),
-  licensePlate: z.string()
-    .min(1, 'Plaque d\'immatriculation requise')
-    .regex(/^[A-Z0-9\-\s]+$/i, 'Format de plaque invalide')
-    .transform(val => val.toUpperCase().replace(/\s+/g, '')),
+  licensePlate: z.string().min(1, 'Plaque d\'immatriculation requise'),
   brand: z.string().min(1, 'Marque requise'),
   model: z.string().min(1, 'Modèle requis'),
   color: z.string().optional(),
@@ -51,9 +43,10 @@ const vehicleSchema = z.object({
   fuelType: z.string().optional(),
   condition: z.string().optional(),
   notes: z.string().optional()
-}) satisfies z.ZodType<VehicleFormData>;
+});
 
-// Marques de véhicules
+type VehicleFormData = z.infer<typeof vehicleSchema>;
+
 const VEHICLE_BRANDS = [
   'Audi', 'BMW', 'Mercedes-Benz', 'Volkswagen', 'Renault', 'Peugeot', 
   'Citroën', 'Ford', 'Opel', 'Toyota', 'Honda', 'Nissan', 'Hyundai',
@@ -64,15 +57,17 @@ const VEHICLE_BRANDS = [
 const NewPreparationPage: React.FC = () => {
   const router = useRouter();
   const { toast } = useToast();
+  
   const { 
-    userAgencies, 
     startPreparation, 
     isLoading, 
     error, 
-    getUserAgencies, 
     clearError 
   } = usePreparationStore();
 
+  // États locaux
+  const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [loadingAgencies, setLoadingAgencies] = useState(true);
   const [customBrand, setCustomBrand] = useState<string>('');
   const [showCustomBrand, setShowCustomBrand] = useState<boolean>(false);
 
@@ -84,7 +79,7 @@ const NewPreparationPage: React.FC = () => {
       brand: '',
       model: '',
       color: '',
-      year: undefined,
+      year: null,
       fuelType: 'essence',
       condition: 'bon',
       notes: ''
@@ -92,23 +87,66 @@ const NewPreparationPage: React.FC = () => {
     mode: 'onChange'
   });
 
-  // Charger les agences au montage
+  // ✅ CORRECTION: Charger les agences avec la route qui fonctionne
   useEffect(() => {
-    getUserAgencies();
-  }, [getUserAgencies]);
+    const loadAgencies = async () => {
+      try {
+        setLoadingAgencies(true);
+        
+        const token = localStorage.getItem('token');
+        
+        // ✅ ESSAYER PLUSIEURS ROUTES POSSIBLES
+        const route = '/api/preparations/user-agencies'
+        
+        let agenciesData = [];
 
-  // Sélectionner l'agence par défaut
-  useEffect(() => {
-    if (userAgencies.length > 0) {
-      const currentAgencyId = form.getValues('agencyId');
-      if (!currentAgencyId) {
-        const defaultAgency = userAgencies.find(agency => agency.isDefault) || userAgencies[0];
-        if (defaultAgency) {
-          form.setValue('agencyId', defaultAgency.id, { shouldValidate: true });
-        }
+        const response = await fetch(route, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              console.log(`✅ Réponse de ${route}:`, data);
+              
+              if (data.success && data.data.agencies) {
+                agenciesData = data.data.agencies;
+                console.log(`✅ Agences chargées via ${route}:`, agenciesData.length);
+              }
+            } else {
+              console.log(`❌ ${route} retourne ${response.status}`);
+            }
+        
+        setAgencies(agenciesData);
+          
+          // Sélectionner la première agence par défaut
+          form.setValue('agencyId', agenciesData[0].id, { shouldValidate: true });
+        
+      } catch (error) {
+        console.error('❌ Erreur chargement agences:', error);
+        
+        // ✅ FALLBACK: Utiliser des agences par défaut si nécessaire
+        const fallbackAgencies = [
+          { id: '1', name: 'Agence par défaut', code: 'DEFAULT', client: 'SIXT' }
+        ];
+        
+        setAgencies(fallbackAgencies);
+        form.setValue('agencyId', fallbackAgencies[0].id, { shouldValidate: true });
+        
+        toast({
+          title: "Attention",
+          description: "Impossible de charger les agences. Agence par défaut sélectionnée.",
+          variant: "destructive"
+        });
+      } finally {
+        setLoadingAgencies(false);
       }
-    }
-  }, [userAgencies, form]);
+    };
+
+    loadAgencies();
+  }, [form, toast]);
 
   // Nettoyer les erreurs
   useEffect(() => {
@@ -118,32 +156,35 @@ const NewPreparationPage: React.FC = () => {
     }
   }, [error, clearError]);
 
-  const onSubmit = async (data: VehicleFormData): Promise<void> => {
+  // Fonction de soumission
+  const onSubmit = async (data: VehicleFormData) => {
     try {
-      // Préparer les données dans le format attendu par le backend
-      const vehicleData: any = {
+      const vehicleData = {
         agencyId: data.agencyId,
         licensePlate: formatLicensePlate(data.licensePlate),
         brand: showCustomBrand ? customBrand.trim() : data.brand,
         model: data.model,
-        color: data.color || '',
-        year: data.year || null,
-        fuelType: data.fuelType || 'essence',
-        condition: data.condition || 'bon',
-        notes: data.notes || ''
+        color: data.color || undefined,
+        year: data.year || undefined,
+        fuelType: data.fuelType || undefined,
+        condition: data.condition || undefined,
+        notes: data.notes || undefined
       };
 
-      console.log('📤 Démarrage préparation:', vehicleData);
+      console.log('🚀 Démarrage préparation avec données:', vehicleData);
       
-      await startPreparation(vehicleData);
+      const preparation = await startPreparation(vehicleData);
       
       toast({
         title: "✅ Préparation démarrée !",
         description: `Véhicule ${vehicleData.licensePlate} en cours de préparation`,
       });
 
-      // Redirection vers le workflow
-      router.push('/preparations');
+      if (preparation?.id) {
+        router.push(`/preparations/${preparation.id}`);
+      } else {
+        router.push('/preparations');
+      }
       
     } catch (error: any) {
       console.error('❌ Erreur démarrage:', error);
@@ -155,7 +196,8 @@ const NewPreparationPage: React.FC = () => {
     }
   };
 
-  const handleBrandChange = (value: string): void => {
+  // Fonctions utilitaires
+  const handleBrandChange = (value: string) => {
     if (value === 'Autre') {
       setShowCustomBrand(true);
       setCustomBrand('');
@@ -163,7 +205,7 @@ const NewPreparationPage: React.FC = () => {
     } else {
       setShowCustomBrand(false);
       setCustomBrand('');
-      form.setValue('brand', value);
+      form.setValue('brand', value, { shouldValidate: true });
     }
   };
 
@@ -171,11 +213,9 @@ const NewPreparationPage: React.FC = () => {
     const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
     
     if (cleaned.length >= 7) {
-      // AA123AA -> AA-123-AA
       if (/^[A-Z]{2}\d{3}[A-Z]{2}/.test(cleaned)) {
         return `${cleaned.substring(0, 2)}-${cleaned.substring(2, 5)}-${cleaned.substring(5, 7)}`;
       }
-      // 123AA123 -> 123-AA-123  
       if (/^\d{3}[A-Z]{2}\d{3}/.test(cleaned)) {
         return `${cleaned.substring(0, 3)}-${cleaned.substring(3, 5)}-${cleaned.substring(5, 8)}`;
       }
@@ -184,19 +224,32 @@ const NewPreparationPage: React.FC = () => {
     return cleaned;
   };
 
-  const handleLicensePlateChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+  const handleLicensePlateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatLicensePlate(e.target.value);
-    form.setValue('licensePlate', formatted);
+    form.setValue('licensePlate', formatted, { shouldValidate: true });
   };
 
-  const selectedAgency = userAgencies.find(a => a.id === form.watch('agencyId'));
-
-  // Vérifier si le formulaire est valide
+  // Variables dérivées
+  const selectedAgency = agencies.find(a => a.id === form.watch('agencyId'));
+  const watchedValues = form.watch();
+  
   const isFormValid = form.formState.isValid && 
-    form.watch('agencyId') && 
-    form.watch('licensePlate') && 
-    (showCustomBrand ? customBrand.trim() : form.watch('brand')) && 
-    form.watch('model');
+    watchedValues.agencyId && 
+    watchedValues.licensePlate && 
+    (showCustomBrand ? customBrand.trim() : watchedValues.brand) && 
+    watchedValues.model;
+
+  // Loading state
+  if (loadingAgencies) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Chargement des agences...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -238,7 +291,7 @@ const NewPreparationPage: React.FC = () => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Sélectionner l'agence *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ''}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-12">
                             <SelectValue placeholder="Choisir une agence...">
@@ -258,7 +311,7 @@ const NewPreparationPage: React.FC = () => {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {userAgencies.map((agency) => (
+                          {agencies.map((agency) => (
                             <SelectItem key={agency.id} value={agency.id}>
                               <div>
                                 <div className="font-medium">{agency.name}</div>
@@ -383,8 +436,6 @@ const NewPreparationPage: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Récapitulatif - supprimé */}
-
             {/* Message d'erreur */}
             {error && (
               <Card className="border-red-200 bg-red-50">
@@ -405,6 +456,7 @@ const NewPreparationPage: React.FC = () => {
                 variant="outline"
                 onClick={() => router.back()}
                 className="flex-1"
+                disabled={isLoading}
               >
                 Annuler
               </Button>
@@ -416,7 +468,7 @@ const NewPreparationPage: React.FC = () => {
               >
                 {isLoading ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
                     Démarrage...
                   </>
                 ) : (
