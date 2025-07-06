@@ -1,6 +1,10 @@
 // backend/src/models/Preparation.js
+// ✅ Modèle Preparation complet avec workflow flexible
+
 const mongoose = require('mongoose');
-const { PREPARATION_STATUS, TIME_LIMITS } = require('../utils/constants');
+const { PREPARATION_STATUS, TIME_LIMITS, STEP_LABELS, STEP_DESCRIPTIONS, STEP_ICONS } = require('../utils/constants');
+
+// ===== SOUS-SCHÉMAS =====
 
 // Schéma pour les étapes de préparation
 const preparationStepSchema = new mongoose.Schema({
@@ -18,10 +22,20 @@ const preparationStepSchema = new mongoose.Schema({
     type: Number, // en minutes
     min: 0
   },
-  notes: String,
+  notes: {
+    type: String,
+    maxlength: 500,
+    default: ''
+  },
   photos: [{
-    url: String,
-    description: String,
+    url: {
+      type: String,
+      required: true
+    },
+    description: {
+      type: String,
+      default: ''
+    },
     uploadedAt: {
       type: Date,
       default: Date.now
@@ -47,17 +61,71 @@ const vehicleInfoSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  // ✅ NOUVEAU : Type de véhicule pour facturation
+  vehicleType: {
+    type: String,
+    enum: ['particulier', 'utilitaire'],
+    required: true,
+    default: 'particulier'
+  },
   year: {
     type: Number,
     min: 1990,
-    max: new Date().getFullYear() + 1
+    max: new Date().getFullYear() + 2
   },
   fuelType: {
     type: String,
     enum: ['essence', 'diesel', 'electrique', 'hybride'],
     default: 'essence'
+  },
+  color: {
+    type: String,
+    trim: true,
+    maxlength: 30
+  },
+  condition: {
+    type: String,
+    enum: ['excellent', 'good', 'fair', 'poor'],
+    default: 'good'
   }
 }, { _id: false });
+
+// Schéma pour les incidents
+const issueSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    required: true,
+    enum: ['damage', 'cleanliness', 'missing_item', 'mechanical', 'other']
+  },
+  description: {
+    type: String,
+    required: true,
+    maxlength: 500
+  },
+  severity: {
+    type: String,
+    enum: ['low', 'medium', 'high'],
+    default: 'medium'
+  },
+  reportedAt: {
+    type: Date,
+    default: Date.now
+  },
+  photos: [{
+    type: String // URLs Cloudinary
+  }],
+  resolved: {
+    type: Boolean,
+    default: false
+  },
+  resolvedAt: Date,
+  resolvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }
+}, { _id: true });
+
+// ===== SCHÉMA PRINCIPAL =====
 
 const preparationSchema = new mongoose.Schema({
   // Support des deux modes (ObjectId ET objet intégré)
@@ -66,36 +134,38 @@ const preparationSchema = new mongoose.Schema({
     required: [true, 'Le véhicule est requis']
   },
 
-  // Informations véhicule intégrées
+  // Informations véhicule intégrées (backup)
   vehicleInfo: vehicleInfoSchema,
 
-  // ✅ CORRECTION: Champ principal requis
+  // ✅ Champ principal requis
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: [true, 'Le préparateur est requis']
   },
 
-  // ✅ CORRECTION: Champ compatibilité NON requis
+  // ✅ Champ compatibilité (sera synchronisé avec user)
   preparateur: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false // ← CHANGEMENT CRITIQUE
+    required: false
   },
 
+  // Agence de facturation
   agency: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Agency',
     required: [true, 'L\'agence est requise']
   },
 
-  // Informations de préparation
+  // Statut de la préparation
   status: {
     type: String,
     enum: Object.values(PREPARATION_STATUS),
     default: PREPARATION_STATUS.IN_PROGRESS
   },
 
+  // ✅ Étapes avec ordre flexible
   steps: [preparationStepSchema],
 
   // Timing
@@ -111,7 +181,7 @@ const preparationSchema = new mongoose.Schema({
     min: 0
   },
 
-  // Contrôle qualité
+  // Contrôle qualité (optionnel)
   qualityCheck: {
     passed: {
       type: Boolean,
@@ -122,40 +192,21 @@ const preparationSchema = new mongoose.Schema({
       ref: 'User'
     },
     checkedAt: Date,
-    notes: String
+    notes: {
+      type: String,
+      maxlength: 500
+    }
   },
 
   // Notes générales
   notes: {
     type: String,
-    maxlength: [500, 'Les notes ne peuvent pas dépasser 500 caractères']
+    maxlength: 1000,
+    default: ''
   },
 
-  // Incidents signalés
-  issues: [{
-    type: {
-      type: String,
-      required: true
-    },
-    description: {
-      type: String,
-      required: true
-    },
-    severity: {
-      type: String,
-      enum: ['low', 'medium', 'high'],
-      default: 'medium'
-    },
-    reportedAt: {
-      type: Date,
-      default: Date.now
-    },
-    photos: [String], // URLs des photos
-    resolved: {
-      type: Boolean,
-      default: false
-    }
-  }],
+  // ✅ Incidents signalés
+  issues: [issueSchema],
 
   // Métadonnées
   createdAt: {
@@ -171,6 +222,7 @@ const preparationSchema = new mongoose.Schema({
 }, {
   timestamps: true,
   toJSON: { 
+    virtuals: true,
     transform: function(doc, ret) {
       delete ret.__v;
       
@@ -193,12 +245,12 @@ preparationSchema.index({ user: 1, status: 1 });
 preparationSchema.index({ agency: 1, createdAt: -1 });
 preparationSchema.index({ 'vehicle.licensePlate': 1 });
 preparationSchema.index({ status: 1, createdAt: -1 });
+preparationSchema.index({ preparateur: 1, status: 1 }); // Pour compatibilité
 
 // ===== MIDDLEWARE PRE-SAVE =====
 
-// ✅ AMÉLIORER le middleware de synchronisation
+// Synchroniser user et preparateur
 preparationSchema.pre('save', function(next) {
-  // Synchroniser user et preparateur
   if (this.user && !this.preparateur) {
     this.preparateur = this.user;
   } else if (this.preparateur && !this.user) {
@@ -212,14 +264,6 @@ preparationSchema.pre('save', function(next) {
   // Si vehicle est un objet (pas un ObjectId), le copier vers vehicleInfo
   if (this.vehicle && typeof this.vehicle === 'object' && !mongoose.Types.ObjectId.isValid(this.vehicle)) {
     this.vehicleInfo = this.vehicle;
-  }
-  next();
-});
-
-// Mettre à jour le timestamp
-preparationSchema.pre('save', function(next) {
-  if (this.isModified() && !this.isNew) {
-    this.updatedAt = Date.now();
   }
   next();
 });
@@ -239,14 +283,20 @@ preparationSchema.pre('save', function(next) {
   next();
 });
 
+// Mettre à jour le timestamp
+preparationSchema.pre('save', function(next) {
+  if (this.isModified() && !this.isNew) {
+    this.updatedAt = Date.now();
+  }
+  next();
+});
+
 // Middleware pre-save pour calculer totalTime
 preparationSchema.pre('save', function(next) {
   // Calculer le temps total si endTime est défini
   if (this.endTime && this.startTime) {
     this.totalTime = Math.round((this.endTime - this.startTime) / (1000 * 60)); // en minutes
   }
-
-  this.updatedAt = new Date();
   next();
 });
 
@@ -266,7 +316,7 @@ preparationSchema.virtual('currentDuration').get(function() {
   return Math.floor((endTime - this.startTime) / (1000 * 60));
 });
 
-// Respect du délai (30 minutes)
+// Respect du délai (30 minutes par défaut)
 preparationSchema.virtual('isOnTime').get(function() {
   return this.currentDuration <= (TIME_LIMITS.PREPARATION_TIME || 30);
 });
@@ -288,9 +338,9 @@ preparationSchema.virtual('summary').get(function() {
   };
 });
 
-// ===== MÉTHODES D'INSTANCE =====
+// ===== MÉTHODES D'INSTANCE MODIFIÉES POUR WORKFLOW FLEXIBLE =====
 
-// Compléter une étape
+// ✅ Compléter une étape - SANS VALIDATION D'ORDRE
 preparationSchema.methods.completeStep = function(stepType, data = {}) {
   const step = this.steps.find(s => s.step === stepType);
   if (!step) {
@@ -300,6 +350,9 @@ preparationSchema.methods.completeStep = function(stepType, data = {}) {
   if (step.completed) {
     throw new Error(`Étape "${stepType}" déjà complétée`);
   }
+  
+  // ✅ SUPPRESSION : Plus de vérification que les étapes précédentes sont complétées
+  // L'étape peut être complétée dans n'importe quel ordre
   
   step.completed = true;
   step.completedAt = new Date();
@@ -312,10 +365,17 @@ preparationSchema.methods.completeStep = function(stepType, data = {}) {
   return this.save();
 };
 
-// Finaliser la préparation
+// ✅ Finaliser la préparation - FLEXIBLE
 preparationSchema.methods.complete = function(notes = '') {
   if (this.status !== PREPARATION_STATUS.IN_PROGRESS) {
     throw new Error('Seule une préparation en cours peut être finalisée');
+  }
+  
+  // ✅ SUPPRESSION : Plus de validation "toutes les étapes complétées"
+  // Vérifier qu'au moins UNE étape est complétée
+  const completedSteps = this.steps.filter(step => step.completed).length;
+  if (completedSteps === 0) {
+    throw new Error('Au moins une étape doit être complétée pour terminer la préparation');
   }
   
   this.status = PREPARATION_STATUS.COMPLETED;
@@ -324,6 +384,70 @@ preparationSchema.methods.complete = function(notes = '') {
   this.notes = notes;
   
   return this.save();
+};
+
+// ✅ Méthode utilitaire pour vérifier si une étape peut être complétée
+preparationSchema.methods.canCompleteStep = function(stepType) {
+  const step = this.steps.find(s => s.step === stepType);
+  if (!step) {
+    return { canComplete: false, reason: 'Étape non trouvée' };
+  }
+  
+  if (step.completed) {
+    return { canComplete: false, reason: 'Étape déjà complétée' };
+  }
+  
+  if (this.status !== PREPARATION_STATUS.IN_PROGRESS) {
+    return { canComplete: false, reason: 'Préparation non en cours' };
+  }
+  
+  // ✅ NOUVELLE LOGIQUE : Toutes les étapes peuvent être complétées à tout moment
+  return { canComplete: true, reason: null };
+};
+
+// ✅ Méthode utilitaire pour vérifier si la préparation peut être finalisée
+preparationSchema.methods.canComplete = function() {
+  if (this.status !== PREPARATION_STATUS.IN_PROGRESS) {
+    return { canComplete: false, reason: 'Préparation non en cours' };
+  }
+  
+  const completedSteps = this.steps.filter(step => step.completed).length;
+  if (completedSteps === 0) {
+    return { canComplete: false, reason: 'Aucune étape complétée' };
+  }
+  
+  // ✅ NOUVELLE LOGIQUE : Peut être finalisée dès qu'une étape est faite
+  return { canComplete: true, reason: null };
+};
+
+// ✅ Méthode pour obtenir les étapes disponibles (toutes les étapes non complétées)
+preparationSchema.methods.getAvailableSteps = function() {
+  return this.steps.filter(step => !step.completed).map(step => ({
+    step: step.step,
+    label: STEP_LABELS[step.step] || step.step,
+    description: STEP_DESCRIPTIONS[step.step] || '',
+    icon: STEP_ICONS[step.step] || '📋'
+  }));
+};
+
+// ✅ Méthode pour obtenir les statistiques flexibles
+preparationSchema.methods.getFlexibleStats = function() {
+  const completedSteps = this.steps.filter(s => s.completed).length;
+  const totalSteps = this.steps.length;
+  const issues = this.issues ? this.issues.length : 0;
+  
+  return {
+    completed: completedSteps,
+    total: totalSteps,
+    progress: totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0,
+    canComplete: completedSteps > 0, // ✅ NOUVEAU : Peut terminer dès qu'une étape est faite
+    duration: this.currentDuration,
+    isOnTime: this.isOnTime,
+    issues,
+    status: this.status,
+    availableSteps: this.getAvailableSteps(),
+    nextSuggestedStep: this.getAvailableSteps()[0] || null // Première étape non complétée
+  };
 };
 
 // Ajouter un incident
@@ -340,6 +464,75 @@ preparationSchema.methods.addIssue = function(issueData) {
   });
   
   return this.save();
+};
+
+// Résoudre un incident
+preparationSchema.methods.resolveIssue = function(issueId, resolvedBy) {
+  const issue = this.issues.id(issueId);
+  if (!issue) {
+    throw new Error('Incident non trouvé');
+  }
+  
+  issue.resolved = true;
+  issue.resolvedAt = new Date();
+  issue.resolvedBy = resolvedBy;
+  
+  return this.save();
+};
+
+// ===== MÉTHODES STATIQUES =====
+
+// Trouver les préparations en cours pour un utilisateur
+preparationSchema.statics.findInProgressByUser = function(userId) {
+  return this.findOne({
+    user: userId,
+    status: PREPARATION_STATUS.IN_PROGRESS
+  }).populate(['vehicle', 'agency']);
+};
+
+// Statistiques pour un utilisateur
+preparationSchema.statics.getStatsForUser = function(userId, period = 30) {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - period);
+  
+  return this.aggregate([
+    {
+      $match: {
+        user: new mongoose.Types.ObjectId(userId),
+        status: PREPARATION_STATUS.COMPLETED,
+        createdAt: { $gte: startDate }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalPreparations: { $sum: 1 },
+        averageTime: { $avg: '$totalTime' },
+        onTimeCount: {
+          $sum: {
+            $cond: [
+              { $lte: ['$totalTime', TIME_LIMITS.PREPARATION_TIME || 30] },
+              1,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        totalPreparations: 1,
+        averageTime: { $round: ['$averageTime', 1] },
+        onTimeRate: {
+          $round: [
+            { $multiply: [{ $divide: ['$onTimeCount', '$totalPreparations'] }, 100] },
+            1
+          ]
+        }
+      }
+    }
+  ]);
 };
 
 module.exports = mongoose.model('Preparation', preparationSchema);

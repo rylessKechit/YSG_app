@@ -32,6 +32,7 @@
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.58.1",
     "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
     "workbox-webpack-plugin": "^7.3.0",
     "zod": "^3.25.67",
     "zustand": "^5.0.6"

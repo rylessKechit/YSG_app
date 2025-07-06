@@ -1,4 +1,6 @@
 // backend/src/middleware/validation.js
+// ✅ Fichier de validation corrigé complet
+
 const Joi = require('joi');
 
 // ===== SCHÉMAS DE BASE =====
@@ -156,267 +158,191 @@ const validateMultipleObjectIds = (...paramNames) => {
 // ===== SCHÉMAS DE VALIDATION POUR LES PRÉPARATIONS =====
 
 const preparationSchemas = {
-  // ✅ Schéma minimal pour démarrer une préparation
-  startWithVehicle: Joi.object({
-    agencyId: objectId.required().messages({
-      'any.required': 'L\'ID de l\'agence est requis',
-      'string.pattern.name': 'L\'ID de l\'agence doit être un ObjectId valide'
-    }),
+  // ✅ Schéma pour votre payload exact : { agencyId, brand, model, licensePlate, etc. }
+  startPreparation: Joi.object({
+    agencyId: objectId.required(),
+    // Champs de véhicule directement au niveau racine (comme votre payload)
     licensePlate: Joi.string()
       .required()
       .trim()
-      .uppercase()
       .min(2)
       .max(15)
-      .pattern(/^[A-Z0-9\-\s]+$/, 'plaque d\'immatriculation valide')
+      .pattern(/^[A-Z0-9\-\s]+$/i)
       .messages({
-        'any.required': 'La plaque d\'immatriculation est requise',
-        'string.min': 'La plaque doit contenir au moins 2 caractères',
-        'string.max': 'La plaque ne peut pas dépasser 15 caractères',
-        'string.pattern.name': 'Format de plaque invalide'
+        'string.pattern.base': 'Format de plaque d\'immatriculation invalide'
       }),
-    brand: Joi.string()
-      .required()
-      .trim()
-      .min(1)
-      .max(50)
-      .messages({
-        'any.required': 'La marque du véhicule est requise',
-        'string.max': 'La marque ne peut pas dépasser 50 caractères'
-      }),
-    model: Joi.string()
-      .required()
-      .trim()
-      .min(1)
-      .max(50)
-      .messages({
-        'any.required': 'Le modèle du véhicule est requis',
-        'string.max': 'Le modèle ne peut pas dépasser 50 caractères'
-      }),
+    brand: Joi.string().required().trim().min(1).max(50),
+    model: Joi.string().required().trim().min(1).max(50),
+    notes: Joi.string().optional().trim().max(500).allow('')
   }),
 
-  // Finaliser une préparation
-  completePreparation: Joi.object({
-    notes: Joi.string()
-      .optional()
-      .allow('')
-      .max(500)
+  // ✅ Compléter une étape - SANS VALIDATION D'ORDRE
+  completeStep: Joi.object({
+    step: Joi.string()
+      .required()
+      .valid('exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking')
       .messages({
-        'string.max': 'Les notes ne peuvent pas dépasser 500 caractères'
-      })
+        'any.only': 'Type d\'étape invalide. Types autorisés: exterior, interior, fuel, tires_fluids, special_wash, parking'
+      }),
+    notes: Joi.string().optional().trim().max(500)
+    // Photo gérée par le middleware d'upload
+  }),
+
+  // ✅ Terminer une préparation - FLEXIBLE
+  completePreparation: Joi.object({
+    notes: Joi.string().optional().trim().max(1000)
+    // Plus de validation "toutes étapes complétées"
   }),
 
   // Signaler un incident
   reportIssue: Joi.object({
     type: Joi.string()
       .required()
-      .valid('damage', 'missing_item', 'malfunction', 'cleanliness', 'fuel', 'other')
-      .messages({
-        'any.required': 'Le type d\'incident est requis',
-        'any.only': 'Type d\'incident invalide'
-      }),
-    description: Joi.string()
-      .required()
-      .trim()
-      .min(10)
-      .max(500)
-      .messages({
-        'any.required': 'La description est requise',
-        'string.min': 'La description doit contenir au moins 10 caractères',
-        'string.max': 'La description ne peut pas dépasser 500 caractères'
-      }),
-    severity: Joi.string()
-      .valid('low', 'medium', 'high')
-      .default('medium')
+      .valid('damage', 'cleanliness', 'missing_item', 'mechanical', 'other'),
+    description: Joi.string().required().trim().min(10).max(500),
+    severity: Joi.string().valid('low', 'medium', 'high').default('medium')
+    // Photo gérée par le middleware d'upload
+  }),
+
+  // Recherche de préparations
+  searchPreparations: Joi.object({
+    startDate: Joi.date().optional(),
+    endDate: Joi.date().optional(),
+    agencyId: objectId.optional(),
+    status: Joi.string().valid('pending', 'in_progress', 'completed', 'cancelled').optional(),
+    licensePlate: Joi.string().optional().trim().min(2).max(15)
   })
 };
 
 // ===== SCHÉMAS DE VALIDATION POUR LES REQUÊTES =====
 
 const querySchemas = {
-  // Pagination
   pagination: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(20)
   }),
 
-  // Filtres de date
-  dateFilters: Joi.object({
-    startDate: Joi.date().iso(),
-    endDate: Joi.date().iso().min(Joi.ref('startDate'))
+  dateRange: Joi.object({
+    startDate: Joi.date().optional(),
+    endDate: Joi.date().optional().min(Joi.ref('startDate'))
   }),
 
-  // Recherche générale
-  search: Joi.object({
-    q: Joi.string().trim().min(1).max(100),
+  preparationFilters: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
+    status: Joi.string().valid('pending', 'in_progress', 'completed', 'cancelled').optional(),
     agencyId: objectId.optional(),
-    status: Joi.string().valid('pending', 'in_progress', 'completed', 'cancelled').optional()
+    startDate: Joi.date().optional(),
+    endDate: Joi.date().optional(),
+    search: Joi.string().optional().trim().max(100)
   })
 };
 
-// ===== SCHÉMAS DE VALIDATION POUR L'AUTHENTIFICATION =====
+// ===== SCHÉMAS D'AUTHENTIFICATION =====
 
 const authSchemas = {
-  // Connexion
   login: Joi.object({
-    email: Joi.string()
-      .required()
-      .email()
-      .lowercase()
-      .trim()
-      .messages({
-        'any.required': 'L\'email est requis',
-        'string.email': 'Format d\'email invalide'
-      }),
-    password: Joi.string()
-      .required()
-      .min(6)
-      .messages({
-        'any.required': 'Le mot de passe est requis',
-        'string.min': 'Le mot de passe doit contenir au moins 6 caractères'
-      })
+    email: Joi.string().email().required().trim().lowercase(),
+    password: Joi.string().required().min(6)
   }),
 
-  // Inscription
   register: Joi.object({
-    email: Joi.string()
-      .required()
-      .email()
-      .lowercase()
-      .trim(),
-    password: Joi.string()
-      .required()
-      .min(8)
-      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'mot de passe fort'),
-    firstName: Joi.string()
-      .required()
-      .trim()
-      .min(2)
-      .max(50),
-    lastName: Joi.string()
-      .required()
-      .trim()
-      .min(2)
-      .max(50),
-    role: Joi.string()
-      .valid('admin', 'preparateur')
-      .default('preparateur')
+    firstName: Joi.string().required().trim().min(2).max(50),
+    lastName: Joi.string().required().trim().min(2).max(50),
+    email: Joi.string().email().required().trim().lowercase(),
+    password: Joi.string().required().min(8).pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .messages({
+        'string.pattern.base': 'Le mot de passe doit contenir au moins une minuscule, une majuscule et un chiffre'
+      }),
+    role: Joi.string().valid('admin', 'preparateur').default('preparateur')
+  }),
+
+  changePassword: Joi.object({
+    currentPassword: Joi.string().required(),
+    newPassword: Joi.string().required().min(8).pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
   })
 };
 
-// ===== SCHÉMAS DE VALIDATION POUR LES POINTAGES =====
+// ===== SCHÉMAS POUR LES TIMESHEETS =====
 
 const timesheetSchemas = {
-  // Pointer
-  clockAction: Joi.object({
+  clockIn: Joi.object({
     agencyId: objectId.required()
   }),
 
-  // Pause
+  clockOut: Joi.object({
+    agencyId: objectId.required(),
+    notes: Joi.string().optional().trim().max(300)
+  }),
+
   breakAction: Joi.object({
     agencyId: objectId.required()
   })
 };
 
-// ===== SCHÉMAS DE VALIDATION POUR LES UTILISATEURS =====
+// ===== SCHÉMAS POUR LES UTILISATEURS =====
 
 const userSchemas = {
-  // Créer un utilisateur
   createUser: Joi.object({
-    email: Joi.string()
-      .required()
-      .email()
-      .lowercase()
-      .trim(),
-    password: Joi.string()
-      .required()
-      .min(8),
-    firstName: Joi.string()
-      .required()
-      .trim()
-      .max(50),
-    lastName: Joi.string()
-      .required()
-      .trim()
-      .max(50),
-    role: Joi.string()
-      .valid('admin', 'preparateur')
-      .default('preparateur'),
-    agencies: Joi.array()
-      .items(objectId)
-      .default([])
+    firstName: Joi.string().required().trim().min(2).max(50),
+    lastName: Joi.string().required().trim().min(2).max(50),
+    email: Joi.string().email().required().trim().lowercase(),
+    password: Joi.string().required().min(8),
+    role: Joi.string().valid('admin', 'preparateur').default('preparateur'),
+    agencies: Joi.array().items(objectId).min(1).required()
   }),
 
-  // Mettre à jour un utilisateur
   updateUser: Joi.object({
-    firstName: Joi.string().optional().trim().max(50),
-    lastName: Joi.string().optional().trim().max(50),
-    email: Joi.string().optional().email().lowercase().trim(),
-    role: Joi.string().optional().valid('admin', 'preparateur'),
-    agencies: Joi.array().optional().items(objectId),
+    firstName: Joi.string().optional().trim().min(2).max(50),
+    lastName: Joi.string().optional().trim().min(2).max(50),
+    email: Joi.string().email().optional().trim().lowercase(),
+    role: Joi.string().valid('admin', 'preparateur').optional(),
+    agencies: Joi.array().items(objectId).optional(),
     isActive: Joi.boolean().optional()
   })
 };
 
-// ===== SCHÉMAS DE VALIDATION POUR LES AGENCES =====
+// ===== SCHÉMAS POUR LES AGENCES =====
 
 const agencySchemas = {
-  // Créer une agence
   createAgency: Joi.object({
-    name: Joi.string()
-      .required()
-      .trim()
-      .max(100),
-    code: Joi.string()
-      .required()
-      .trim()
-      .uppercase()
-      .pattern(/^[A-Z0-9]{2,10}$/, 'code d\'agence valide'),
-    client: Joi.string()
-      .required()
-      .trim()
-      .max(100),
+    name: Joi.string().required().trim().min(2).max(100),
+    code: Joi.string().required().trim().min(2).max(10).uppercase(),
+    client: Joi.string().required().trim().min(2).max(100),
     address: Joi.object({
-      street: Joi.string().required().trim().max(200),
-      city: Joi.string().required().trim().max(100),
-      zipCode: Joi.string().required().trim().max(10),
-      country: Joi.string().required().trim().max(50)
-    }).required(),
-    workingHours: Joi.object({
-      start: timePattern.required(),
-      end: timePattern.required()
-    }).required()
+      street: Joi.string().required().trim(),
+      city: Joi.string().required().trim(),
+      zipCode: Joi.string().required().trim(),
+      country: Joi.string().default('France')
+    }).optional()
   }),
 
-  // Mettre à jour une agence
   updateAgency: Joi.object({
-    name: Joi.string().optional().trim().max(100),
-    client: Joi.string().optional().trim().max(100),
+    name: Joi.string().optional().trim().min(2).max(100),
+    code: Joi.string().optional().trim().min(2).max(10).uppercase(),
+    client: Joi.string().optional().trim().min(2).max(100),
     address: Joi.object({
-      street: Joi.string().optional().trim().max(200),
-      city: Joi.string().optional().trim().max(100),
-      zipCode: Joi.string().optional().trim().max(10),
-      country: Joi.string().optional().trim().max(50)
-    }).optional(),
-    workingHours: Joi.object({
-      start: timePattern.optional(),
-      end: timePattern.optional()
+      street: Joi.string().optional().trim(),
+      city: Joi.string().optional().trim(),
+      zipCode: Joi.string().optional().trim(),
+      country: Joi.string().optional()
     }).optional(),
     isActive: Joi.boolean().optional()
   })
 };
 
-// ===== SCHÉMAS DE VALIDATION POUR LES VÉHICULES =====
+// ===== SCHÉMAS POUR LES VÉHICULES =====
 
 const vehicleSchemas = {
-  // Créer un véhicule
   createVehicle: Joi.object({
     licensePlate: Joi.string()
       .required()
       .trim()
-      .uppercase()
       .max(15)
-      .pattern(/^[A-Z0-9\-\s]+$/, 'plaque d\'immatriculation valide'),
+      .pattern(/^[A-Z0-9\-\s]+$/)
+      .messages({
+        'string.pattern.base': 'Format de plaque invalide'
+      }),
     brand: Joi.string()
       .required()
       .trim()
@@ -436,7 +362,6 @@ const vehicleSchemas = {
     agencyId: objectId.required()
   }),
 
-  // Mettre à jour un véhicule
   updateVehicle: Joi.object({
     brand: Joi.string().optional().trim().min(1).max(50),
     model: Joi.string().optional().trim().min(1).max(50),
@@ -465,7 +390,7 @@ const validatePreparationUpload = (req, res, next) => {
     });
   }
 
-  // ✅ Validation des types d'étapes autorisés
+  // ✅ Validation des types d'étapes autorisés SEULEMENT
   const validSteps = ['exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'];
   if (!validSteps.includes(step)) {
     return res.status(400).json({
@@ -570,7 +495,7 @@ module.exports = {
   validateObjectId,
   validateMultipleObjectIds,
   
-  // Schémas par catégorie
+  // ✅ Schémas par catégorie - TOUS DÉFINIS
   preparationSchemas,
   querySchemas,
   authSchemas,

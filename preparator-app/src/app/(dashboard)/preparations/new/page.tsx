@@ -1,4 +1,6 @@
-// app/(dashboard)/preparations/new/page.tsx
+// preparator-app/src/app/(dashboard)/preparations/new/page.tsx
+// ✅ Page complète de création de préparation avec vehicleType
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -11,7 +13,10 @@ import {
   Car, 
   Building2, 
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 
 import { usePreparationStore } from '@/lib/stores/preparation';
@@ -19,25 +24,40 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { 
+  Form, 
+  FormControl, 
+  FormField, 
+  FormItem, 
+  FormLabel, 
+  FormMessage 
+} from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
-// Interface TypeScript pour les données du formulaire
-interface VehicleFormData {
-  agencyId: string;
-  licensePlate: string;
-  brand: string;
-  model: string;
-  color?: string;
-  year?: number | null;
-  fuelType?: string;
-  condition?: string;
-  notes?: string;
-}
+// Types
+import type { 
+  VehicleFormData, 
+  VehicleType, 
+  FuelType, 
+  VehicleCondition,
+  VEHICLE_TYPES,
+  VEHICLE_TYPE_LABELS,
+  VEHICLE_TYPE_DESCRIPTIONS,
+  VEHICLE_TYPE_ICONS
+} from '@/lib/types/preparation';
 
-// Schéma de validation simplifié
+// ===== SCHÉMA DE VALIDATION =====
+
 const vehicleSchema = z.object({
   agencyId: z.string().min(1, 'Veuillez sélectionner une agence'),
   licensePlate: z.string()
@@ -46,24 +66,43 @@ const vehicleSchema = z.object({
     .transform(val => val.toUpperCase().replace(/\s+/g, '')),
   brand: z.string().min(1, 'Marque requise'),
   model: z.string().min(1, 'Modèle requis'),
+  vehicleType: z.enum(['particulier', 'utilitaire'], {
+    required_error: 'Type de véhicule requis',
+    invalid_type_error: 'Type de véhicule invalide'
+  }),
   color: z.string().optional(),
-  year: z.number().nullable().optional(),
-  fuelType: z.string().optional(),
-  condition: z.string().optional(),
-  notes: z.string().optional()
+  year: z.number()
+    .int()
+    .min(1990, 'Année trop ancienne')
+    .max(new Date().getFullYear() + 2, 'Année trop récente')
+    .nullable()
+    .optional(),
+  fuelType: z.enum(['essence', 'diesel', 'electrique', 'hybride']).optional(),
+  condition: z.enum(['excellent', 'good', 'fair', 'poor']).optional(),
+  notes: z.string().max(500, 'Notes trop longues (max 500 caractères)').optional()
 }) satisfies z.ZodType<VehicleFormData>;
 
-// Marques de véhicules
+// ===== CONSTANTES =====
+
 const VEHICLE_BRANDS = [
   'Audi', 'BMW', 'Mercedes-Benz', 'Volkswagen', 'Renault', 'Peugeot', 
   'Citroën', 'Ford', 'Opel', 'Toyota', 'Honda', 'Nissan', 'Hyundai',
   'Kia', 'Seat', 'Skoda', 'Fiat', 'Alfa Romeo', 'Volvo', 'Mini',
-  'Autre'
+  'Dacia', 'Suzuki', 'Mitsubishi', 'Mazda', 'Subaru', 'Jeep',
+  'Land Rover', 'Jaguar', 'Porsche', 'Tesla', 'Autre'
 ];
+
+const VEHICLE_COLORS = [
+  'Noir', 'Blanc', 'Gris', 'Argent', 'Bleu', 'Rouge', 'Vert', 
+  'Jaune', 'Orange', 'Violet', 'Marron', 'Beige', 'Rose', 'Autre'
+];
+
+// ===== COMPOSANT PRINCIPAL =====
 
 const NewPreparationPage: React.FC = () => {
   const router = useRouter();
   const { toast } = useToast();
+  
   const { 
     userAgencies, 
     startPreparation, 
@@ -73,9 +112,12 @@ const NewPreparationPage: React.FC = () => {
     clearError 
   } = usePreparationStore();
 
+  // États locaux
   const [customBrand, setCustomBrand] = useState<string>('');
   const [showCustomBrand, setShowCustomBrand] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  // Formulaire
   const form = useForm<VehicleFormData>({
     resolver: zodResolver(vehicleSchema),
     defaultValues: {
@@ -83,14 +125,17 @@ const NewPreparationPage: React.FC = () => {
       licensePlate: '',
       brand: '',
       model: '',
+      vehicleType: 'particulier',
       color: '',
-      year: undefined,
+      year: null,
       fuelType: 'essence',
-      condition: 'bon',
+      condition: 'good',
       notes: ''
     },
     mode: 'onChange'
   });
+
+  // ===== EFFETS =====
 
   // Charger les agences au montage
   useEffect(() => {
@@ -110,7 +155,7 @@ const NewPreparationPage: React.FC = () => {
     }
   }, [userAgencies, form]);
 
-  // Nettoyer les erreurs
+  // Nettoyer les erreurs après 5 secondes
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => clearError(), 5000);
@@ -118,112 +163,131 @@ const NewPreparationPage: React.FC = () => {
     }
   }, [error, clearError]);
 
-  const onSubmit = async (data: VehicleFormData): Promise<void> => {
-    try {
-      // Préparer les données dans le format attendu par le backend
-      const vehicleData: any = {
-        agencyId: data.agencyId,
-        licensePlate: formatLicensePlate(data.licensePlate),
-        brand: showCustomBrand ? customBrand.trim() : data.brand,
-        model: data.model,
-        color: data.color || '',
-        year: data.year || null,
-        fuelType: data.fuelType || 'essence',
-        condition: data.condition || 'bon',
-        notes: data.notes || ''
-      };
+  // ===== HANDLERS =====
 
-      console.log('📤 Démarrage préparation:', vehicleData);
-      
-      await startPreparation(vehicleData);
-      
-      toast({
-        title: "✅ Préparation démarrée !",
-        description: `Véhicule ${vehicleData.licensePlate} en cours de préparation`,
-      });
-
-      // Redirection vers le workflow
-      router.push('/preparations');
-      
-    } catch (error: any) {
-      console.error('❌ Erreur démarrage:', error);
-      toast({
-        title: "Erreur",
-        description: error?.message || "Impossible de démarrer la préparation",
-        variant: "destructive"
-      });
+  // Formater la plaque d'immatriculation
+  const handleLicensePlateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
+    // Formatage automatique selon le pattern français
+    if (value.length <= 7) {
+      // Format AB-123-CD
+      if (value.length > 2 && value.length <= 5) {
+        value = value.slice(0, 2) + '-' + value.slice(2);
+      } else if (value.length > 5) {
+        value = value.slice(0, 2) + '-' + value.slice(2, 5) + '-' + value.slice(5);
+      }
+    } else {
+      // Format 123-AB-123
+      if (value.length > 3 && value.length <= 5) {
+        value = value.slice(0, 3) + '-' + value.slice(3);
+      } else if (value.length > 5) {
+        value = value.slice(0, 3) + '-' + value.slice(3, 5) + '-' + value.slice(5);
+      }
     }
+    
+    form.setValue('licensePlate', value, { shouldValidate: true });
   };
 
-  const handleBrandChange = (value: string): void => {
+  // Gérer le changement de marque
+  const handleBrandChange = (value: string) => {
     if (value === 'Autre') {
       setShowCustomBrand(true);
-      setCustomBrand('');
-      form.setValue('brand', '');
+      form.setValue('brand', '', { shouldValidate: true });
     } else {
       setShowCustomBrand(false);
       setCustomBrand('');
-      form.setValue('brand', value);
+      form.setValue('brand', value, { shouldValidate: true });
     }
   };
 
-  const formatLicensePlate = (value: string): string => {
-    const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Formater la plaque finale
+  const formatLicensePlate = (plate: string): string => {
+    return plate.replace(/\s+/g, '').toUpperCase();
+  };
+
+  // Soumission du formulaire
+  const onSubmit = async (data: VehicleFormData): Promise<void> => {
+    setIsSubmitting(true);
     
-    if (cleaned.length >= 7) {
-      // AA123AA -> AA-123-AA
-      if (/^[A-Z]{2}\d{3}[A-Z]{2}/.test(cleaned)) {
-        return `${cleaned.substring(0, 2)}-${cleaned.substring(2, 5)}-${cleaned.substring(5, 7)}`;
-      }
-      // 123AA123 -> 123-AA-123  
-      if (/^\d{3}[A-Z]{2}\d{3}/.test(cleaned)) {
-        return `${cleaned.substring(0, 3)}-${cleaned.substring(3, 5)}-${cleaned.substring(5, 8)}`;
-      }
+    try {
+      console.log('🚀 Démarrage préparation:', data);
+
+      // Préparer les données pour le backend
+      const vehicleData: VehicleFormData = {
+        agencyId: data.agencyId,
+        licensePlate: formatLicensePlate(data.licensePlate),
+        brand: showCustomBrand ? customBrand.trim() : data.brand,
+        model: data.model.trim(),
+        vehicleType: data.vehicleType,
+        color: data.color?.trim() || '',
+        year: data.year || null,
+        fuelType: data.fuelType || 'essence',
+        condition: data.condition || 'good',
+        notes: data.notes?.trim() || ''
+      };
+
+      await startPreparation(vehicleData);
+
+      toast({
+        title: "✅ Préparation démarrée",
+        description: `Préparation du véhicule ${vehicleData.licensePlate} créée avec succès.`
+      });
+
+      // Rediriger vers la page de workflow
+      router.push('/preparations');
+
+    } catch (error: any) {
+      console.error('❌ Erreur création préparation:', error);
+      
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de créer la préparation",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    return cleaned;
   };
 
-  const handleLicensePlateChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const formatted = formatLicensePlate(e.target.value);
-    form.setValue('licensePlate', formatted);
-  };
-
-  const selectedAgency = userAgencies.find(a => a.id === form.watch('agencyId'));
-
-  // Vérifier si le formulaire est valide
-  const isFormValid = form.formState.isValid && 
-    form.watch('agencyId') && 
-    form.watch('licensePlate') && 
-    (showCustomBrand ? customBrand.trim() : form.watch('brand')) && 
-    form.watch('model');
+  // ===== RENDU =====
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-2xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => router.back()}
-            className="p-2 rounded-full"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">Nouvelle Préparation</h1>
-            <p className="text-sm text-gray-600">
-              Remplissez les informations du véhicule
-            </p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-md mx-auto px-4 py-3">
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.back()}
+              className="p-1"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="font-semibold text-gray-900">Nouvelle préparation</h1>
+              <p className="text-sm text-gray-600">Créer une préparation de véhicule</p>
+            </div>
           </div>
         </div>
+      </div>
 
+      {/* Contenu principal */}
+      <div className="max-w-md mx-auto px-4 py-6">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             
-            {/* Agence */}
+            {/* Erreur globale */}
+            {error && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Sélection d'agence */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -237,31 +301,25 @@ const NewPreparationPage: React.FC = () => {
                   name="agencyId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Sélectionner l'agence *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ''}>
+                      <FormLabel>Agence *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-12">
-                            <SelectValue placeholder="Choisir une agence...">
-                              {field.value && selectedAgency ? (
-                                <div className="flex items-center justify-between w-full">
-                                  <span className="font-medium truncate pr-2">
-                                    {selectedAgency.name}
-                                  </span>
-                                  <span className="text-sm text-gray-500 flex-shrink-0">
-                                    {selectedAgency.code}
-                                  </span>
-                                </div>
-                              ) : (
-                                "Choisir une agence..."
-                              )}
-                            </SelectValue>
+                            <SelectValue placeholder="Sélectionnez une agence" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {userAgencies.map((agency) => (
+                          {userAgencies.map(agency => (
                             <SelectItem key={agency.id} value={agency.id}>
-                              <div>
-                                <div className="font-medium">{agency.name}</div>
+                              <div className="flex flex-col">
+                                <div className="font-medium flex items-center space-x-2">
+                                  <span>{agency.name}</span>
+                                  {agency.isDefault && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      Par défaut
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="text-sm text-gray-500">
                                   {agency.client} • {agency.code}
                                 </div>
@@ -277,7 +335,7 @@ const NewPreparationPage: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Véhicule */}
+            {/* Informations véhicule */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -287,7 +345,7 @@ const NewPreparationPage: React.FC = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 
-                {/* Plaque */}
+                {/* Plaque d'immatriculation */}
                 <FormField
                   control={form.control}
                   name="licensePlate"
@@ -297,7 +355,7 @@ const NewPreparationPage: React.FC = () => {
                       <FormControl>
                         <Input
                           {...field}
-                          placeholder="AB-123-CD ou 123-AB-123"
+                          placeholder="AB-123-CD"
                           onChange={handleLicensePlateChange}
                           className="h-12 text-center text-lg font-mono tracking-wider uppercase"
                           maxLength={10}
@@ -311,7 +369,53 @@ const NewPreparationPage: React.FC = () => {
                   )}
                 />
 
-                {/* Marque */}
+                {/* Type de véhicule */}
+                <FormField
+                  control={form.control}
+                  name="vehicleType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Type de véhicule *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-12">
+                            <SelectValue placeholder="Sélectionnez le type de véhicule" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="particulier">
+                            <div className="flex items-center space-x-3">
+                              <span className="text-lg">🚗</span>
+                              <div>
+                                <div className="font-medium">Véhicule particulier</div>
+                                <div className="text-sm text-gray-500">
+                                  Voiture, citadine, berline, break
+                                </div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="utilitaire">
+                            <div className="flex items-center space-x-3">
+                              <span className="text-lg">🚐</span>
+                              <div>
+                                <div className="font-medium">Véhicule utilitaire</div>
+                                <div className="text-sm text-gray-500">
+                                  Fourgon, camionnette, van
+                                </div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <div className="text-xs text-gray-600 mt-1">
+                        💡 Ce choix influence la tarification de la préparation
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Marque du véhicule */}
                 <FormField
                   control={form.control}
                   name="brand"
@@ -319,14 +423,14 @@ const NewPreparationPage: React.FC = () => {
                     <FormItem>
                       <FormLabel>Marque du véhicule *</FormLabel>
                       {!showCustomBrand ? (
-                        <Select onValueChange={handleBrandChange} value={field.value}>
+                        <Select onValueChange={handleBrandChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger className="h-12">
-                              <SelectValue placeholder="Sélectionner une marque..." />
+                              <SelectValue placeholder="Sélectionnez une marque" />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent>
-                            {VEHICLE_BRANDS.map((brand) => (
+                          <SelectContent className="max-h-60">
+                            {VEHICLE_BRANDS.map(brand => (
                               <SelectItem key={brand} value={brand}>
                                 {brand}
                               </SelectItem>
@@ -334,26 +438,29 @@ const NewPreparationPage: React.FC = () => {
                           </SelectContent>
                         </Select>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           <FormControl>
                             <Input
-                              placeholder="Saisir la marque personnalisée..."
+                              placeholder="Saisissez la marque"
                               value={customBrand}
-                              onChange={(e) => setCustomBrand(e.target.value)}
+                              onChange={(e) => {
+                                setCustomBrand(e.target.value);
+                                field.onChange(e.target.value);
+                              }}
                               className="h-12"
                             />
                           </FormControl>
-                          <Button 
+                          <Button
                             type="button"
-                            variant="outline" 
+                            variant="outline"
                             size="sm"
                             onClick={() => {
                               setShowCustomBrand(false);
                               setCustomBrand('');
+                              field.onChange('');
                             }}
-                            className="w-full"
                           >
-                            ← Retour à la liste des marques
+                            Choisir dans la liste
                           </Button>
                         </div>
                       )}
@@ -362,7 +469,7 @@ const NewPreparationPage: React.FC = () => {
                   )}
                 />
 
-                {/* Modèle */}
+                {/* Modèle du véhicule */}
                 <FormField
                   control={form.control}
                   name="model"
@@ -370,9 +477,9 @@ const NewPreparationPage: React.FC = () => {
                     <FormItem>
                       <FormLabel>Modèle du véhicule *</FormLabel>
                       <FormControl>
-                        <Input 
-                          {...field} 
-                          placeholder="A4, Clio, Golf, C3..." 
+                        <Input
+                          {...field}
+                          placeholder="ex: Série 3, A4, Clio..."
                           className="h-12"
                         />
                       </FormControl>
@@ -380,50 +487,82 @@ const NewPreparationPage: React.FC = () => {
                     </FormItem>
                   )}
                 />
+
+                {/* Notes */}
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes (optionnel)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          placeholder="Commentaires, observations particulières..."
+                          className="min-h-[80px] resize-none"
+                          maxLength={500}
+                        />
+                      </FormControl>
+                      <div className="text-xs text-gray-500">
+                        {field.value?.length || 0}/500 caractères
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </CardContent>
             </Card>
 
-            {/* Récapitulatif - supprimé */}
-
-            {/* Message d'erreur */}
-            {error && (
-              <Card className="border-red-200 bg-red-50">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 text-red-800">
-                    <AlertCircle className="w-4 h-4" />
-                    <p className="font-medium">Erreur</p>
+            {/* Boutons d'action */}
+            <div className="space-y-3">
+              <Button
+                type="submit"
+                disabled={isSubmitting || isLoading}
+                className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-medium"
+                size="lg"
+              >
+                {isSubmitting || isLoading ? (
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Création en cours...</span>
                   </div>
-                  <p className="text-red-700 text-sm mt-1">{error}</p>
-                </CardContent>
-              </Card>
-            )}
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="h-5 w-5" />
+                    <span>Démarrer la préparation</span>
+                  </div>
+                )}
+              </Button>
 
-            {/* Actions */}
-            <div className="flex gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => router.back()}
-                className="flex-1"
+                className="w-full h-12"
+                disabled={isSubmitting || isLoading}
               >
                 Annuler
               </Button>
-              
-              <Button
-                type="submit"
-                disabled={isLoading || !isFormValid}
-                className="flex-1 bg-green-600 hover:bg-green-700"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                    Démarrage...
-                  </>
-                ) : (
-                  '🚀 Démarrer la préparation'
-                )}
-              </Button>
             </div>
+
+            {/* Info de validation */}
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm">
+                    <h4 className="font-medium text-blue-900 mb-1">
+                      Information importante
+                    </h4>
+                    <p className="text-blue-700">
+                      Une fois la préparation démarrée, vous serez dirigé vers l'interface 
+                      de workflow pour réaliser les étapes. Le chronomètre de 30 minutes 
+                      commencera automatiquement.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </form>
         </Form>
       </div>
