@@ -313,36 +313,17 @@ preparationSchema.methods.completeStep = function(stepType, data = {}) {
 };
 
 // Finaliser la préparation
-preparationSchema.pre('save', function(next) {
-  // Calcul du progrès basé sur les étapes réellement complétées
-  const completedSteps = this.steps.filter(step => step.completed).length;
-  const totalSteps = this.steps.length;
-  this.progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-  
-  // Validation simplifiée : au moins une étape doit être complétée pour terminer
-  if (this.status === PREPARATION_STATUS.COMPLETED) {
-    const hasAtLeastOneStep = this.steps.some(step => step.completed);
-    if (!hasAtLeastOneStep) {
-      return next(new Error('Au moins une étape doit être complétée pour terminer la préparation'));
-    }
+preparationSchema.methods.complete = function(notes = '') {
+  if (this.status !== PREPARATION_STATUS.IN_PROGRESS) {
+    throw new Error('Seule une préparation en cours peut être finalisée');
   }
   
-  next();
-});
-
-// ✅ AJOUTER: Méthode pour vérifier si la préparation peut être terminée
-preparationSchema.methods.canBeCompleted = function() {
-  return this.steps.some(step => step.completed);
-};
-
-// ✅ AJOUTER: Méthode pour obtenir les étapes complétées
-preparationSchema.methods.getCompletedSteps = function() {
-  return this.steps.filter(step => step.completed);
-};
-
-// ✅ AJOUTER: Méthode pour obtenir les étapes restantes (non obligatoires)
-preparationSchema.methods.getRemainingSteps = function() {
-  return this.steps.filter(step => !step.completed);
+  this.status = PREPARATION_STATUS.COMPLETED;
+  this.endTime = new Date();
+  this.totalTime = this.currentDuration;
+  this.notes = notes;
+  
+  return this.save();
 };
 
 // Ajouter un incident

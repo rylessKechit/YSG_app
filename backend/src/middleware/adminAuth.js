@@ -1,5 +1,5 @@
 // backend/src/middleware/adminAuth.js
-// ✅ CORRECTION: Middleware d'autorisation flexible
+// ✅ Middleware d'autorisation complet et corrigé
 
 const { USER_ROLES, ERROR_MESSAGES } = require('../utils/constants');
 
@@ -38,8 +38,8 @@ const adminAuth = (req, res, next) => {
 };
 
 /**
- * ✅ CORRECTION: Middleware pour autoriser préparateurs ET admins
- * Les admins peuvent accéder aux routes préparateur pour supervision
+ * Middleware pour vérifier les droits de préparateur
+ * Utilisé pour les routes spécifiques aux préparateurs
  */
 const preparateurAuth = (req, res, next) => {
   try {
@@ -50,57 +50,19 @@ const preparateurAuth = (req, res, next) => {
       });
     }
 
-    // ✅ CHANGEMENT: Autoriser admins ET préparateurs
-    const allowedRoles = ['admin', 'preparateur'];
-    if (!allowedRoles.includes(req.user.role)) {
+    // Seuls les préparateurs peuvent accéder (pas les admins pour ces routes spécifiques)
+    if (req.user.role !== USER_ROLES.PREPARATEUR && req.user.role !== 'preparateur') {
       return res.status(403).json({
         success: false,
-        message: 'Accès réservé aux préparateurs et administrateurs',
-        data: {
-          userRole: req.user.role,
-          allowedRoles: allowedRoles
-        }
+        message: 'Accès réservé aux préparateurs'
       });
     }
 
-    console.log(`✅ Accès préparateur autorisé: ${req.user.email} (${req.user.role})`);
+    console.log(`✅ Préparateur authentifié: ${req.user.email}`);
     next();
 
   } catch (error) {
     console.error('❌ Erreur vérification préparateur:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
-    });
-  }
-};
-
-/**
- * Middleware STRICT pour les préparateurs uniquement
- * À utiliser pour les routes qui ne doivent être accessibles qu'aux préparateurs
- */
-const preparateurOnlyAuth = (req, res, next) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: ERROR_MESSAGES.TOKEN_REQUIRED || 'Authentification requise'
-      });
-    }
-
-    // Seuls les préparateurs (pas les admins)
-    if (req.user.role !== USER_ROLES.PREPARATEUR && req.user.role !== 'preparateur') {
-      return res.status(403).json({
-        success: false,
-        message: 'Accès strictement réservé aux préparateurs'
-      });
-    }
-
-    console.log(`✅ Préparateur strict authentifié: ${req.user.email}`);
-    next();
-
-  } catch (error) {
-    console.error('❌ Erreur vérification préparateur strict:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
@@ -272,8 +234,7 @@ const userDataAccessAuth = (req, res, next) => {
 
 module.exports = {
   adminAuth,
-  preparateurAuth, // ✅ Maintenant flexible (admin + preparateur)
-  preparateurOnlyAuth, // ✅ Nouveau: préparateurs uniquement
+  preparateurAuth,
   anyUserAuth,
   conditionalAuth,
   agencyAccessAuth,
