@@ -9,7 +9,11 @@ import {
   Car,
   ArrowRight,
   History,
-  AlertTriangle
+  AlertTriangle,
+  BarChart3,
+  Home,
+  FileText,
+  User
 } from 'lucide-react';
 
 import { usePreparationStore } from '@/lib/stores/preparation';
@@ -67,59 +71,62 @@ const PreparationsPage: React.FC = () => {
   };
 
   const handleViewHistory = () => {
+    router.push('/preparations/history');
+  };
+
+  const handleViewPerformance = () => {
     toast({
       title: "Fonctionnalité à venir",
-      description: "L'historique des préparations sera bientôt disponible.",
+      description: "Vos statistiques de performance seront bientôt disponibles.",
     });
   };
 
-  // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center pb-16">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Vérification des préparations en cours...</p>
+          <Car className="h-8 w-8 mx-auto text-blue-600 animate-spin" />
+          <p className="mt-2 text-gray-600">Chargement...</p>
         </div>
       </div>
     );
   }
 
-  // Si une préparation est en cours, on sera redirigé automatiquement
-  // Cette page n'apparaît que s'il n'y a pas de préparation en cours
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-16">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <h1 className="text-xl font-semibold text-gray-900">Préparations</h1>
+      <div className="bg-white border-b px-4 py-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Préparations</h1>
           <p className="text-sm text-gray-600">Gestion des préparations véhicules</p>
         </div>
-      </header>
+      </div>
 
       {/* Contenu principal */}
-      <main className="max-w-md mx-auto px-4 py-6 space-y-4">
-        {/* Message d'erreur si applicable */}
+      <main className="p-4 space-y-6">
+        {/* Erreur affichage */}
         {error && (
           <Card className="border-red-200 bg-red-50">
             <CardContent className="p-4">
-              <div className="flex items-center text-red-700">
-                <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
-                <span className="text-sm">{error}</span>
+              <div className="flex items-start space-x-3">
+                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                <div>
+                  <h3 className="font-medium text-red-900">Erreur</h3>
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
         {/* Aucune préparation en cours */}
-        <Card>
-          <CardHeader className="text-center pb-2">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <Card className="text-center">
+          <CardHeader className="pb-4">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Car className="h-8 w-8 text-gray-400" />
             </div>
             <CardTitle className="text-lg">Aucune préparation en cours</CardTitle>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 mt-2">
               Vous n'avez actuellement aucune préparation de véhicule en cours.
             </p>
           </CardHeader>
@@ -161,16 +168,21 @@ const PreparationsPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Statistiques rapides - placeholder */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-green-600" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">Performance</h3>
-                  <p className="text-sm text-gray-600">Vos statistiques détaillées</p>
+          {/* Statistiques de performance */}
+          <Card className="cursor-pointer hover:bg-gray-50 transition-colors">
+            <CardContent 
+              className="p-4"
+              onClick={handleViewPerformance}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                    <BarChart3 className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">Performance</h3>
+                    <p className="text-sm text-gray-600">Vos statistiques détaillées</p>
+                  </div>
                 </div>
                 <Badge variant="outline">Bientôt</Badge>
               </div>
@@ -189,6 +201,43 @@ const PreparationsPage: React.FC = () => {
           </CardContent>
         </Card>
       </main>
+
+      {/* ✅ NAVIGATION BOTTOM */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg safe-area-pb">
+        <div className="grid grid-cols-4 h-16">
+          <button 
+            onClick={() => router.push('/dashboard')}
+            className="flex flex-col items-center justify-center space-y-1 text-xs transition-colors hover:bg-gray-50"
+          >
+            <Home className="w-5 h-5 text-gray-400" />
+            <span className="text-gray-600">Accueil</span>
+          </button>
+          
+          <button 
+            onClick={() => router.push('/timesheets')}
+            className="flex flex-col items-center justify-center space-y-1 text-xs transition-colors hover:bg-gray-50"
+          >
+            <Clock className="w-5 h-5 text-gray-400" />
+            <span className="text-gray-600">Pointages</span>
+          </button>
+          
+          <button 
+            onClick={() => router.push('/preparations')}
+            className="flex flex-col items-center justify-center space-y-1 text-xs bg-blue-50"
+          >
+            <FileText className="w-5 h-5 text-blue-600" />
+            <span className="text-blue-600 font-medium">Préparations</span>
+          </button>
+          
+          <button 
+            onClick={() => router.push('/profile')}
+            className="flex flex-col items-center justify-center space-y-1 text-xs transition-colors hover:bg-gray-50"
+          >
+            <User className="w-5 h-5 text-gray-400" />
+            <span className="text-gray-600">Profil</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

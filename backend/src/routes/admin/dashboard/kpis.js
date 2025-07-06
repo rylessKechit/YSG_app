@@ -31,10 +31,12 @@ router.get('/', validateQuery(kpisQuerySchema), async (req, res) => {
   try {
     const { period, agencies, includeComparison } = req.query;
     
-    console.log('📊 Récupération KPIs:', { period, agencies });
-
-    // Calculer les dates selon la période
-    const dateRange = calculateDateRange(period);
+    // Calculer les dates aujourd'hui
+    const today = new Date();
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
     
     // Filtres de base
     const baseFilter = {};
@@ -42,80 +44,163 @@ router.get('/', validateQuery(kpisQuerySchema), async (req, res) => {
       baseFilter.agency = { $in: agencies };
     }
 
-    // ===== CALCULS KPIs SIMPLES (éviter MongoDB complexe) =====
-    
-    // 1. Compteurs utilisateurs
+    // ===== 1. PRÉPARATEURS =====
     const [totalPreparateurs, activePreparateurs] = await Promise.all([
       User.countDocuments({ role: 'preparateur' }),
       User.countDocuments({ role: 'preparateur', isActive: true })
     ]);
 
-    // 2. Compteur agences
-    const totalAgencies = await Agency.countDocuments({});
+    // Méthode qui a fonctionné pour les présents (combinée pour être robuste)
+    const presentToday = await Timesheet.countDocuments({
+      ...baseFilter,
+      date: {
+        $gte: todayStart,
+        $lt: todayEnd
+      },
+      $or: [
+        { clockInTime: { $exists: true } },
+        { startTime: { $exists: true } }
+      ]
+    });
 
-    // 3. Préparations aujourd'hui (requête simple)
+    // Préparateurs en retard
+    const lateToday = await Timesheet.countDocuments({
+      ...baseFilter,
+      date: {
+        $gte: todayStart,
+        $lt: todayEnd
+      },
+      isLate: true
+    });
+
+    // ===== 2. PRÉPARATIONS =====
     const preparationsToday = await Preparation.countDocuments({
       ...baseFilter,
       createdAt: {
-        $gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        $lt: new Date(new Date().setHours(23, 59, 59, 999))
+        $gte: todayStart,
+        $lt: todayEnd
       }
     });
 
-    // 4. Préparations cette semaine
-    const startOfWeek = getStartOfWeek(new Date());
-    const endOfWeek = getEndOfWeek(new Date());
-    
-    const preparationsThisWeek = await Preparation.countDocuments({
-      ...baseFilter,
-      createdAt: {
-        $gte: startOfWeek,
-        $lt: endOfWeek
-      }
-    });
-
-    // 5. Temps moyen simple (éviter aggregation complexe)
-    const avgTimeResult = await Preparation.find({
+    const preparationsCompleted = await Preparation.countDocuments({
       ...baseFilter,
       status: 'completed',
-      totalTime: { $exists: true, $ne: null },
       createdAt: {
-        $gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        $lt: new Date(new Date().setHours(23, 59, 59, 999))
+        $gte: todayStart,
+        $lt: todayEnd
+      }
+    });
+
+    const preparationsInProgress = await Preparation.countDocuments({
+      ...baseFilter,
+      status: 'in_progress'
+    });
+
+    // Préparations en retard (plus de 30 min)
+    const preparationsLate = await Preparation.countDocuments({
+      ...baseFilter,
+      status: 'in_progress',
+      createdAt: {
+        $lt: new Date(Date.now() - 30 * 60 * 1000) // 30 min ago
+      }
+    });
+
+    // ===== 3. TEMPS MOYEN (CORRIGÉ) =====
+    const completedPreparationsToday = await Preparation.find({
+      ...baseFilter,
+      status: 'completed',
+      totalTime: { $exists: true, $ne: null, $gt: 0 },
+      createdAt: {
+        $gte: todayStart,
+        $lt: todayEnd
       }
     }).select('totalTime');
 
-    const averageTimeToday = avgTimeResult.length > 0 
-      ? Math.round(avgTimeResult.reduce((sum, prep) => sum + prep.totalTime, 0) / avgTimeResult.length)
+    let averageTimeToday = 0;
+    if (completedPreparationsToday.length > 0) {
+      const totalTime = completedPreparationsToday.reduce((sum, prep) => sum + prep.totalTime, 0);
+      averageTimeToday = Math.round(totalTime / completedPreparationsToday.length);
+    }
+
+    // ===== 4. PONCTUALITÉ =====
+    const todayTimesheets = await Timesheet.find({
+      ...baseFilter,
+      date: {
+        $gte: todayStart,
+        $lt: todayEnd
+      },
+      $or: [
+        { clockInTime: { $exists: true } },
+        { startTime: { $exists: true } }
+      ]
+    });
+
+    const onTimeCount = todayTimesheets.filter(t => !t.isLate).length;
+    const punctualityRate = todayTimesheets.length > 0 
+      ? Math.round((onTimeCount / todayTimesheets.length) * 100)
       : 0;
 
-    // 6. Taux de ponctualité simple
-    const punctualityRate = await calculateSimplePunctuality(dateRange, baseFilter);
+    // ===== 5. AGENCES =====
+    const totalAgencies = await Agency.countDocuments({ isActive: true });
 
-    // ===== RESPONSE =====
-    const kpis = {
-      totalPreparateurs,
-      activePreparateurs,
-      totalAgencies,
-      preparationsToday,
-      preparationsThisWeek,
-      averageTimeToday,
-      punctualityRate,
-      timestamp: new Date()
+    // Performance par agence (simple)
+    const agencyList = await Agency.find({ isActive: true }).select('name');
+    const ponctualiteParAgence = [];
+
+    for (const agency of agencyList.slice(0, 5)) { // Limiter à 5 pour éviter la surcharge
+      const agencyTimesheets = await Timesheet.find({
+        agency: agency._id,
+        date: {
+          $gte: todayStart,
+          $lt: todayEnd
+        },
+        $or: [
+          { clockInTime: { $exists: true } },
+          { startTime: { $exists: true } }
+        ]
+      });
+
+      const agencyOnTime = agencyTimesheets.filter(t => !t.isLate).length;
+      const agencyRate = agencyTimesheets.length > 0 
+        ? Math.round((agencyOnTime / agencyTimesheets.length) * 100)
+        : 0;
+
+      ponctualiteParAgence.push({
+        agencyId: agency._id,
+        name: agency.name,
+        rate: agencyRate
+      });
+    }
+
+    // ===== CONSTRUCTION DE LA RÉPONSE =====
+    const kpisData = {
+      preparateurs: {
+        total: totalPreparateurs,
+        active: activePreparateurs,
+        present: presentToday,
+        late: lateToday
+      },
+      ponctualite: {
+        global: punctualityRate,
+        parAgence: ponctualiteParAgence
+      },
+      preparations: {
+        aujourdhui: preparationsToday,
+        tempsMoyen: averageTimeToday,
+        enRetard: preparationsLate,
+        terminees: preparationsCompleted
+      },
+      objectifs: {
+        preparationsJour: 50,
+        ponctualiteMin: 95,
+        tempsMoyenMax: 30
+      },
+      timestamp: new Date().toISOString()
     };
-
-    console.log('✅ KPIs calculés:', kpis);
 
     res.json({
       success: true,
-      data: {
-        kpis,
-        period,
-        dateRange: {
-          start: dateRange.start,
-          end: dateRange.end
-        }
-      }
+      data: kpisData
     });
 
   } catch (error) {
@@ -127,105 +212,5 @@ router.get('/', validateQuery(kpisQuerySchema), async (req, res) => {
     });
   }
 });
-
-// ===== FONCTIONS UTILITAIRES =====
-
-function calculateDateRange(period) {
-  const now = new Date();
-  const today = new Date(now.setHours(0, 0, 0, 0));
-  
-  switch (period) {
-    case 'today':
-      return {
-        start: today,
-        end: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-      };
-      
-    case 'week':
-      return {
-        start: getStartOfWeek(today),
-        end: getEndOfWeek(today)
-      };
-      
-    case 'month':
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return {
-        start: startOfMonth,
-        end: endOfMonth
-      };
-      
-    case 'quarter':
-      const quarter = Math.floor(now.getMonth() / 3);
-      const startOfQuarter = new Date(now.getFullYear(), quarter * 3, 1);
-      const endOfQuarter = new Date(now.getFullYear(), (quarter + 1) * 3, 0);
-      return {
-        start: startOfQuarter,
-        end: endOfQuarter
-      };
-      
-    case 'year':
-      const startOfYear = new Date(now.getFullYear(), 0, 1);
-      const endOfYear = new Date(now.getFullYear(), 11, 31);
-      return {
-        start: startOfYear,
-        end: endOfYear
-      };
-      
-    default:
-      return {
-        start: today,
-        end: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-      };
-  }
-}
-
-function getStartOfWeek(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Lundi = début semaine
-  return new Date(d.setDate(diff));
-}
-
-function getEndOfWeek(date) {
-  const startOfWeek = getStartOfWeek(date);
-  return new Date(startOfWeek.getTime() + 6 * 24 * 60 * 60 * 1000);
-}
-
-async function calculateSimplePunctuality(dateRange, baseFilter) {
-  try {
-    // Méthode simple sans aggregation complexe
-    const timesheets = await Timesheet.find({
-      ...baseFilter,
-      clockInTime: {
-        $gte: dateRange.start,
-        $lt: dateRange.end
-      }
-    }).populate('schedule', 'startTime');
-
-    if (timesheets.length === 0) return 0;
-
-    let onTimeCount = 0;
-    timesheets.forEach(timesheet => {
-      if (timesheet.schedule && timesheet.clockInTime) {
-        const clockInHour = timesheet.clockInTime.getHours();
-        const clockInMinute = timesheet.clockInTime.getMinutes();
-        const clockInTime = clockInHour * 60 + clockInMinute;
-        
-        const [scheduleHour, scheduleMinute] = timesheet.schedule.startTime.split(':').map(Number);
-        const scheduleTime = scheduleHour * 60 + scheduleMinute;
-        
-        if (clockInTime <= scheduleTime + 5) { // 5 min de tolérance
-          onTimeCount++;
-        }
-      }
-    });
-
-    return Math.round((onTimeCount / timesheets.length) * 100);
-  } catch (error) {
-    console.error('Erreur calcul ponctualité:', error);
-    return 0;
-  }
-}
 
 module.exports = router;

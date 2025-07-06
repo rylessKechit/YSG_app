@@ -17,9 +17,28 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS
+// 🔧 CORS - SEULE MODIFICATION : Support multi-origins
+const allowedOrigins = [
+  'http://localhost:3000',    // preparator-app
+  'http://localhost:3001',    // admin-app
+  process.env.FRONTEND_URL,   // URL générique
+  process.env.PREPARATOR_URL, // URLs spécifiques
+  process.env.ADMIN_URL
+].filter(Boolean); // Enlever les valeurs undefined
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Autoriser les requêtes sans origin (ex: mobile apps, Postman)
+    if (!origin) return callback(null, true);
+    
+    // Vérifier si l'origin est dans la liste autorisée
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️  Origin non autorisée: ${origin}`);
+      callback(new Error('Non autorisé par la politique CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -159,6 +178,7 @@ try {
   app.use('/api/admin/dashboard/overview', require('./routes/admin/dashboard/overview'));
   app.use('/api/admin/dashboard/charts', require('./routes/admin/dashboard/charts'));
   app.use('/api/admin/dashboard/alerts', require('./routes/admin/dashboard/alerts'));
+  app.use('/api/admin/dashboard/kpis', require('./routes/admin/dashboard/kpis'));
   console.log('✅ Routes admin/dashboard chargées avec succès');
 } catch (error) {
   console.warn('⚠️ Erreur chargement routes admin/dashboard:', error.message);
@@ -198,74 +218,25 @@ try {
   console.warn('⚠️ Erreur chargement routes profile:', error.message);
 }
 
-// ===== GESTION DES ERREURS =====
+// ===== GESTION D'ERREURS GLOBALE =====
 
-// Middleware pour les routes non trouvées
+// Middleware pour routes non trouvées
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route non trouvée',
-    data: {
-      method: req.method,
-      url: req.originalUrl,
-      availableEndpoints: [
-        '/api/auth/*',
-        '/api/admin/*',
-        '/api/timesheets/*',
-        '/api/preparations/*',
-        '/api/profile/*'
-      ]
-    }
+    message: `Route ${req.method} ${req.originalUrl} non trouvée`
   });
 });
 
-// Middleware de gestion globale des erreurs
-app.use((error, req, res, next) => {
-  console.error('❌ Erreur non gérée:', error);
-  
-  // Erreur de validation Joi
-  if (error.isJoi) {
-    return res.status(400).json({
-      success: false,
-      message: 'Données invalides',
-      errors: error.details?.map(detail => ({
-        field: detail.path?.join('.'),
-        message: detail.message
-      }))
-    });
-  }
+// Gestionnaire d'erreurs global
+app.use((err, req, res, next) => {
+  console.error('❌ Erreur globale:', err);
 
-  // Erreur MongoDB
-  if (error.name === 'MongoError' || error.name === 'ValidationError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Erreur de base de données',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-
-  // Erreur JWT
-  if (error.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token invalide'
-    });
-  }
-
-  if (error.name === 'TokenExpiredError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Token expiré'
-    });
-  }
-
-  // Erreur générique
-  res.status(error.status || 500).json({
+  res.status(500).json({
     success: false,
-    message: error.message || 'Erreur interne du serveur',
-    error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    message: 'Erreur serveur interne',
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Une erreur est survenue'
   });
 });
 
-// ===== EXPORT =====
 module.exports = app;

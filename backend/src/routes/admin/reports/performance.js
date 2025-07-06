@@ -4,7 +4,7 @@ const router = express.Router();
 const { ERROR_MESSAGES, getDateRange, loadModels, generateMockData, validateFilters } = require('./utils');
 
 // ================================
-// RAPPORT DE PERFORMANCE
+// RAPPORT DE PERFORMANCE - VERSION CORRIGÉE
 // ================================
 
 router.get('/', async (req, res) => {
@@ -45,216 +45,184 @@ router.get('/', async (req, res) => {
     let agencyFilter = {};
     if (agencies.length > 0) {
       const agencyIds = Array.isArray(agencies) ? agencies : [agencies];
-      agencyFilter = { agencyId: { $in: agencyIds } };
+      agencyFilter = { agency: { $in: agencyIds } }; // ✅ CORRIGÉ: agency au lieu de agencyId
     }
 
+    // ✅ CORRIGÉ: Populate avec les bons noms de champs
     // Récupérer toutes les préparations terminées de la période
     const preparations = await models.Preparation.find({
       ...agencyFilter,
       startTime: { $gte: dateStart, $lte: dateEnd },
       status: 'completed'
-    }).populate('userId', 'firstName lastName')
-      .populate('agencyId', 'name');
+    }).populate('user', 'firstName lastName') // ✅ CORRIGÉ: user au lieu de userId
+      .populate('agency', 'name'); // ✅ CORRIGÉ: agency au lieu de agencyId
 
     // Calculer les métriques globales
     const totalPreparations = preparations.length;
     const totalTime = preparations.reduce((sum, prep) => {
-      const duration = new Date(prep.endTime) - new Date(prep.startTime);
-      return sum + (duration / (1000 * 60)); // en minutes
+      // ✅ CORRIGÉ: Utiliser totalTime qui est déjà en minutes
+      return sum + (prep.totalTime || 0);
     }, 0);
 
     const tempsMoyenGlobal = totalPreparations > 0 ? totalTime / totalPreparations : 0;
     const objectifTemps = 25; // 25 minutes - configurable
     const preparationsRespectantObjectif = preparations.filter(prep => {
-      const duration = new Date(prep.endTime) - new Date(prep.startTime);
-      const minutes = duration / (1000 * 60);
-      return minutes <= objectifTemps;
+      return (prep.totalTime || 0) <= objectifTemps;
     }).length;
 
     const tauxRespectObjectif = totalPreparations > 0 ? 
       (preparationsRespectantObjectif / totalPreparations) * 100 : 0;
 
     // Performance par agence
-    const agencies_list = await models.Agency.find(agencyFilter.agencyId ? { _id: agencyFilter.agencyId } : {});
-    const agencyStats = [];
+    const agencies_list = await models.Agency.find(
+      agencyFilter.agency ? { _id: { $in: agencyFilter.agency.$in } } : {}
+    );
 
-    for (const agency of agencies_list) {
-      const agencyPreps = preparations.filter(prep => 
-        prep.agencyId && prep.agencyId._id.toString() === agency._id.toString()
+    const performanceParAgence = agencies_list.map(agency => {
+      const preparationsAgence = preparations.filter(prep => 
+        prep.agency && prep.agency._id.toString() === agency._id.toString()
       );
+      
+      const totalAgence = preparationsAgence.length;
+      const tempsTotalAgence = preparationsAgence.reduce((sum, prep) => sum + (prep.totalTime || 0), 0);
+      const tempsMoyenAgence = totalAgence > 0 ? tempsTotalAgence / totalAgence : 0;
+      const objectifRespectedAgence = preparationsAgence.filter(prep => (prep.totalTime || 0) <= objectifTemps).length;
+      const tauxAgence = totalAgence > 0 ? (objectifRespectedAgence / totalAgence) * 100 : 0;
 
-      const agencyTotalTime = agencyPreps.reduce((sum, prep) => {
-        const duration = new Date(prep.endTime) - new Date(prep.startTime);
-        return sum + (duration / (1000 * 60));
-      }, 0);
-
-      const agencyAvgTime = agencyPreps.length > 0 ? agencyTotalTime / agencyPreps.length : 0;
-      const agencyObjectifResp = agencyPreps.filter(prep => {
-        const duration = new Date(prep.endTime) - new Date(prep.startTime);
-        return (duration / (1000 * 60)) <= objectifTemps;
-      }).length;
-
-      const agencySuccessRate = agencyPreps.length > 0 ? 
-        (agencyObjectifResp / agencyPreps.length) * 100 : 0;
-
-      agencyStats.push({
-        agenceId: agency._id,
-        nom: agency.name,
-        totalPreparations: agencyPreps.length,
-        tempsMoyen: parseFloat(agencyAvgTime.toFixed(1)),
-        tempsMoyenObjectif: objectifTemps,
-        tauxReussiteObjectif: parseFloat(agencySuccessRate.toFixed(1)),
-        efficacite: agencySuccessRate >= 90 ? 'excellent' : 
-                   agencySuccessRate >= 80 ? 'bon' : 
-                   agencySuccessRate >= 70 ? 'moyen' : 'faible'
-      });
-    }
-
-    // Évolution dans le temps (par jour)
-    const dailyStats = {};
-    preparations.forEach(prep => {
-      const day = prep.startTime.toISOString().split('T')[0];
-      if (!dailyStats[day]) {
-        dailyStats[day] = { total: 0, totalTime: 0 };
-      }
-      dailyStats[day].total++;
-      const duration = new Date(prep.endTime) - new Date(prep.startTime);
-      dailyStats[day].totalTime += (duration / (1000 * 60));
+      return {
+        agencyId: agency._id,
+        agencyName: agency.name,
+        totalPreparations: totalAgence,
+        tempsMoyen: Math.round(tempsMoyenAgence),
+        tauxRespectObjectif: Math.round(tauxAgence * 10) / 10,
+        objectifTemps: objectifTemps
+      };
     });
 
-    const evolution = Object.keys(dailyStats)
-      .sort()
-      .map(date => ({
-        date,
-        tempsMoyen: dailyStats[date].total > 0 ? 
-          parseFloat((dailyStats[date].totalTime / dailyStats[date].total).toFixed(1)) : 0,
-        totalPreparations: dailyStats[date].total
-      }));
+    // Performance par préparateur
+    const performanceParPreparateur = [];
+    const preparateursMap = new Map();
 
-    // Pics d'activité par heure
-    const hourlyStats = {};
     preparations.forEach(prep => {
-      const hour = new Date(prep.startTime).getHours();
-      if (!hourlyStats[hour]) {
-        hourlyStats[hour] = { count: 0, totalTime: 0 };
-      }
-      hourlyStats[hour].count++;
-      const duration = new Date(prep.endTime) - new Date(prep.startTime);
-      hourlyStats[hour].totalTime += (duration / (1000 * 60));
-    });
-
-    const picActivite = Object.keys(hourlyStats).map(hour => ({
-      heure: parseInt(hour),
-      nombrePreparations: hourlyStats[hour].count,
-      tempsMoyen: hourlyStats[hour].count > 0 ? 
-        parseFloat((hourlyStats[hour].totalTime / hourlyStats[hour].count).toFixed(1)) : 0
-    })).sort((a, b) => a.heure - b.heure);
-
-    // Performance par utilisateur
-    const userStats = {};
-    preparations.forEach(prep => {
-      const userId = prep.userId._id.toString();
-      const agencyName = prep.agencyId ? prep.agencyId.name : 'Non définie';
-
-      if (!userStats[userId]) {
-        userStats[userId] = {
-          userId,
-          prenom: prep.userId.firstName,
-          nom: prep.userId.lastName,
-          agence: agencyName,
-          totalPreparations: 0,
-          totalTime: 0,
-          times: []
-        };
-      }
-
-      userStats[userId].totalPreparations++;
-      const duration = new Date(prep.endTime) - new Date(prep.startTime);
-      const minutes = duration / (1000 * 60);
-      userStats[userId].totalTime += minutes;
-      userStats[userId].times.push(minutes);
-    });
-
-    const parUtilisateur = Object.values(userStats)
-      .map(user => {
-        const avgTime = user.totalPreparations > 0 ? user.totalTime / user.totalPreparations : 0;
-        const sortedTimes = user.times.sort((a, b) => a - b);
-        const best = sortedTimes[0] || 0;
-        const worst = sortedTimes[sortedTimes.length - 1] || 0;
+      if (prep.user) {
+        const userId = prep.user._id.toString();
+        if (!preparateursMap.has(userId)) {
+          preparateursMap.set(userId, {
+            userId: userId,
+            preparateurNom: `${prep.user.firstName} ${prep.user.lastName}`,
+            preparations: [],
+            totalPreparations: 0,
+            tempsTotal: 0,
+            objectifRespected: 0
+          });
+        }
         
-        // Calculer la constance (écart-type inversé)
-        const mean = avgTime;
-        const variance = user.times.reduce((sum, time) => sum + Math.pow(time - mean, 2), 0) / user.times.length;
-        const stdDev = Math.sqrt(variance);
-        const constance = stdDev > 0 ? Math.max(0, 100 - (stdDev / mean * 100)) : 100;
-
-        return {
-          ...user,
-          tempsMoyen: parseFloat(avgTime.toFixed(1)),
-          meilleurePerformance: parseFloat(best.toFixed(1)),
-          pirePerformance: parseFloat(worst.toFixed(1)),
-          constance: parseFloat(constance.toFixed(1)),
-          classement: 0 // Sera calculé après tri
-        };
-      })
-      .sort((a, b) => a.tempsMoyen - b.tempsMoyen)
-      .map((user, index) => ({ ...user, classement: index + 1 }));
-
-    const reportData = {
-      periode: {
-        debut: dateStart.toISOString().split('T')[0],
-        fin: dateEnd.toISOString().split('T')[0]
-      },
-      global: {
-        totalPreparations,
-        tempsMoyenGlobal: parseFloat(tempsMoyenGlobal.toFixed(1)),
-        objectifTemps,
-        tauxRespectObjectif: parseFloat(tauxRespectObjectif.toFixed(1))
-      },
-      parAgence: agencyStats,
-      parUtilisateur,
-      tendances: {
-        evolution,
-        picActivite
+        const prepData = preparateursMap.get(userId);
+        prepData.preparations.push(prep);
+        prepData.totalPreparations += 1;
+        prepData.tempsTotal += (prep.totalTime || 0);
+        if ((prep.totalTime || 0) <= objectifTemps) {
+          prepData.objectifRespected += 1;
+        }
       }
-    };
+    });
 
-    // Ajouter comparaison si demandée
-    if (includeComparison === 'true') {
-      const previousPeriodStart = new Date(dateStart.getTime() - (dateEnd - dateStart));
-      const previousPreparations = await models.Preparation.find({
+    preparateursMap.forEach((data, userId) => {
+      const tempsMoyen = data.totalPreparations > 0 ? data.tempsTotal / data.totalPreparations : 0;
+      const tauxRespect = data.totalPreparations > 0 ? (data.objectifRespected / data.totalPreparations) * 100 : 0;
+
+      performanceParPreparateur.push({
+        userId: userId,
+        preparateurNom: data.preparateurNom,
+        totalPreparations: data.totalPreparations,
+        tempsMoyen: Math.round(tempsMoyen),
+        tauxRespectObjectif: Math.round(tauxRespect * 10) / 10,
+        efficacite: tempsMoyen > 0 ? Math.round((objectifTemps / tempsMoyen) * 100) : 0
+      });
+    });
+
+    // Trier par efficacité décroissante
+    performanceParPreparateur.sort((a, b) => b.efficacite - a.efficacite);
+
+    // Tendances (données comparatives pour la période précédente si demandé)
+    let tendances = null;
+    if (includeComparison) {
+      const periodDuration = dateEnd - dateStart;
+      const previousStart = new Date(dateStart.getTime() - periodDuration);
+      const previousEnd = new Date(dateStart.getTime() - 1);
+
+      const preparationsPrecedentes = await models.Preparation.find({
         ...agencyFilter,
-        startTime: { $gte: previousPeriodStart, $lt: dateStart },
+        startTime: { $gte: previousStart, $lte: previousEnd },
         status: 'completed'
       });
 
-      const previousTotalTime = previousPreparations.reduce((sum, prep) => {
-        const duration = new Date(prep.endTime) - new Date(prep.startTime);
-        return sum + (duration / (1000 * 60));
-      }, 0);
+      const totalPrecedent = preparationsPrecedentes.length;
+      const tempsPrecedent = preparationsPrecedentes.reduce((sum, prep) => sum + (prep.totalTime || 0), 0);
+      const tempsMoyenPrecedent = totalPrecedent > 0 ? tempsPrecedent / totalPrecedent : 0;
 
-      const previousAvgTime = previousPreparations.length > 0 ? 
-        previousTotalTime / previousPreparations.length : 0;
-
-      reportData.comparaison = {
+      tendances = {
+        evolutionNombrePreparations: totalPrecedent > 0 ? 
+          Math.round(((totalPreparations - totalPrecedent) / totalPrecedent) * 100) : 0,
+        evolutionTempsMoyen: tempsMoyenPrecedent > 0 ? 
+          Math.round(((tempsMoyenGlobal - tempsMoyenPrecedent) / tempsMoyenPrecedent) * 100) : 0,
         periodePrecedente: {
-          tempsMoyen: parseFloat(previousAvgTime.toFixed(1)),
-          evolution: parseFloat((tempsMoyenGlobal - previousAvgTime).toFixed(1))
+          startDate: previousStart,
+          endDate: previousEnd,
+          totalPreparations: totalPrecedent,
+          tempsMoyen: Math.round(tempsMoyenPrecedent)
         }
       };
     }
 
+    // Construire la réponse finale
+    const performanceData = {
+      periode: {
+        startDate: dateStart,
+        endDate: dateEnd,
+        duration: Math.ceil((dateEnd - dateStart) / (1000 * 60 * 60 * 24)) + ' jours'
+      },
+      metriques: {
+        totalPreparations,
+        tempsMoyenGlobal: Math.round(tempsMoyenGlobal),
+        objectifTemps,
+        preparationsRespectantObjectif,
+        tauxRespectObjectif: Math.round(tauxRespectObjectif * 10) / 10,
+        performanceGlobale: Math.round((tauxRespectObjectif / 100) * 10 * 10) // Score sur 100
+      },
+      agences: performanceParAgence,
+      preparateurs: performanceParPreparateur.slice(0, 10), // Top 10
+      tendances,
+      metadata: {
+        generatedAt: new Date(),
+        generatedBy: req.user.email,
+        dataSource: 'mongodb',
+        version: '1.0.0'
+      }
+    };
+
     res.json({
       success: true,
-      data: reportData,
-      message: 'Rapport de performance généré avec succès'
+      data: performanceData,
+      message: `Rapport de performance généré avec succès (${totalPreparations} préparations analysées)`
     });
 
   } catch (error) {
-    console.error('Erreur rapport performance:', error);
+    console.error('❌ Erreur rapport performance:', error);
+    
+    // ✅ Gestion spécifique de l'erreur populate
+    if (error.message.includes('populate') || error.message.includes('StrictPopulate')) {
+      return res.status(500).json({
+        success: false,
+        message: 'Erreur de structure de données. Veuillez vérifier la cohérence des modèles.',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne'
+      });
+    }
+
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur lors de la génération du rapport',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

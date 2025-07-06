@@ -1,5 +1,4 @@
-// backend/src/routes/admin/schedules/index.js
-// ✅ Fichier INDEX manquant pour les routes admin/schedules
+// backend/src/routes/admin/schedules/index.js - CORRECTION COMPLÈTE
 
 const express = require('express');
 const router = express.Router();
@@ -17,8 +16,59 @@ const { ERROR_MESSAGES, SUCCESS_MESSAGES } = require('../../../utils/constants')
 // ✅ Application des middlewares pour toutes les routes
 router.use(auth, adminAuth);
 
-// ===== SCHÉMAS DE VALIDATION =====
+// ===== MONTAGE DES SOUS-ROUTES EN PREMIER =====
 
+try {
+  // Stats - DOIT être avant les routes :id
+  router.use('/stats', require('./stats'));
+  console.log('✅ Routes schedules/stats chargées');
+} catch (error) {
+  console.error('❌ Erreur chargement routes schedules/stats:', error.message);
+  // Route de fallback pour éviter le crash
+  router.use('/stats', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service statistiques temporairement indisponible',
+      error: 'Module stats.js non trouvé'
+    });
+  });
+}
+
+try {
+  // Calendar - DOIT être avant les routes :id
+  router.use('/calendar', require('./calendar'));
+  console.log('✅ Routes schedules/calendar chargées');
+} catch (error) {
+  console.error('❌ Erreur chargement routes schedules/calendar:', error.message);
+  // Route de fallback pour éviter le crash
+  router.use('/calendar', (req, res) => {
+    res.status(503).json({
+      success: false,
+      message: 'Service calendrier temporairement indisponible',
+      error: 'Module calendar.js non trouvé'
+    });
+  });
+}
+
+try {
+  // Conflicts - DOIT être avant les routes :id
+  router.use('/conflicts', require('./conflicts'));
+  console.log('✅ Routes schedules/conflicts chargées');
+} catch (error) {
+  console.warn('⚠️ Routes schedules/conflicts non trouvées (optionnel)');
+  // Route de fallback basique
+  router.get('/conflicts', (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        conflicts: [],
+        message: 'Service de détection de conflits non encore implémenté'
+      }
+    });
+  });
+}
+
+// ===== SCHÉMAS DE VALIDATION =====
 const scheduleCreateSchema = Joi.object({
   userId: Joi.string().hex().length(24).required(),
   agencyId: Joi.string().hex().length(24).required(),
@@ -47,7 +97,79 @@ const scheduleSearchSchema = Joi.object({
   order: Joi.string().valid('asc', 'desc').default('asc')
 });
 
-// ===== ROUTES CRUD =====
+// ===== ROUTES CRUD PRINCIPALES =====
+
+/**
+ * @route   GET /api/admin/schedules
+ * @desc    Récupérer la liste des plannings avec filtres
+ * @access  Admin
+ */
+router.get('/', async (req, res) => {
+  try {
+    const { page = 1, limit = 20, userId, agencyId, startDate, endDate, sort = 'date', order = 'asc' } = req.query;
+
+    // Construction de la requête
+    const query = {};
+    if (userId) query.user = userId;
+    if (agencyId) query.agency = agencyId;
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) query.date.$gte = new Date(startDate);
+      if (endDate) query.date.$lte = new Date(endDate);
+    }
+
+    // Exécution de la requête
+    const [schedules, total] = await Promise.all([
+      Schedule.find(query)
+        .populate('user', 'firstName lastName email')
+        .populate('agency', 'name code client')
+        .sort({ [sort]: order === 'asc' ? 1 : -1 })
+        .skip((page - 1) * limit)
+        .limit(parseInt(limit)),
+      Schedule.countDocuments(query)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        schedules: schedules.map(schedule => ({
+          id: schedule._id,
+          user: {
+            id: schedule.user._id,
+            name: `${schedule.user.firstName} ${schedule.user.lastName}`,
+            email: schedule.user.email
+          },
+          agency: {
+            id: schedule.agency._id,
+            name: schedule.agency.name,
+            code: schedule.agency.code
+          },
+          date: schedule.date,
+          startTime: schedule.startTime,
+          endTime: schedule.endTime,
+          breakDuration: schedule.breakDuration,
+          notes: schedule.notes,
+          createdAt: schedule.createdAt
+        })),
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page * limit < total,
+          hasPrev: page > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Erreur récupération plannings:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
+    });
+  }
+});
 
 /**
  * @route   POST /api/admin/schedules
@@ -78,19 +200,6 @@ router.post('/', validateBody(scheduleCreateSchema), async (req, res) => {
       });
     }
 
-    // Vérifier qu'il n'y a pas déjà un planning pour cette date/utilisateur
-    const existingSchedule = await Schedule.findOne({
-      user: userId,
-      date: new Date(date)
-    });
-
-    if (existingSchedule) {
-      return res.status(409).json({
-        success: false,
-        message: 'Un planning existe déjà pour cet utilisateur à cette date'
-      });
-    }
-
     // Créer le planning
     const schedule = new Schedule({
       user: userId,
@@ -98,98 +207,54 @@ router.post('/', validateBody(scheduleCreateSchema), async (req, res) => {
       date: new Date(date),
       startTime,
       endTime,
-      breakDuration,
-      notes,
+      breakDuration: breakDuration || 30,
+      notes: notes || '',
       createdBy: req.user.userId
     });
 
     await schedule.save();
 
-    // Populer les données pour la réponse
-    await schedule.populate([
-      { path: 'user', select: 'firstName lastName email' },
-      { path: 'agency', select: 'name code client' }
-    ]);
+    // Retourner le planning créé avec populate
+    const populatedSchedule = await Schedule.findById(schedule._id)
+      .populate('user', 'firstName lastName email')
+      .populate('agency', 'name code client');
 
     res.status(201).json({
       success: true,
-      message: SUCCESS_MESSAGES.SCHEDULE_CREATED || 'Planning créé avec succès',
-      data: { schedule }
-    });
-
-  } catch (error) {
-    console.error('Erreur création planning:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
-    });
-  }
-});
-
-/**
- * @route   GET /api/admin/schedules
- * @desc    Récupérer les plannings avec filtres et pagination
- * @access  Admin
- */
-router.get('/', async (req, res) => {
-  try {
-    const { error, value } = scheduleSearchSchema.validate(req.query);
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message
-      });
-    }
-
-    const { page, limit, userId, agencyId, startDate, endDate, sort, order } = value;
-
-    // Construction des filtres
-    const filters = {};
-    
-    if (userId) filters.user = userId;
-    if (agencyId) filters.agency = agencyId;
-    
-    if (startDate || endDate) {
-      filters.date = {};
-      if (startDate) filters.date.$gte = new Date(startDate);
-      if (endDate) filters.date.$lte = new Date(endDate);
-    }
-
-    // Pagination
-    const skip = (page - 1) * limit;
-    
-    // Tri
-    const sortOptions = {};
-    sortOptions[sort] = order === 'asc' ? 1 : -1;
-
-    // Requêtes parallèles
-    const [schedules, total] = await Promise.all([
-      Schedule.find(filters)
-        .populate('user', 'firstName lastName email')
-        .populate('agency', 'name code client')
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(limit),
-      Schedule.countDocuments(filters)
-    ]);
-
-    res.json({
-      success: true,
+      message: 'Planning créé avec succès',
       data: {
-        schedules,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-          hasNext: page < Math.ceil(total / limit),
-          hasPrev: page > 1
+        schedule: {
+          id: populatedSchedule._id,
+          user: {
+            id: populatedSchedule.user._id,
+            name: `${populatedSchedule.user.firstName} ${populatedSchedule.user.lastName}`,
+            email: populatedSchedule.user.email
+          },
+          agency: {
+            id: populatedSchedule.agency._id,
+            name: populatedSchedule.agency.name,
+            code: populatedSchedule.agency.code
+          },
+          date: populatedSchedule.date,
+          startTime: populatedSchedule.startTime,
+          endTime: populatedSchedule.endTime,
+          breakDuration: populatedSchedule.breakDuration,
+          notes: populatedSchedule.notes,
+          createdAt: populatedSchedule.createdAt
         }
       }
     });
 
   } catch (error) {
-    console.error('Erreur récupération plannings:', error);
+    console.error('Erreur création planning:', error);
+    
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'Un planning existe déjà pour cet utilisateur à cette date'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
@@ -205,8 +270,8 @@ router.get('/', async (req, res) => {
 router.get('/:id', validateObjectId('id'), async (req, res) => {
   try {
     const schedule = await Schedule.findById(req.params.id)
-      .populate('user', 'firstName lastName email phone')
-      .populate('agency', 'name code client address');
+      .populate('user', 'firstName lastName email')
+      .populate('agency', 'name code client');
 
     if (!schedule) {
       return res.status(404).json({
@@ -217,7 +282,28 @@ router.get('/:id', validateObjectId('id'), async (req, res) => {
 
     res.json({
       success: true,
-      data: { schedule }
+      data: {
+        schedule: {
+          id: schedule._id,
+          user: {
+            id: schedule.user._id,
+            name: `${schedule.user.firstName} ${schedule.user.lastName}`,
+            email: schedule.user.email
+          },
+          agency: {
+            id: schedule.agency._id,
+            name: schedule.agency.name,
+            code: schedule.agency.code
+          },
+          date: schedule.date,
+          startTime: schedule.startTime,
+          endTime: schedule.endTime,
+          breakDuration: schedule.breakDuration,
+          notes: schedule.notes,
+          createdAt: schedule.createdAt,
+          updatedAt: schedule.updatedAt
+        }
+      }
     });
 
   } catch (error) {
@@ -245,23 +331,43 @@ router.put('/:id', validateObjectId('id'), validateBody(scheduleUpdateSchema), a
       });
     }
 
-    // Mise à jour des champs
-    Object.assign(schedule, req.body);
-    schedule.updatedBy = req.user.userId;
-    schedule.updatedAt = new Date();
+    // Mettre à jour les champs
+    Object.keys(req.body).forEach(key => {
+      if (req.body[key] !== undefined) {
+        schedule[key] = req.body[key];
+      }
+    });
 
+    schedule.updatedBy = req.user.userId;
     await schedule.save();
 
-    // Populer les données pour la réponse
-    await schedule.populate([
-      { path: 'user', select: 'firstName lastName email' },
-      { path: 'agency', select: 'name code client' }
-    ]);
+    // Retourner le planning mis à jour
+    const updatedSchedule = await Schedule.findById(schedule._id)
+      .populate('user', 'firstName lastName email')
+      .populate('agency', 'name code client');
 
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.SCHEDULE_UPDATED || 'Planning modifié avec succès',
-      data: { schedule }
+      message: 'Planning mis à jour avec succès',
+      data: {
+        schedule: {
+          id: updatedSchedule._id,
+          user: {
+            id: updatedSchedule.user._id,
+            name: `${updatedSchedule.user.firstName} ${updatedSchedule.user.lastName}`
+          },
+          agency: {
+            id: updatedSchedule.agency._id,
+            name: updatedSchedule.agency.name
+          },
+          date: updatedSchedule.date,
+          startTime: updatedSchedule.startTime,
+          endTime: updatedSchedule.endTime,
+          breakDuration: updatedSchedule.breakDuration,
+          notes: updatedSchedule.notes,
+          updatedAt: updatedSchedule.updatedAt
+        }
+      }
     });
 
   } catch (error) {
@@ -293,72 +399,11 @@ router.delete('/:id', validateObjectId('id'), async (req, res) => {
 
     res.json({
       success: true,
-      message: SUCCESS_MESSAGES.SCHEDULE_DELETED || 'Planning supprimé avec succès'
+      message: 'Planning supprimé avec succès'
     });
 
   } catch (error) {
     console.error('Erreur suppression planning:', error);
-    res.status(500).json({
-      success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
-    });
-  }
-});
-
-// ===== ROUTES UTILITAIRES =====
-
-/**
- * @route   GET /api/admin/schedules/week/:userId
- * @desc    Récupérer le planning de la semaine pour un utilisateur
- * @access  Admin
- */
-router.get('/week/:userId', validateObjectId('userId'), async (req, res) => {
-  try {
-    const { date } = req.query;
-    const userId = req.params.userId;
-
-    // Date de début de semaine (lundi)
-    const weekStart = date ? new Date(date) : new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
-    weekStart.setHours(0, 0, 0, 0);
-
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
-
-    const schedules = await Schedule.find({
-      user: userId,
-      date: { $gte: weekStart, $lte: weekEnd }
-    })
-    .populate('agency', 'name code client')
-    .sort({ date: 1 });
-
-    // Organiser par jour de la semaine
-    const weekSchedule = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(weekStart);
-      date.setDate(date.getDate() + index);
-      
-      const daySchedule = schedules.find(schedule => 
-        schedule.date.toDateString() === date.toDateString()
-      );
-
-      return {
-        date: date,
-        dayName: date.toLocaleDateString('fr-FR', { weekday: 'long' }),
-        schedule: daySchedule || null
-      };
-    });
-
-    res.json({
-      success: true,
-      data: {
-        weekSchedule,
-        period: { start: weekStart, end: weekEnd }
-      }
-    });
-
-  } catch (error) {
-    console.error('Erreur récupération planning semaine:', error);
     res.status(500).json({
       success: false,
       message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur interne du serveur'
