@@ -1,56 +1,28 @@
-// preparator-app/src/lib/api/preparations.ts
+// =====================================================
+// FICHIER: preparator-app/src/lib/api/preparations.ts
+// ✅ CORRECTION DE L'API POUR CORRESPONDRE AUX TYPES
+// =====================================================
+
 import { apiClient } from './client';
-import type {
-  VehicleFormData,
-  Vehicle,
-  Agency,
-  PreparationStep,
+import type { 
   Preparation,
-  StepCompletionData,
-  IssueReportData,
   PreparationHistory,
   PreparationStats,
-  ApiResponse
-} from '../types';
-
-// ===== INTERFACES API =====
-
-export interface PreparationApiResponse {
-  id: string;
-  vehicle: Vehicle;
-  agency: Agency;
-  startTime: Date;
-  endTime?: Date;
-  status: 'in_progress' | 'completed' | 'cancelled';
-  steps: PreparationStep[];
-  progress: number;
-  currentDuration: number;
-  totalTime?: number;
-  isOnTime?: boolean;
-  issues: any[];
-  issuesCount: number;
-  notes?: string;
-  summary?: any;
-  createdAt: Date;
-}
+  VehicleFormData,
+  StepCompletionData,
+  IssueReportData,
+  ApiResponse,
+  PreparationFilters
+} from '@/lib/types';
 
 // ===== CLASSE API PRÉPARATIONS =====
 
-class PreparationAPI {
-  
+export class PreparationAPI {
   /**
-   * Obtenir les agences de l'utilisateur connecté
+   * Obtenir les agences de l'utilisateur
    */
-  async getUserAgencies(): Promise<{ agencies: Agency[] }> {
-    const response = await apiClient.get<ApiResponse<{ agencies: Agency[] }>>('/preparations/user-agencies');
-    return response.data.data!;
-  }
-
-  /**
-   * Obtenir la préparation en cours
-   */
-  async getCurrentPreparation(): Promise<{ preparation: Preparation | null }> {
-    const response = await apiClient.get<ApiResponse<{ preparation: Preparation }>>('/preparations/current');
+  async getUserAgencies(): Promise<{ agencies: Array<{ id: string; name: string; code: string; client: string }> }> {
+    const response = await apiClient.get<ApiResponse<{ agencies: Array<{ id: string; name: string; code: string; client: string }> }>>('/preparations/user-agencies');
     return response.data.data!;
   }
 
@@ -58,35 +30,35 @@ class PreparationAPI {
    * Démarrer une nouvelle préparation
    */
   async startPreparation(data: VehicleFormData): Promise<{ preparation: Preparation }> {
-    const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>('/preparations/start', data);
+    const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
+      '/preparations/start',
+      data
+    );
     return response.data.data!;
   }
 
   /**
-   * Obtenir une préparation par ID
+   * Obtenir la préparation en cours
    */
-  async getPreparation(id: string): Promise<{ preparation: Preparation }> {
-    const response = await apiClient.get<ApiResponse<{ preparation: Preparation }>>(`/preparations/${id}`);
+  async getCurrentPreparation(): Promise<{ preparation: Preparation | null }> {
+    const response = await apiClient.get<ApiResponse<{ preparation: Preparation | null }>>('/preparations/current');
     return response.data.data!;
   }
 
   /**
-   * Compléter une étape avec photo
+   * Compléter une étape
    */
   async completeStep(preparationId: string, data: StepCompletionData): Promise<{ preparation: Preparation }> {
     const formData = new FormData();
-    
-    // ✅ CORRECTION: Utiliser 'step' au lieu de 'stepType'
     formData.append('step', data.step);
     formData.append('photo', data.photo);
-    
     if (data.notes) {
       formData.append('notes', data.notes);
     }
 
     const response = await apiClient.put<ApiResponse<{ preparation: Preparation }>>(
-      `/preparations/${preparationId}/step`, 
-      formData, 
+      `/preparations/${preparationId}/step`,
+      formData,
       {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -137,27 +109,33 @@ class PreparationAPI {
 
   /**
    * Obtenir l'historique des préparations
+   * ✅ SIGNATURE CORRIGÉE POUR TYPESCRIPT + URL CORRECTE
    */
   async getPreparationHistory(
     page: number = 1,
     limit: number = 20,
-    filters?: {
-      startDate?: string;
-      endDate?: string;
-      agencyId?: string;
-      search?: string;
-    }
+    filters?: Record<string, string>
   ): Promise<PreparationHistory> {
     const params = new URLSearchParams({
       page: page.toString(),
-      limit: limit.toString(),
-      ...filters
+      limit: limit.toString()
     });
 
+    // Ajouter les filtres s'ils existent
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value.trim() !== '') {
+          params.append(key, value);
+        }
+      });
+    }
+
+    // ✅ URL CORRIGÉE: utiliser /preparations/history
     const response = await apiClient.get<ApiResponse<PreparationHistory>>(
       `/preparations/history?${params}`
     );
     
+    // ✅ RETOURNER DIRECTEMENT LA STRUCTURE ATTENDUE
     return response.data.data!;
   }
 
@@ -193,9 +171,16 @@ class PreparationAPI {
     }
   ): Promise<{ preparations: Preparation[] }> {
     const params = new URLSearchParams({
-      q: query,
-      ...filters
+      q: query
     });
+
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) {
+          params.append(key, value);
+        }
+      });
+    }
 
     const response = await apiClient.get<ApiResponse<{ preparations: Preparation[] }>>(
       `/preparations/search?${params}`
@@ -225,130 +210,12 @@ class PreparationAPI {
     
     return response.data.data!;
   }
-
-  /**
-   * Obtenir les préparations en cours (pour les admins)
-   */
-  async getActivePreparations(): Promise<{ preparations: Preparation[] }> {
-    const response = await apiClient.get<ApiResponse<{ preparations: Preparation[] }>>(
-      '/preparations/active'
-    );
-    return response.data.data!;
-  }
-
-  /**
-   * Mettre à jour les notes d'une préparation
-   */
-  async updateNotes(preparationId: string, notes: string): Promise<{ preparation: Preparation }> {
-    const response = await apiClient.patch<ApiResponse<{ preparation: Preparation }>>(
-      `/preparations/${preparationId}/notes`,
-      { notes }
-    );
-    return response.data.data!;
-  }
-
-  /**
-   * Obtenir les détails d'une étape
-   */
-  async getStepDetails(preparationId: string, stepType: string): Promise<{
-    step: PreparationStep;
-    photos: string[];
-  }> {
-    const response = await apiClient.get<ApiResponse<{
-      step: PreparationStep;
-      photos: string[];
-    }>>(`/preparations/${preparationId}/steps/${stepType}`);
-    
-    return response.data.data!;
-  }
-
-  /**
-   * Annuler une préparation
-   */
-  async cancelPreparation(preparationId: string, reason: string): Promise<{ preparation: Preparation }> {
-    const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
-      `/preparations/${preparationId}/cancel`,
-      { reason }
-    );
-    return response.data.data!;
-  }
-
-  /**
-   * Reprendre une préparation suspendue
-   */
-  async resumePreparation(preparationId: string): Promise<{ preparation: Preparation }> {
-    const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
-      `/preparations/${preparationId}/resume`
-    );
-    return response.data.data!;
-  }
-
-  /**
-   * Exporter les données de préparation
-   */
-  async exportPreparations(
-    format: 'csv' | 'xlsx' | 'pdf',
-    filters?: {
-      startDate?: string;
-      endDate?: string;
-      agencyId?: string;
-      status?: string;
-    }
-  ): Promise<Blob> {
-    const params = new URLSearchParams({
-      format,
-      ...filters
-    });
-
-    const response = await apiClient.get(`/preparations/export?${params}`, {
-      responseType: 'blob'
-    });
-    
-    return response.data;
-  }
 }
 
 // ===== INSTANCE SINGLETON =====
 
-export const preparationAPI = new PreparationAPI();
+export const preparationApi = new PreparationAPI();
 
-// ===== HOOKS UTILITAIRES =====
+// ===== EXPORT PAR DÉFAUT =====
 
-/**
- * Hook pour les opérations API de préparation
- */
-export const usePreparationAPI = () => {
-  return {
-    // Méthodes principales
-    getUserAgencies: preparationAPI.getUserAgencies.bind(preparationAPI),
-    getCurrentPreparation: preparationAPI.getCurrentPreparation.bind(preparationAPI),
-    startPreparation: preparationAPI.startPreparation.bind(preparationAPI),
-    completeStep: preparationAPI.completeStep.bind(preparationAPI),
-    completePreparation: preparationAPI.completePreparation.bind(preparationAPI),
-    reportIssue: preparationAPI.reportIssue.bind(preparationAPI),
-    
-    // Méthodes de consultation
-    getPreparation: preparationAPI.getPreparation.bind(preparationAPI),
-    getPreparationHistory: preparationAPI.getPreparationHistory.bind(preparationAPI),
-    getMyStats: preparationAPI.getMyStats.bind(preparationAPI),
-    getVehicleHistory: preparationAPI.getVehicleHistory.bind(preparationAPI),
-    getDailySummary: preparationAPI.getDailySummary.bind(preparationAPI),
-    
-    // Méthodes de recherche
-    searchPreparations: preparationAPI.searchPreparations.bind(preparationAPI),
-    
-    // Méthodes de gestion
-    updateNotes: preparationAPI.updateNotes.bind(preparationAPI),
-    cancelPreparation: preparationAPI.cancelPreparation.bind(preparationAPI),
-    resumePreparation: preparationAPI.resumePreparation.bind(preparationAPI),
-    
-    // Méthodes utilitaires
-    getStepDetails: preparationAPI.getStepDetails.bind(preparationAPI),
-    exportPreparations: preparationAPI.exportPreparations.bind(preparationAPI),
-    getActivePreparations: preparationAPI.getActivePreparations.bind(preparationAPI)
-  };
-};
-
-// ===== EXPORTS PAR DÉFAUT =====
-
-export default preparationAPI;
+export default preparationApi;

@@ -125,6 +125,19 @@ export interface Issue {
 
 // ===== INTERFACES PRÉPARATION =====
 
+export interface PreparationHistoryData {
+  preparations: Preparation[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+  filters: PreparationFilters;
+}
+
 export interface Preparation {
   id: string;
   vehicle: VehicleInfo;

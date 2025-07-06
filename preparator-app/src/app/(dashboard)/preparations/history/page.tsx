@@ -1,385 +1,484 @@
-// app/(dashboard)/preparations/history/page.tsx
+// preparator-app/src/app/(dashboard)/preparations/history/page.tsx
+// ✅ Page d'historique complète avec tous les correctifs
+
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  ArrowLeft,
-  Search,
+  ArrowLeft, 
+  Search, 
+  Filter, 
+  Download, 
   Clock,
-  CheckCircle,
-  XCircle,
   Car,
-  Building,
+  CheckCircle2,
+  AlertTriangle,
   Calendar,
-  Filter,
-  Eye,
-  MoreVertical,
-  Download,
-  RefreshCw,
-  AlertCircle
+  Building2,
+  X,
+  RefreshCw
 } from 'lucide-react';
 
+import { usePreparationHistory } from '@/hooks/usePreparationHistory';
+import { usePreparationStore } from '@/lib/stores/preparation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+import { Badge } from '@/components/ui/badge';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useToast } from '@/components/ui/use-toast';
+import { BottomNavigation } from '@/components/layout/BottomNavigation';
+import type { Preparation, Agency } from '@/lib/types';
 
-// Types
-interface HistoryPreparation {
-  id: string;
-  vehicle: {
-    licensePlate: string;
-    brand: string;
-    model: string;
-    color?: string;
-  };
-  agency: {
-    name: string;
-    code: string;
-  };
-  startTime: string;
-  endTime?: string;
-  totalTime?: number;
-  status: 'completed' | 'cancelled';
-  completedSteps: number;
-  totalSteps: number;
-  isOnTime: boolean;
+// ===== COMPOSANT CARTE PRÉPARATION =====
+
+interface PreparationCardProps {
+  preparation: Preparation;
 }
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
-// Hooks personnalisés
-import { usePreparationHistory } from '@/hooks/usePreparationHistory';
+const PreparationCard: React.FC<PreparationCardProps> = ({ preparation }) => {
+  const router = useRouter();
 
-const PreparationsHistoryPage: React.FC = () => {
+  // ✅ Calcul correct du statut retard basé sur la durée totale
+  const getStatusInfo = () => {
+    const totalMinutes = preparation.totalTime || preparation.currentDuration || 0;
+    const isLate = totalMinutes > 30; // Plus de 30 minutes = retard
+    
+    if (preparation.status === 'completed') {
+      return {
+        label: isLate ? 'Terminé en retard' : 'Terminé à temps',
+        variant: isLate ? 'destructive' : 'default',
+        bgColor: isLate ? 'bg-orange-50' : 'bg-green-50',
+        textColor: isLate ? 'text-orange-600' : 'text-green-600'
+      };
+    } else if (preparation.status === 'cancelled') {
+      return {
+        label: 'Annulé',
+        variant: 'secondary',
+        bgColor: 'bg-gray-50',
+        textColor: 'text-gray-600'
+      };
+    }
+    
+    return {
+      label: 'En cours',
+      variant: 'default',
+      bgColor: 'bg-blue-50',
+      textColor: 'text-blue-600'
+    };
+  };
+
+  // ✅ Formatage correct de la durée
+  const formatDuration = (minutes: number) => {
+    if (minutes < 60) return `${minutes}min`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes > 0 ? `${hours}h${remainingMinutes}` : `${hours}h`;
+  };
+
+  // ✅ Formatage des dates
+  const formatDateTime = (date: Date) => {
+    return new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(date));
+  };
+
+  const statusInfo = getStatusInfo();
+  const completedSteps = preparation.steps.filter(step => step.completed).length;
+  const totalSteps = preparation.steps.length;
+  const duration = preparation.totalTime || preparation.currentDuration || 0;
+
+  const handleCardClick = () => {
+    router.push(`/preparations/${preparation.id}`);
+  };
+
+  return (
+    <Card 
+      className="cursor-pointer hover:shadow-md transition-shadow"
+      onClick={handleCardClick}
+    >
+      <CardContent className="p-4">
+        {/* Header avec plaque et statut */}
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className="font-semibold text-lg">
+              {preparation.vehicle.licensePlate}
+            </h3>
+            <div className="flex items-center text-gray-600 text-sm mt-1">
+              <Car className="w-4 h-4 mr-1" />
+              {preparation.vehicle.brand} {preparation.vehicle.model}
+            </div>
+          </div>
+          
+          <Badge 
+            variant={statusInfo.variant as any}
+            className={`${statusInfo.bgColor} ${statusInfo.textColor} border-0`}
+          >
+            {statusInfo.label}
+          </Badge>
+        </div>
+
+        {/* Agence */}
+        <div className="flex items-center text-gray-600 text-sm mb-3">
+          <Building2 className="w-4 h-4 mr-1" />
+          {preparation.agency.name}
+        </div>
+
+        {/* Dates et durée */}
+        <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
+          <div className="flex items-center">
+            <Calendar className="w-4 h-4 mr-1" />
+            {formatDateTime(preparation.startTime)}
+            {preparation.endTime && (
+              <>
+                <span className="mx-2">→</span>
+                {formatDateTime(preparation.endTime)}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Progression et durée */}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-600">
+            {completedSteps}/{totalSteps} étapes
+          </div>
+          
+          <div className="flex items-center text-sm">
+            <Clock className="w-4 h-4 mr-1 text-gray-400" />
+            {formatDuration(duration)}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// ===== COMPOSANT PRINCIPAL =====
+
+const PreparationHistoryPage: React.FC = () => {
   const router = useRouter();
   const { toast } = useToast();
   
-  // État local pour les filtres
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
-  const [agencyFilter, setAgencyFilter] = useState<string>('all');
+  // États locaux pour les filtres
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAgency, setSelectedAgency] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Hook pour les données d'historique
+  // Hooks
+  const { userAgencies, getUserAgencies } = usePreparationStore();
   const {
     preparations,
     pagination,
     isLoading,
     error,
-    refresh,
+    loadHistory,
     loadMore,
-    hasMore
+    refresh,
+    setFilters,
+    hasMore,
+    isEmpty,
+    total,
+    clearError
   } = usePreparationHistory({
-    search: searchQuery,
-    status: statusFilter,
-    agencyId: agencyFilter,
-    limit: 20
+    autoLoad: true,
+    limit: 10
   });
 
-  // Obtenir les agences uniques pour le filtre
-  const uniqueAgencies = useMemo(() => {
-    const agencies = new Map();
-    preparations.forEach(prep => {
-      if (prep.agency && !agencies.has(prep.agency.code)) {
-        agencies.set(prep.agency.code, prep.agency);
+  // Charger les agences au montage
+  useEffect(() => {
+    const loadAgencies = async () => {
+      try {
+        await getUserAgencies();
+      } catch (error) {
+        console.error('Erreur chargement agences:', error);
       }
-    });
-    return Array.from(agencies.values());
-  }, [preparations]);
+    };
 
-  // Utilitaires
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    loadAgencies();
+  }, [getUserAgencies]);
+
+  // Appliquer les filtres avec debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setFilters({
+        search: searchTerm || undefined,
+        agencyId: selectedAgency === 'all' ? undefined : selectedAgency,
+        page: 1
+      });
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, selectedAgency, setFilters]);
+
+  // Gestionnaires d'événements
+  const handleBack = () => {
+    router.back();
   };
 
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatDuration = (minutes: number) => {
-    if (minutes < 60) {
-      return `${minutes}min`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h${mins.toString().padStart(2, '0')}`;
-  };
-
-  const getStatusBadge = (status: string, isOnTime?: boolean) => {
-    if (status === 'completed') {
-      return (
-        <Badge variant={isOnTime ? "default" : "secondary"} className={isOnTime ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
-          <CheckCircle className="h-3 w-3 mr-1" />
-          {isOnTime ? 'Terminé à temps' : 'Terminé en retard'}
-        </Badge>
-      );
-    } else if (status === 'cancelled') {
-      return (
-        <Badge variant="destructive" className="bg-red-100 text-red-800">
-          <XCircle className="h-3 w-3 mr-1" />
-          Annulé
-        </Badge>
-      );
-    } else {
-      return (
-        <Badge variant="outline" className="bg-blue-100 text-blue-800">
-          <Clock className="h-3 w-3 mr-1" />
-          En cours
-        </Badge>
-      );
+  const handleRefresh = async () => {
+    try {
+      await refresh();
+      toast({
+        title: "Actualisé",
+        description: "L'historique a été actualisé avec succès."
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible d'actualiser l'historique.",
+        variant: "destructive"
+      });
     }
   };
 
-  const handleViewDetails = (preparationId: string) => {
-    router.push(`/preparations/${preparationId}`);
+  const handleLoadMore = async () => {
+    if (hasMore && !isLoading) {
+      try {
+        await loadMore();
+      } catch (error) {
+        toast({
+          title: "Erreur",
+          description: "Impossible de charger plus de résultats.",
+          variant: "destructive"
+        });
+      }
+    }
   };
 
-  const handleExportData = () => {
-    toast({
-      title: "Export en cours",
-      description: "Vos données vont être téléchargées...",
-    });
+  const clearSearch = () => {
+    setSearchTerm('');
   };
 
-  const handleRefresh = () => {
-    refresh();
-    toast({
-      title: "Actualisation",
-      description: "Données mises à jour",
-    });
+  const clearAgencyFilter = () => {
+    setSelectedAgency('all');
   };
+
+  // Nettoyage des erreurs
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        clearError();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, clearError]);
+
+  // ✅ Calcul du nombre total de préparations
+  const preparationCount = total || preparations.length;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-16">
+    <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-4">
-        <div className="flex items-center space-x-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.back()}
-            className="p-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Historique</h1>
-            <p className="text-sm text-gray-600">
-              {pagination ? `${pagination.total} préparation(s)` : 'Préparations terminées'}
-            </p>
+      <header className="bg-white border-b sticky top-0 z-30">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleBack}
+                className="p-2"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <div>
+                <h1 className="text-xl font-semibold">Historique</h1>
+                {/* ✅ Affichage correct du nombre de préparations */}
+                <p className="text-sm text-gray-600">
+                  {preparationCount} préparation{preparationCount !== 1 ? 's' : ''}
+                </p>
+              </div>
+            </div>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="p-2"
+            >
+              <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
         </div>
-        
-        {/* Bouton refresh */}
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
+      </header>
 
-      {/* Erreur */}
-      {error && (
-        <div className="px-4">
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              {error}
-              <Button variant="link" onClick={handleRefresh} className="ml-2 p-0 h-auto">
-                Réessayer
-              </Button>
-            </AlertDescription>
-          </Alert>
-        </div>
-      )}
-
-      {/* Filtres et recherche */}
-      <div className="p-4 space-y-4">
-        {/* Barre de recherche */}
+      {/* Filtres de recherche */}
+      <div className="bg-white border-b p-4 space-y-3">
+        {/* ✅ Barre de recherche fonctionnelle */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             placeholder="Rechercher par plaque, marque, modèle..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 pr-10"
           />
+          {searchTerm && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearSearch}
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 p-1 h-6 w-6"
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          )}
         </div>
 
         {/* Filtres */}
-        <div className="flex space-x-2">
+        <div className="flex space-x-3">
+          {/* ✅ Sélecteur d'agence fonctionnel */}
           <Select
-            value={statusFilter}
-            onValueChange={(v) => setStatusFilter(v as 'all' | 'completed' | 'cancelled')}
+            value={selectedAgency}
+            onValueChange={setSelectedAgency}
           >
             <SelectTrigger className="flex-1">
-              <SelectValue placeholder="Statut" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous les statuts</SelectItem>
-              <SelectItem value="completed">Terminées</SelectItem>
-              <SelectItem value="cancelled">Annulées</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder="Agence" />
+              <SelectValue placeholder="Toutes les agences" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Toutes les agences</SelectItem>
-              {uniqueAgencies.map(agency => (
-                <SelectItem key={agency.code} value={agency.code}>
-                  {agency.code}
+              {userAgencies.map((agency: Agency) => (
+                <SelectItem key={agency.id} value={agency.id}>
+                  {agency.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <Button variant="outline" onClick={handleExportData} className="px-3">
-            <Download className="h-4 w-4" />
+          <Button
+            variant="outline"
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-3"
+          >
+            <Filter className="w-4 h-4" />
           </Button>
         </div>
+
+        {/* Tags des filtres actifs */}
+        {(searchTerm || selectedAgency !== 'all') && (
+          <div className="flex flex-wrap gap-2">
+            {searchTerm && (
+              <Badge variant="secondary" className="text-xs">
+                Recherche: {searchTerm}
+                <button onClick={clearSearch} className="ml-1">
+                  <X className="w-3 h-3" />
+                </button>
+              </Badge>
+            )}
+            {selectedAgency !== 'all' && (
+              <Badge variant="secondary" className="text-xs">
+                Agence: {userAgencies.find(a => a.id === selectedAgency)?.name}
+                <button onClick={clearAgencyFilter} className="ml-1">
+                  <X className="w-3 h-3" />
+                </button>
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Liste des préparations */}
-      <div className="px-4 space-y-3">
-        {isLoading ? (
-          // État de chargement
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="animate-pulse">
-                <CardContent className="p-4">
-                  <div className="space-y-3">
-                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+      {/* Contenu principal */}
+      <main className="p-4">
+        {/* État de chargement initial */}
+        {isLoading && preparations.length === 0 && (
+          <div className="text-center py-8">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-gray-400 mb-2" />
+            <p className="text-gray-600">Chargement de l'historique...</p>
           </div>
-        ) : preparations.length === 0 ? (
-          // Aucun résultat
-          <Card className="text-center py-8">
-            <CardContent>
-              <Car className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="font-medium text-gray-900 mb-2">Aucune préparation trouvée</h3>
-              <p className="text-sm text-gray-600">
-                {searchQuery || statusFilter !== 'all' || agencyFilter !== 'all'
-                  ? 'Aucune préparation ne correspond à vos critères de recherche.'
-                  : "Vous n'avez pas encore effectué de préparations."
+        )}
+
+        {/* État vide */}
+        {isEmpty && !isLoading && (
+          <Card>
+            <CardContent className="text-center py-8">
+              <Car className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <h3 className="font-medium text-gray-900 mb-1">
+                Aucune préparation trouvée
+              </h3>
+              <p className="text-gray-600 text-sm">
+                {searchTerm || selectedAgency !== 'all' 
+                  ? 'Aucun résultat pour vos critères de recherche.'
+                  : 'Vous n\'avez pas encore effectué de préparations.'
                 }
               </p>
             </CardContent>
           </Card>
-        ) : (
-          // Liste des préparations (VRAIES DONNÉES DU BACKEND)
-          preparations.map((preparation) => (
-            <Card key={preparation.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <h3 className="font-semibold text-gray-900">
-                        {preparation.vehicle.licensePlate}
-                      </h3>
-                      {getStatusBadge(preparation.status, preparation.isOnTime)}
-                    </div>
-                    
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <div className="flex items-center space-x-1">
-                        <Car className="h-3 w-3" />
-                        <span>{preparation.vehicle.brand} {preparation.vehicle.model}</span>
-                        {preparation.vehicle.color && (
-                          <span className="text-gray-400">• {preparation.vehicle.color}</span>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center space-x-1">
-                        <Building className="h-3 w-3" />
-                        <span>{preparation.agency.name}</span>
-                      </div>
-                      
-                      <div className="flex items-center space-x-1">
-                        <Calendar className="h-3 w-3" />
-                        <span>{formatDate(preparation.startTime)} à {formatTime(preparation.startTime)}</span>
-                        {preparation.endTime && (
-                          <span className="text-gray-400">
-                            → {formatTime(preparation.endTime)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="p-1">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => handleViewDetails(preparation.id)}>
-                        <Eye className="h-4 w-4 mr-2" />
-                        Voir détails
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                {/* Métadonnées */}
-                <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t">
-                  <div className="flex items-center space-x-3">
-                    <span>{preparation.steps?.filter(s => s.completed).length || 0}/{preparation.steps?.length || 6} étapes</span>
-                    {preparation.totalTime && (
-                      <span className="flex items-center space-x-1">
-                        <Clock className="h-3 w-3" />
-                        <span>{formatDuration(preparation.totalTime)}</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
         )}
-      </div>
 
-      {/* Pagination ou chargement de plus */}
-      {!isLoading && preparations.length > 0 && hasMore && (
-        <div className="p-4">
-          <Button 
-            variant="outline" 
-            className="w-full"
-            onClick={loadMore}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Chargement...' : 'Charger plus'}
-          </Button>
-        </div>
-      )}
+        {/* Liste des préparations */}
+        {!isEmpty && (
+          <div className="space-y-3">
+            {preparations.map((preparation) => (
+              <PreparationCard 
+                key={preparation.id} 
+                preparation={preparation} 
+              />
+            ))}
+
+            {/* Bouton charger plus */}
+            {hasMore && (
+              <div className="text-center pt-4">
+                <Button
+                  onClick={handleLoadMore}
+                  disabled={isLoading}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {isLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Chargement...
+                    </>
+                  ) : (
+                    'Charger plus'
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Info pagination */}
+            {!hasMore && preparations.length > 0 && (
+              <p className="text-center text-gray-500 text-sm py-4">
+                Toutes les préparations ont été chargées
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Gestion des erreurs */}
+        {error && (
+          <Card className="mt-4 border-red-200 bg-red-50">
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <AlertTriangle className="w-5 h-5 text-red-600 mr-2" />
+                <div>
+                  <h4 className="font-medium text-red-800">Erreur</h4>
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </main>
+
+      {/* ✅ Navigation Bottom */}
+      <BottomNavigation />
     </div>
   );
 };
 
-export default PreparationsHistoryPage;
+export default PreparationHistoryPage;

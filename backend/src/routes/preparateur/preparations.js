@@ -614,4 +614,351 @@ router.post('/:id/issue',
   }
 );
 
+/**
+ * @route   GET /api/preparations/history
+ * @desc    Obtenir l'historique des préparations de l'utilisateur
+ * @access  Preparateur
+ */
+router.get('/history', async (req, res) => {
+  try {
+    const { page = 1, limit = 20, startDate, endDate, agencyId, search } = req.query;
+    const userId = req.user.userId;
+
+    console.log('📋 Récupération historique préparations:', { 
+      userId, 
+      page, 
+      limit, 
+      filters: { startDate, endDate, agencyId, search }
+    });
+
+    // Dates par défaut (30 derniers jours si non spécifiées)
+    const defaultEndDate = endDate ? new Date(endDate) : new Date();
+    const defaultStartDate = startDate ? new Date(startDate) : 
+      new Date(defaultEndDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Construire les filtres
+    const filters = {
+      user: userId,
+      status: { $in: [PREPARATION_STATUS.COMPLETED, PREPARATION_STATUS.CANCELLED] }, // Seulement les préparations terminées
+      createdAt: { $gte: defaultStartDate, $lte: defaultEndDate }
+    };
+
+    // ✅ Filtre par agence si spécifié ET différent de "all"
+    if (agencyId && agencyId !== 'all' && agencyId.trim() !== '') {
+      // Vérifier que c'est un ObjectId valide
+      if (mongoose.Types.ObjectId.isValid(agencyId)) {
+        filters.agency = agencyId;
+      } else {
+        console.warn('⚠️ agencyId invalide:', agencyId);
+        // Ignorer le filtre agence si l'ID n'est pas valide
+      }
+    }
+
+    // Filtre de recherche (plaque d'immatriculation, marque, modèle)
+    if (search && search.trim()) {
+      const searchRegex = { $regex: search.trim(), $options: 'i' };
+      filters.$or = [
+        { 'vehicleInfo.licensePlate': searchRegex },
+        { 'vehicleInfo.brand': searchRegex },
+        { 'vehicleInfo.model': searchRegex }
+      ];
+    }
+
+    // Compter le total
+    const totalCount = await Preparation.countDocuments(filters);
+
+    // Récupérer les préparations avec pagination
+    const skip = (page - 1) * limit;
+    const preparations = await Preparation.find(filters)
+      .populate('agency', 'name code client')
+      .populate('user', 'firstName lastName')
+      .sort({ createdAt: -1 }) // Plus récentes en premier
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Calculer la pagination
+    const totalPages = Math.ceil(totalCount / limit);
+
+    // Formatter les données pour le frontend
+    const formattedPreparations = preparations.map(prep => ({
+      id: prep._id,
+      vehicle: prep.vehicleInfo || prep.vehicle,
+      agency: {
+        id: prep.agency._id,
+        name: prep.agency.name,
+        code: prep.agency.code,
+        client: prep.agency.client
+      },
+      user: {
+        id: prep.user._id,
+        firstName: prep.user.firstName,
+        lastName: prep.user.lastName
+      },
+      status: prep.status,
+      steps: prep.steps,
+      startTime: prep.startTime,
+      endTime: prep.endTime,
+      totalTime: prep.totalTime,
+      progress: prep.progress,
+      currentDuration: prep.currentDuration,
+      isOnTime: prep.isOnTime,
+      issues: prep.issues || [],
+      notes: prep.notes,
+      createdAt: prep.createdAt,
+      updatedAt: prep.updatedAt
+    }));
+
+    console.log('✅ Historique récupéré:', {
+      found: formattedPreparations.length,
+      totalCount,
+      page: parseInt(page),
+      totalPages,
+      agencyFilter: agencyId === 'all' ? 'toutes' : agencyId || 'aucune'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        preparations: formattedPreparations,
+        filters: {
+          startDate: defaultStartDate,
+          endDate: defaultEndDate,
+          agencyId: agencyId === 'all' ? null : (agencyId || null),
+          search: search || ''
+        },
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalCount,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur récupération historique:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération de l\'historique des préparations',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * @route   GET /api/preparations/my-stats
+ * @desc    Obtenir les statistiques de l'utilisateur
+ * @access  Preparateur
+ */
+router.get('/my-stats', async (req, res) => {
+  try {
+    const { period = '30d' } = req.query;
+    const userId = req.user.userId;
+
+    console.log('📊 Récupération statistiques:', { userId, period });
+
+    // Calculer la date de début selon la période
+    let startDate;
+    const endDate = new Date();
+    
+    switch (period) {
+      case '7d':
+        startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(endDate.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    // Agrégation des statistiques
+    const stats = await Preparation.aggregate([
+      {
+        $match: {
+          user: mongoose.Types.ObjectId(userId),
+          status: PREPARATION_STATUS.COMPLETED,
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalPreparations: { $sum: 1 },
+          totalTime: { $sum: '$totalTime' },
+          onTimeCount: {
+            $sum: { $cond: [{ $eq: ['$isOnTime', true] }, 1, 0] }
+          },
+          bestTime: { $min: '$totalTime' },
+          worstTime: { $max: '$totalTime' },
+          issuesCount: { $sum: { $size: { $ifNull: ['$issues', []] } } }
+        }
+      }
+    ]);
+
+    const baseStats = stats[0] || {
+      totalPreparations: 0,
+      totalTime: 0,
+      onTimeCount: 0,
+      bestTime: 0,
+      worstTime: 0,
+      issuesCount: 0
+    };
+
+    // Calculs dérivés
+    const averageTime = baseStats.totalPreparations > 0 ? 
+      Math.round(baseStats.totalTime / baseStats.totalPreparations) : 0;
+    
+    const onTimeRate = baseStats.totalPreparations > 0 ? 
+      Math.round((baseStats.onTimeCount / baseStats.totalPreparations) * 100) : 0;
+
+    const completionRate = 100; // Toutes les préparations dans cette agrégation sont complétées
+
+    // Statistiques par semaine (pour les graphiques)
+    const weeklyStats = await Preparation.aggregate([
+      {
+        $match: {
+          user: mongoose.Types.ObjectId(userId),
+          status: PREPARATION_STATUS.COMPLETED,
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            week: { $week: '$createdAt' },
+            year: { $year: '$createdAt' }
+          },
+          count: { $sum: 1 },
+          averageTime: { $avg: '$totalTime' }
+        }
+      },
+      {
+        $sort: { '_id.year': 1, '_id.week': 1 }
+      }
+    ]);
+
+    // Statistiques par étape
+    const stepStats = await Preparation.aggregate([
+      {
+        $match: {
+          user: mongoose.Types.ObjectId(userId),
+          status: PREPARATION_STATUS.COMPLETED,
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      { $unwind: '$steps' },
+      {
+        $group: {
+          _id: '$steps.step',
+          completionRate: {
+            $avg: { $cond: [{ $eq: ['$steps.completed', true] }, 100, 0] }
+          },
+          averageTime: { $avg: '$steps.duration' }
+        }
+      }
+    ]);
+
+    console.log('✅ Statistiques calculées:', {
+      totalPreparations: baseStats.totalPreparations,
+      averageTime,
+      onTimeRate
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalPreparations: baseStats.totalPreparations,
+        averageTime,
+        onTimeRate,
+        completionRate,
+        bestTime: baseStats.bestTime || 0,
+        worstTime: baseStats.worstTime || 0,
+        weeklyStats: weeklyStats.map(w => ({
+          date: `${w._id.year}-W${w._id.week}`,
+          count: w.count,
+          averageTime: Math.round(w.averageTime || 0)
+        })),
+        stepStats: stepStats.map(s => ({
+          stepType: s._id,
+          averageTime: Math.round(s.averageTime || 0),
+          completionRate: Math.round(s.completionRate || 0)
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur récupération stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des statistiques',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * @route   GET /api/preparations/vehicle-history/:licensePlate
+ * @desc    Obtenir l'historique d'un véhicule par plaque
+ * @access  Preparateur
+ */
+router.get('/vehicle-history/:licensePlate', async (req, res) => {
+  try {
+    const { licensePlate } = req.params;
+    const { limit = 10 } = req.query;
+
+    console.log('🚗 Récupération historique véhicule:', licensePlate);
+
+    const preparations = await Preparation.find({
+      $or: [
+        { 'vehicleInfo.licensePlate': { $regex: licensePlate, $options: 'i' } },
+        { 'vehicle.licensePlate': { $regex: licensePlate, $options: 'i' } }
+      ],
+      status: { $in: [PREPARATION_STATUS.COMPLETED, PREPARATION_STATUS.CANCELLED] }
+    })
+    .populate('agency', 'name code client')
+    .populate('user', 'firstName lastName')
+    .sort({ createdAt: -1 })
+    .limit(parseInt(limit))
+    .lean();
+
+    const formattedPreparations = preparations.map(prep => ({
+      id: prep._id,
+      vehicle: prep.vehicleInfo || prep.vehicle,
+      agency: prep.agency,
+      user: prep.user,
+      status: prep.status,
+      startTime: prep.startTime,
+      endTime: prep.endTime,
+      totalTime: prep.totalTime,
+      progress: prep.progress,
+      isOnTime: prep.isOnTime,
+      issues: prep.issues || [],
+      createdAt: prep.createdAt
+    }));
+
+    console.log('✅ Historique véhicule trouvé:', formattedPreparations.length);
+
+    res.json({
+      success: true,
+      data: {
+        preparations: formattedPreparations
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur historique véhicule:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération de l\'historique du véhicule'
+    });
+  }
+});
+
 module.exports = router;

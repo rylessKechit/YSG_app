@@ -1,15 +1,19 @@
-// preparator-app/src/lib/types/index.ts
-// ✅ Types harmonisés avec le backend
+// =====================================================
+// FICHIER: preparator-app/src/lib/types/index.ts
+// ✅ CORRECTION COMPLÈTE DES TYPES - Remplacer tout le contenu
+// =====================================================
 
-export interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: 'preparateur' | 'admin';
-  agencies: Agency[];
-  stats?: UserStats;
-}
+// ===== TYPES DE BASE =====
+
+export type VehicleType = 'particulier' | 'utilitaire';
+export type PreparationStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type StepType = 'exterior' | 'interior' | 'fuel' | 'tires_fluids' | 'special_wash' | 'parking';
+export type FuelType = 'essence' | 'diesel' | 'electrique' | 'hybride';
+export type VehicleCondition = 'excellent' | 'good' | 'fair' | 'poor';
+export type IssueSeverity = 'low' | 'medium' | 'high';
+export type IssueType = 'damage' | 'cleanliness' | 'missing_item' | 'mechanical' | 'other';
+
+// ===== INTERFACES DE BASE =====
 
 export interface Agency {
   id: string;
@@ -17,102 +21,260 @@ export interface Agency {
   code: string;
   client: string;
   isDefault?: boolean;
+  isActive?: boolean;
+  address?: {
+    street: string;
+    city: string;
+    zipCode: string;
+    country: string;
+  };
   workingHours?: {
     start: string;
     end: string;
+    breakStart?: string;
+    breakEnd?: string;
   };
-  isActive?: boolean;
 }
 
-// ✅ Interface simplifiée pour le véhicule (suppression color, condition)
-export interface Vehicle {
-  id?: string;
-  licensePlate: string;
-  brand: string;
-  model: string;
-  status?: 'available' | 'in_preparation' | 'ready' | 'rented';
-  agency?: Agency;
-}
-
-// ✅ Étapes de préparation - harmonisées avec le backend
-export interface PreparationStep {
-  step: string; // ✅ 'step' au lieu de 'type'
-  completed: boolean;
-  photoUrl?: string;
-  completedAt?: Date;
-  notes?: string;
-  photos?: Array<{
-    url: string;
-    description: string;
-    uploadedAt: Date;
-  }>;
-}
-
-export interface Preparation {
+export interface User {
   id: string;
-  vehicle: Vehicle;
-  agency: Agency;
-  user?: User;
-  startTime: Date;
-  endTime?: Date;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  steps: PreparationStep[];
-  progress: number;
-  currentDuration: number;
-  totalTime?: number;
-  isOnTime?: boolean;
-  notes?: string;
-  issues?: Issue[];
-  qualityCheck?: {
-    passed: boolean;
-    checkedBy?: string;
-    checkedAt?: Date;
-    notes?: string;
-  };
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: 'admin' | 'preparateur';
+  agencies: Agency[];
+  isActive: boolean;
+  stats?: UserStats;
+  createdAt: Date;
+  updatedAt: Date; // ✅ AJOUTÉ pour corriger l'erreur
+  lastLogin?: Date;
 }
 
-export interface Issue {
-  type: string;
-  description: string;
-  severity: 'low' | 'medium' | 'high';
-  reportedAt: Date;
-  photos?: string[];
-  resolved: boolean;
-}
-
-// ✅ Data pour compléter une étape
-export interface StepCompletionData {
-  step: string; // Sera mappé vers 'step' dans l'API
-  photo: File;
-  notes?: string;
-}
-
-// ✅ Data pour commencer une préparation avec véhicule (SIMPLIFIÉ)
-export interface VehicleFormData {
-  agencyId: string;
-  licensePlate: string;
-  brand: string;
-  model: string;
-}
-
-// ✅ Data pour signaler un incident
-export interface IssueReportData {
-  type: string;
-  description: string;
-  severity?: 'low' | 'medium' | 'high';
-  photo?: File;
-}
-
-// ✅ Statistiques utilisateur
 export interface UserStats {
   totalPreparations: number;
   averageTime: number;
   completionRate: number;
   onTimeRate: number;
   issuesReported: number;
+  lastCalculated?: Date;
 }
 
-// ✅ Statut pointage
+export interface VehicleInfo {
+  id?: string;
+  licensePlate: string;
+  brand: string;
+  model: string;
+  vehicleType: VehicleType;
+  year?: number;
+  fuelType?: FuelType;
+  color?: string;
+  condition?: VehicleCondition;
+}
+
+export interface Vehicle extends VehicleInfo {
+  id: string;
+  agency?: Agency;
+  status?: string;
+  isActive?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+// ===== INTERFACES PRÉPARATION =====
+
+export interface PreparationStep {
+  step: StepType;
+  completed: boolean;
+  completedAt?: Date;
+  duration?: number; // en minutes
+  notes?: string;
+  photos?: StepPhoto[];
+}
+
+export interface StepPhoto {
+  url: string;
+  description: string;
+  uploadedAt: Date;
+}
+
+export interface Issue {
+  id: string;
+  type: IssueType;
+  description: string;
+  severity: IssueSeverity;
+  reportedAt: Date;
+  photos?: string[];
+  resolved: boolean;
+  resolvedAt?: Date;
+  resolvedBy?: string;
+}
+
+// ✅ INTERFACE PREPARATION COMPLÈTE AVEC TOUTES LES PROPRIÉTÉS
+export interface Preparation {
+  id: string;
+  vehicle: VehicleInfo;
+  agency: Agency;
+  user: User;
+  status: PreparationStatus;
+  steps: PreparationStep[];
+  startTime: Date;
+  endTime?: Date;
+  totalTime?: number; // en minutes
+  progress: number; // pourcentage 0-100
+  currentDuration: number; // en minutes
+  isOnTime?: boolean;
+  issues?: Issue[];
+  notes?: string;
+  qualityCheck?: {
+    passed: boolean;
+    checkedBy?: string;
+    checkedAt?: Date;
+    notes?: string;
+  };
+  createdAt: Date; // ✅ PROPRIÉTÉ REQUISE
+  updatedAt: Date; // ✅ PROPRIÉTÉ REQUISE
+}
+
+// ===== INTERFACES FORMULAIRES =====
+
+export interface VehicleFormData {
+  agencyId: string;
+  licensePlate: string;
+  brand: string;
+  model: string;
+  vehicleType: VehicleType;
+  color?: string;
+  year?: number | null;
+  fuelType?: FuelType;
+  condition?: VehicleCondition;
+  notes?: string;
+}
+
+export interface StepCompletionData {
+  step: StepType;
+  photo: File;
+  notes?: string;
+}
+
+export interface IssueReportData {
+  type: IssueType;
+  description: string;
+  severity?: IssueSeverity;
+  photo?: File;
+}
+
+// ===== INTERFACES FILTRES =====
+
+export interface PreparationFilters {
+  startDate?: Date;
+  endDate?: Date;
+  agencyId?: string;
+  vehicleType?: VehicleType;
+  status?: PreparationStatus;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface TimesheetFilters {
+  startDate?: Date;
+  endDate?: Date;
+  agencyId?: string;
+}
+
+// ===== INTERFACES HISTORIQUE ET PAGINATION =====
+
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+// ✅ INTERFACE PREPARATION_HISTORY CORRIGÉE
+export interface PreparationHistory {
+  preparations: Preparation[];
+  filters: PreparationFilters;
+  pagination: PaginationInfo;
+}
+
+// ===== INTERFACES STATISTIQUES =====
+
+export interface PreparationStats {
+  totalPreparations: number;
+  averageTime: number;
+  onTimeRate: number;
+  completionRate: number;
+  bestTime: number;
+  worstTime: number;
+  byVehicleType?: {
+    particulier: {
+      count: number;
+      averageTime: number;
+      onTimeRate: number;
+    };
+    utilitaire: {
+      count: number;
+      averageTime: number;
+      onTimeRate: number;
+    };
+  };
+  weeklyStats: Array<{
+    date: string;
+    count: number;
+    averageTime: number;
+    particulier: number;
+    utilitaire: number;
+  }>;
+  stepStats: Array<{
+    stepType: StepType;
+    averageTime: number;
+    completionRate: number;
+  }>;
+}
+
+// ===== INTERFACES API =====
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  errors?: string[];
+  pagination?: PaginationInfo;
+}
+
+export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+  pagination?: PaginationInfo;
+}
+
+// ===== INTERFACES FORMULAIRES =====
+
+export interface LoginFormData {
+  email: string;
+  password: string;
+}
+
+export interface ProfileFormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+// ===== INTERFACES HOOKS =====
+
+export interface UsePreparationReturn {
+  currentPreparation: Preparation | null;
+  isLoading: boolean;
+  error: string | null;
+  startPreparation: (data: VehicleFormData) => Promise<boolean>;
+  completeStep: (preparationId: string, data: StepCompletionData) => Promise<boolean>;
+  completePreparation: (preparationId: string, notes?: string) => Promise<boolean>;
+  reportIssue: (preparationId: string, data: IssueReportData) => Promise<boolean>;
+  clearError: () => void;
+}
+
 export interface TimesheetStatus {
   isWorking: boolean;
   isOnBreak: boolean;
@@ -123,15 +285,27 @@ export interface TimesheetStatus {
   totalBreakToday: number;
 }
 
-// ✅ Définition des étapes harmonisée
+export interface UseTimesheetReturn {
+  status: TimesheetStatus | null;
+  isLoading: boolean;
+  error: string | null;
+  clockIn: (agencyId: string) => Promise<boolean>;
+  clockOut: (agencyId: string) => Promise<boolean>;
+  startBreak: (agencyId: string) => Promise<boolean>;
+  endBreak: (agencyId: string) => Promise<boolean>;
+  refreshStatus: () => Promise<void>;
+  clearError: () => void;
+}
+
+// ===== CONSTANTES ÉTAPES =====
+
 export interface StepDefinition {
-  step: string; // ✅ Utilise 'step' comme le backend
+  step: StepType;
   label: string;
   description: string;
   icon: string;
 }
 
-// ✅ Constantes des étapes
 export const PREPARATION_STEPS: readonly StepDefinition[] = [
   {
     step: 'exterior',
@@ -171,52 +345,9 @@ export const PREPARATION_STEPS: readonly StepDefinition[] = [
   }
 ] as const;
 
-// ✅ Types pour les réponses API
-export interface ApiResponse<T = any> {
-  success: boolean;
-  message?: string;
-  data?: T;
-  errors?: string[];
-}
+// ===== ENUMS =====
 
-export interface PaginatedResponse<T> extends ApiResponse<T[]> {
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
-}
-
-// ✅ Types pour les formulaires
-export interface LoginFormData {
-  email: string;
-  password: string;
-}
-
-export interface ProfileFormData {
-  firstName: string;
-  lastName: string;
-  email: string;
-}
-
-// ✅ Types pour les filtres et recherches
-export interface PreparationFilters {
-  startDate?: Date;
-  endDate?: Date;
-  agencyId?: string;
-  search?: string;
-  status?: Preparation['status'];
-}
-
-export interface TimesheetFilters {
-  startDate?: Date;
-  endDate?: Date;
-  agencyId?: string;
-}
-
-// ✅ Enums pour les constantes
-export enum PreparationStatus {
+export enum PreparationStatusEnum {
   PENDING = 'pending',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
@@ -228,71 +359,71 @@ export enum UserRole {
   PREPARATEUR = 'preparateur'
 }
 
-export enum IssueSeverity {
+export enum IssueSeverityEnum {
   LOW = 'low',
   MEDIUM = 'medium',
   HIGH = 'high'
 }
 
-// ✅ Types pour les hooks et stores
-export interface UsePreparationReturn {
-  currentPreparation: Preparation | null;
-  isLoading: boolean;
-  error: string | null;
-  startPreparation: (data: VehicleFormData) => Promise<boolean>;
-  completeStep: (preparationId: string, data: StepCompletionData) => Promise<boolean>;
-  completePreparation: (preparationId: string, notes?: string) => Promise<boolean>;
-  reportIssue: (preparationId: string, data: IssueReportData) => Promise<boolean>;
-  clearError: () => void;
-}
+// ===== TYPES D'UNION POUR L'AUTOCOMPLÉTION =====
 
-export interface UseTimesheetReturn {
-  status: TimesheetStatus | null;
-  isLoading: boolean;
-  error: string | null;
-  clockIn: (agencyId: string) => Promise<boolean>;
-  clockOut: (agencyId: string) => Promise<boolean>;
-  startBreak: (agencyId: string) => Promise<boolean>;
-  endBreak: (agencyId: string) => Promise<boolean>;
-  refreshStatus: () => Promise<void>;
-  clearError: () => void;
-}
+export type AllowedStepType = typeof PREPARATION_STEPS[number]['step'];
+export type AllowedVehicleType = VehicleType;
+export type AllowedFuelType = FuelType;
+export type AllowedCondition = VehicleCondition;
+export type AllowedStatus = PreparationStatus;
 
-// ✅ Types pour les statistiques
-export interface PreparationStats {
-  totalPreparations: number;
-  averageTime: number;
-  onTimeRate: number;
-  completionRate: number;
-  bestTime: number;
-  worstTime: number;
-  weeklyStats: {
-    date: string;
-    count: number;
-    averageTime: number;
-  }[];
-  stepStats: {
-    stepType: string;
-    averageTime: number;
-    completionRate: number;
-  }[];
-}
+// ===== UTILITAIRES =====
 
-// ✅ Types pour l'historique
-export interface PreparationHistory {
-  preparations: Preparation[];
-  filters: {
-    startDate: Date;
-    endDate: Date;
-    agencyId?: string;
-    search?: string;
+/**
+ * Adapte une étape backend vers le format frontend
+ */
+export function adaptBackendStep(
+  stepDefinition: StepDefinition, 
+  backendStep?: PreparationStep
+): PreparationStep & { label: string } {
+  return {
+    step: stepDefinition.step,
+    label: stepDefinition.label,
+    completed: backendStep?.completed || false,
+    completedAt: backendStep?.completedAt,
+    duration: backendStep?.duration,
+    notes: backendStep?.notes,
+    photos: backendStep?.photos
   };
-  pagination: {
-    page: number;
-    limit: number;
-    totalCount: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
+}
+
+/**
+ * Trouve une définition d'étape par son type
+ */
+export function getStepDefinition(stepType: StepType): StepDefinition | undefined {
+  return PREPARATION_STEPS.find(step => step.step === stepType);
+}
+
+/**
+ * Calcule la progression d'une préparation
+ */
+export function calculateProgress(steps: PreparationStep[]): number {
+  if (!steps || steps.length === 0) return 0;
+  const completedSteps = steps.filter(step => step.completed).length;
+  return Math.round((completedSteps / steps.length) * 100);
+}
+
+/**
+ * Vérifie si une préparation peut être terminée
+ */
+export function canCompletePreparation(steps: PreparationStep[]): boolean {
+  return steps.some(step => step.completed);
+}
+
+/**
+ * Formate une durée en minutes vers un string lisible
+ */
+export function formatDuration(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes}min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h${remainingMinutes}` : `${hours}h`;
 }
