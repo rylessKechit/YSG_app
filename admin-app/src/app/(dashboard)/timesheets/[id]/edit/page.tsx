@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/timesheets/[id]/edit/page.tsx - VERSION CORRIGÉE
-'use client';
+'use client&apos;;
 
 import { useRouter } from 'next/navigation';
 import { notFound } from 'next/navigation';
@@ -37,7 +37,7 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
 
   // Handlers
   const handleSuccess = (updatedTimesheet: Timesheet) => {
-    console.log('✅ Pointage modifié:', updatedTimesheet);
+    console.log('✅ Pointage modifié:&apos;, updatedTimesheet);
     router.push(`/timesheets/${id}`);
   };
 
@@ -108,7 +108,7 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                {error?.message || 'Pointage non trouvé ou une erreur est survenue lors du chargement.'}
+                {error?.message || &apos;Pointage non trouvé ou une erreur est survenue lors du chargement.'}
               </AlertDescription>
             </Alert>
             
@@ -141,9 +141,9 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
               Modifier le pointage
             </h1>
             <p className="text-gray-600 mt-1">
-              {typeof timesheet.user === 'object' 
+              {typeof timesheet.user === &apos;object' 
                 ? `${timesheet.user.firstName} ${timesheet.user.lastName}`
-                : 'Utilisateur'
+                : &apos;Utilisateur'
               } - {new Date(timesheet.date).toLocaleDateString('fr-FR')}
             </p>
           </div>
@@ -155,7 +155,7 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
       </div>
 
       {/* Alert pour pointage validé */}
-      {timesheet.status === 'validated' && (
+      {timesheet.status === &apos;validated' && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
@@ -164,12 +164,12 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
         </Alert>
       )}
 
-      {/* ✅ Formulaire d'édition temporaire en attendant TimesheetForm */}
+      {/* ✅ Formulaire d'édition temporaire en attendant TimesheetForm */}'
       <Card>
         <CardHeader>
-          <CardTitle>Formulaire d'édition</CardTitle>
+          <CardTitle>Formulaire d&apos;édition</CardTitle>
           <CardDescription>
-            Le composant TimesheetForm sera disponible après l'implémentation du chapitre 5
+            Le composant TimesheetForm sera disponible après l&apos;implémentation du chapitre 5
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -178,9 +178,9 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
             <div>
               <p className="text-sm font-medium text-gray-600">Utilisateur:</p>
               <p className="text-lg">
-                {typeof timesheet.user === 'object' 
-                  ? `${timesheet.user.firstName} ${timesheet.user.lastName}`
-                  : 'Utilisateur supprimé'
+                {typeof timesheet.user === &apos;object' 
+                  ? `${timesheet.user.firstName} ${timesheet.user.lastName}``
+                  : &apos;Utilisateur supprimé'
                 }
               </p>
             </div>
@@ -188,25 +188,25 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
             <div>
               <p className="text-sm font-medium text-gray-600">Agence:</p>
               <p className="text-lg">
-                {typeof timesheet.agency === 'object' 
+                {typeof timesheet.agency === &apos;object' 
                   ? timesheet.agency.name 
-                  : 'Agence supprimée'
+                  : &apos;Agence supprimée'
                 }
               </p>
             </div>
             
             <div>
               <p className="text-sm font-medium text-gray-600">Date:</p>
-              <p className="text-lg">{new Date(timesheet.date).toLocaleDateString('fr-FR')}</p>
+              <p className="text-lg">{new Date(timesheet.date).toLocaleDateString(&apos;fr-FR&apos;)}</p>&apos;
             </div>
             
             <div>
               <p className="text-sm font-medium text-gray-600">Statut:</p>
               <p className="text-lg">
-                {timesheet.status === 'incomplete' ? 'Incomplet' :
-                 timesheet.status === 'complete' ? 'Complet' :
-                 timesheet.status === 'validated' ? 'Validé' :
-                 'En litige'}
+                {timesheet.status === &apos;incomplete' ? &apos;Incomplet' :
+                 timesheet.status === &apos;complete' ? &apos;Complet' :
+                 timesheet.status === &apos;validated' ? &apos;Validé' :
+                 &apos;En litige'}
               </p>
             </div>
             
@@ -214,8 +214,8 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
               <p className="text-sm font-medium text-gray-600">Début:</p>
               <p className="text-lg">
                 {timesheet.startTime 
-                  ? new Date(timesheet.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                  : 'Non renseigné'
+                  ? new Date(timesheet.startTime).toLocaleTimeString('fr-FR', { hour: &apos;2-digit', minute: &apos;2-digit' })
+                  : &apos;Non renseigné'
                 }
               </p>
             </div>
@@ -224,8 +224,8 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
               <p className="text-sm font-medium text-gray-600">Fin:</p>
               <p className="text-lg">
                 {timesheet.endTime 
-                  ? new Date(timesheet.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                  : 'Non renseigné'
+                  ? new Date(timesheet.endTime).toLocaleTimeString('fr-FR', { hour: &apos;2-digit', minute: &apos;2-digit' })
+                  : &apos;Non renseigné'
                 }
               </p>
             </div>
@@ -234,13 +234,13 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
           <div className="text-center py-8">
             <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600 mb-4">
-              Formulaire d'édition de pointage en cours de développement
+              Formulaire d&apos;édition de pointage en cours de développement
             </p>
             <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={handleCancel}>
                 Annuler
               </Button>
-              <Button onClick={() => console.log('Modification temporairement désactivée')}>
+              <Button onClick={() => console.log(&apos;Modification temporairement désactivée')}>
                 Enregistrer les modifications (Temporaire)
               </Button>
             </div>

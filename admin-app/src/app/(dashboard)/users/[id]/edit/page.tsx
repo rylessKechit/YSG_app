@@ -1,4 +1,4 @@
-'use client';
+'use client&apos;;
 
 import { useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -16,20 +16,20 @@ export default function EditUserPage() {
   const params = useParams();
   const userId = params.id as string;
 
-  // Vérifier que l'ID est valide
+  // Vérifier que l'ID est valide'
   useEffect(() => {
     if (!userId || Array.isArray(userId)) {
-      console.error('ID utilisateur invalide:', userId);
+      console.error('ID utilisateur invalide:&apos;, userId);
       router.push('/users');
     }
   }, [userId, router]);
 
-  // Hook pour récupérer l'utilisateur
+  // Hook pour récupérer l'utilisateur'
   const { data: user, isLoading, error } = useUser(userId, !!userId);
 
   // Handlers
   const handleSuccess = (updatedUser: User) => {
-    console.log('✅ Utilisateur modifié:', updatedUser);
+    console.log('✅ Utilisateur modifié:&apos;, updatedUser);
     router.push('/users');
   };
 
@@ -42,7 +42,7 @@ export default function EditUserPage() {
   };
 
   const handleViewProfile = () => {
-    router.push(`/users/${userId}/profile`);
+    router.push(`/users/${userId}/profile`);`
   };
 
   // Loading state
@@ -89,7 +89,7 @@ export default function EditUserPage() {
               Erreur de chargement
             </h1>
             <p className="text-gray-600 mt-1">
-              Impossible de charger les informations de l'utilisateur
+              Impossible de charger les informations de l&apos;utilisateur
             </p>
           </div>
         </div>
@@ -100,7 +100,7 @@ export default function EditUserPage() {
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                {error?.message || 'Utilisateur non trouvé ou une erreur est survenue lors du chargement.'}
+                {error?.message || &apos;Utilisateur non trouvé ou une erreur est survenue lors du chargement.'}
               </AlertDescription>
             </Alert>
 
@@ -160,14 +160,14 @@ export default function EditUserPage() {
                   {user.firstName} {user.lastName}
                 </h3>
                 <p className="text-blue-700 text-sm">
-                  {user.email} • {user.role === 'admin' ? 'Administrateur' : 'Préparateur'}
+                  {user.email} • {user.role === &apos;admin' ? &apos;Administrateur' : 'Préparateur'}
                 </p>
               </div>
             </div>
             <div className="text-right">
               <p className="text-sm text-blue-600">
-                Statut: <span className={user.isActive ? 'text-green-600' : 'text-red-600'}>
-                  {user.isActive ? 'Actif' : 'Inactif'}
+                Statut: <span className={user.isActive ? &apos;text-green-600' : 'text-red-600'}>
+                  {user.isActive ? &apos;Actif' : 'Inactif'}
                 </span>
               </p>
               <p className="text-sm text-blue-600">
@@ -178,7 +178,7 @@ export default function EditUserPage() {
         </CardContent>
       </Card>
 
-      {/* Formulaire d'édition */}
+      {/* Formulaire d'édition */}'
       <UserForm 
         userId={userId}
         onSuccess={handleSuccess}

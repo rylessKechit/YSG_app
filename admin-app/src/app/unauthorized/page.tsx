@@ -1,4 +1,4 @@
-'use client';
+'use client&apos;;
 
 import { useRouter } from 'next/navigation';
 import { ShieldX, ArrowLeft, Home } from 'lucide-react';
@@ -34,7 +34,7 @@ export default function UnauthorizedPage() {
             Accès refusé
           </CardTitle>
           <CardDescription className="text-gray-600">
-            Vous n'avez pas les permissions nécessaires pour accéder à cette page.
+            Vous n&apos;avez pas les permissions nécessaires pour accéder à cette page.
           </CardDescription>
         </CardHeader>
         
@@ -46,20 +46,20 @@ export default function UnauthorizedPage() {
               <p><strong>Email :</strong> {user.email}</p>
               <p><strong>Rôle actuel :</strong> 
                 <span className={`ml-1 px-2 py-1 rounded-full text-xs ${
-                  user.role === 'admin' 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-blue-100 text-blue-800'
-                }`}>
+                  user.role === &apos;admin' 
+                    ? &apos;bg-green-100 text-green-800' 
+                    : &apos;bg-blue-100 text-blue-800'
+                }`}>`
                   {user.role}
                 </span>
               </p>
             </div>
           )}
 
-          {/* Message d'explication */}
+          {/* Message d'explication */}'
           <div className="text-sm text-gray-600">
-            <p>Cette page nécessite des permissions d'administrateur.</p>
-            {user?.role !== 'admin' && (
+            <p>Cette page nécessite des permissions d&apos;administrateur.</p>
+            {user?.role !== &apos;admin' && (
               <p className="mt-2">
                 Contactez votre administrateur système pour obtenir les accès nécessaires.
               </p>
@@ -84,7 +84,7 @@ export default function UnauthorizedPage() {
           </div>
 
           {/* Debug info en développement */}
-          {process.env.NODE_ENV === 'development' && (
+          {process.env.NODE_ENV === &apos;development' && (
             <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
               <p className="font-medium text-yellow-800">Debug Info:</p>
               <pre className="text-yellow-700 mt-1">

@@ -1,5 +1,5 @@
 // src/components/reports/performance-report.tsx
-'use client';
+'use client&apos;;
 
 import React from 'react';
 import { Clock, TrendingUp, TrendingDown, Target, Award, AlertTriangle } from 'lucide-react';
@@ -18,7 +18,7 @@ import {
   Bar,
   Area,
   AreaChart
-} from 'recharts';
+} from &apos;recharts&apos;;
 import { PerformanceReportData } from '@/types/reports';
 
 interface PerformanceReportProps {
@@ -47,20 +47,20 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
 
   const getEfficiencyColor = (efficacite: string) => {
     switch (efficacite) {
-      case 'excellent': return 'text-green-600 bg-green-50';
-      case 'bon': return 'text-blue-600 bg-blue-50';
-      case 'moyen': return 'text-yellow-600 bg-yellow-50';
-      case 'faible': return 'text-red-600 bg-red-50';
-      default: return 'text-gray-600 bg-gray-50';
+      case &apos;excellent&apos;: return &apos;text-green-600 bg-green-50&apos;;
+      case &apos;bon&apos;: return &apos;text-blue-600 bg-blue-50&apos;;
+      case &apos;moyen&apos;: return &apos;text-yellow-600 bg-yellow-50&apos;;
+      case &apos;faible&apos;: return &apos;text-red-600 bg-red-50&apos;;
+      default: return &apos;text-gray-600 bg-gray-50&apos;;
     }
   };
 
   const getEfficiencyLabel = (efficacite: string) => {
     const labels = {
-      excellent: 'Excellent',
-      bon: 'Bon',
-      moyen: 'Moyen',
-      faible: 'Faible'
+      excellent: &apos;Excellent&apos;,
+      bon: &apos;Bon&apos;,
+      moyen: &apos;Moyen&apos;,
+      faible: &apos;Faible&apos;
     };
     return labels[efficacite as keyof typeof labels] || efficacite;
   };
@@ -93,8 +93,8 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
                   ) : (
                     <TrendingUp className="h-4 w-4 text-red-500" />
                   )}
-                  <span className={`text-sm ${data.comparaison.periodePrecedente.evolution > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {data.comparaison.periodePrecedente.evolution > 0 ? '' : '+'}{Math.abs(data.comparaison.periodePrecedente.evolution).toFixed(1)}min
+                  <span className={`text-sm ${data.comparaison.periodePrecedente.evolution > 0 ? &apos;text-green-600&apos; : &apos;text-red-600'}`}>
+                    {data.comparaison.periodePrecedente.evolution > 0 ? &apos;&apos; : &apos;+'}{Math.abs(data.comparaison.periodePrecedente.evolution).toFixed(1)}min
                   </span>
                 </>
               )}
@@ -124,10 +124,10 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
           <CardContent>
             <div className="text-2xl font-bold">{data.global.tauxRespectObjectif.toFixed(1)}%</div>
             <Badge 
-              variant={data.global.tauxRespectObjectif >= 80 ? "default" : "destructive"}
+              variant={data.global.tauxRespectObjectif >= 80 ? &quot;default&quot; : "destructive"}
               className="mt-2"
             >
-              {data.global.tauxRespectObjectif >= 80 ? 'Satisfaisant' : 'À améliorer'}
+              {data.global.tauxRespectObjectif >= 80 ? &apos;Satisfaisant&apos; : &apos;À améliorer&apos;}
             </Badge>
           </CardContent>
         </Card>
@@ -160,15 +160,15 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 dataKey="date" 
-                tickFormatter={(value) => new Date(value).toLocaleDateString('fr-FR', { 
-                  month: 'short', 
-                  day: 'numeric' 
+                tickFormatter={(value) => new Date(value).toLocaleDateString(&apos;fr-FR&apos;, { 
+                  month: &apos;short&apos;, 
+                  day: &apos;numeric&apos; 
                 })}
               />
               <YAxis tickFormatter={(value) => `${value}min`} />
               <Tooltip 
-                formatter={(value: number) => [`${value.toFixed(1)} min`, 'Temps moyen']}
-                labelFormatter={(label) => new Date(label).toLocaleDateString('fr-FR')}
+                formatter={(value: number) => [`${value.toFixed(1)} min`, &apos;Temps moyen&apos;]}
+                labelFormatter={(label) => new Date(label).toLocaleDateString(&apos;fr-FR&apos;)}
               />
               <Area 
                 type="monotone" 
@@ -182,7 +182,7 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
                 dataKey="tempsMoyen" 
                 stroke="#3b82f6" 
                 strokeWidth={2}
-                dot={{ fill: '#3b82f6' }}
+                dot={{ fill: &apos;#3b82f6&apos; }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -206,7 +206,7 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
                 <XAxis dataKey="nom" />
                 <YAxis tickFormatter={(value) => `${value}min`} />
                 <Tooltip 
-                  formatter={(value: number) => [`${value.toFixed(1)} min`, 'Temps moyen']}
+                  formatter={(value: number) => [`${value.toFixed(1)} min`, &apos;Temps moyen&apos;]}
                 />
                 <Bar 
                   dataKey="tempsMoyen" 
@@ -232,7 +232,7 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
                   </thead>
                   <tbody>
                     {data.parAgence.map((agence, index) => (
-                      <tr key={agence.agenceId} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <tr key={agence.agenceId} className={index % 2 === 0 ? &apos;bg-white&apos; : 'bg-gray-50'}>
                         <td className="px-4 py-3">
                           <div className="font-medium">{agence.nom}</div>
                         </td>
@@ -244,7 +244,7 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
                           {formatTime(agence.tempsMoyenObjectif)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span className={`font-medium ${agence.tauxReussiteObjectif >= 80 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span className={`font-medium ${agence.tauxReussiteObjectif >= 80 ? &apos;text-green-600&apos; : &apos;text-red-600'}`}>
                             {agence.tauxReussiteObjectif.toFixed(1)}%
                           </span>
                         </td>
@@ -269,7 +269,7 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
       {/* Pics d'activité */}
       <Card>
         <CardHeader>
-          <CardTitle>Pics d'Activité</CardTitle>
+          <CardTitle>Pics d&apos;Activité</CardTitle>
           <CardDescription>
             Répartition des préparations par heure de la journée
           </CardDescription>
@@ -285,8 +285,8 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
               <YAxis />
               <Tooltip 
                 formatter={(value: number, name: string) => [
-                  name === 'nombrePreparations' ? `${value} préparations` : `${value.toFixed(1)} min`,
-                  name === 'nombrePreparations' ? 'Nombre' : 'Temps moyen'
+                  name === &apos;nombrePreparations&apos; ? `${value} préparations` : `${value.toFixed(1)} min`,
+                  name === &apos;nombrePreparations&apos; ? &apos;Nombre&apos; : &apos;Temps moyen&apos;
                 ]}
                 labelFormatter={(label) => `${label}h00`}
               />
@@ -315,8 +315,8 @@ export function PerformanceReport({ data, isLoading }: PerformanceReportProps) {
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                     index < 3 
-                      ? 'bg-yellow-100 text-yellow-800' 
-                      : 'bg-gray-100 text-gray-600'
+                      ? &apos;bg-yellow-100 text-yellow-800&apos; 
+                      : &apos;bg-gray-100 text-gray-600&apos;
                   }`}>
                     #{index + 1}
                   </div>

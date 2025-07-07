@@ -1,5 +1,5 @@
 // src/app/(dashboard)/reports/page.tsx - VERSION CORRIGÉE AVEC VRAIES DONNÉES
-'use client';
+'use client&apos;;
 
 import React, { useState } from 'react';
 import { 
@@ -15,7 +15,7 @@ import {
   Plus,
   Eye,
   AlertCircle
-} from 'lucide-react';
+} from &apos;lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ import {
   usePerformanceReport,
   useActivityReport,
   useReportsList
-} from '@/hooks/api/useReports';
+} from &apos;@/hooks/api/useReports';
 import { PunctualityReport } from '@/components/reports/punctuality-report';
 import { PerformanceReport } from '@/components/reports/performance-report';
 import { ActivityReport } from '@/components/reports/activity-report';
@@ -101,21 +101,21 @@ const ReportsPage: React.FC = () => {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: &apos;2-digit',
+      month: &apos;2-digit',
+      year: &apos;numeric',
+      hour: &apos;2-digit',
+      minute: &apos;2-digit'
     });
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'ready':
+      case &apos;ready':
         return <Badge variant="default" className="bg-green-100 text-green-800">Prêt</Badge>;
-      case 'generating':
+      case &apos;generating':
         return <Badge variant="default" className="bg-yellow-100 text-yellow-800">En cours</Badge>;
-      case 'error':
+      case &apos;error':
         return <Badge variant="destructive">Erreur</Badge>;
       default:
         return <Badge variant="secondary">Inconnu</Badge>;
@@ -129,7 +129,7 @@ const ReportsPage: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Rapports</h1>
-            <p className="text-muted-foreground">Générez et consultez vos rapports d'analyse</p>
+            <p className="text-muted-foreground">Générez et consultez vos rapports d&apos;analyse</p>
           </div>
         </div>
         
@@ -162,7 +162,7 @@ const ReportsPage: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Rapports</h1>
           <p className="text-muted-foreground">
-            Générez et consultez vos rapports d'analyse
+            Générez et consultez vos rapports d&apos;analyse
           </p>
         </div>
         <div className="flex gap-2">
@@ -201,7 +201,7 @@ const ReportsPage: React.FC = () => {
               <>
                 <div className="text-2xl font-bold">{quickMetrics.punctuality?.rate?.toFixed(1) || 0}%</div>
                 <p className="text-xs text-muted-foreground">
-                  {quickMetrics.punctuality?.trend > 0 ? '+' : ''}{quickMetrics.punctuality?.trend?.toFixed(1) || 0}% par rapport au mois dernier
+                  {quickMetrics.punctuality?.trend > 0 ? &apos;+&apos; : ''}{quickMetrics.punctuality?.trend?.toFixed(1) || 0}% par rapport au mois dernier
                 </p>
               </>
             ) : (
@@ -272,7 +272,7 @@ const ReportsPage: React.FC = () => {
             ) : quickMetrics ? (
               <>
                 <div className="text-2xl font-bold">
-                  {quickMetrics.activity?.trend > 0 ? '+' : ''}{quickMetrics.activity?.trend?.toFixed(1) || 0}%
+                  {quickMetrics.activity?.trend > 0 ? &apos;+&apos; : ''}{quickMetrics.activity?.trend?.toFixed(1) || 0}%
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Performance générale
@@ -293,9 +293,9 @@ const ReportsPage: React.FC = () => {
           onApply={handleApplyFilters}
           isLoading={isLoadingMetrics}
           availableAgencies={[
-            { id: 'paris', name: 'Paris Centre' },
-            { id: 'orly', name: 'Orly' },
-            { id: 'cdg', name: 'Charles de Gaulle' }
+            { id: &apos;paris', name: &apos;Paris Centre' },
+            { id: &apos;orly', name: &apos;Orly' },
+            { id: &apos;cdg', name: &apos;Charles de Gaulle&apos; }
           ]}
           showAdvanced={true}
         />
@@ -330,7 +330,7 @@ const ReportsPage: React.FC = () => {
               <CardContent>
                 <div className="flex gap-2">
                   <Button 
-                    onClick={() => handleGenerateReport('ponctualite')}
+                    onClick={() => handleGenerateReport(&apos;ponctualite')}
                     disabled={isExporting}
                     className="flex-1"
                   >
@@ -362,7 +362,7 @@ const ReportsPage: React.FC = () => {
               <CardContent>
                 <div className="flex gap-2">
                   <Button 
-                    onClick={() => handleGenerateReport('performance')}
+                    onClick={() => handleGenerateReport(&apos;performance')}
                     disabled={isExporting}
                     className="flex-1"
                   >
@@ -380,7 +380,7 @@ const ReportsPage: React.FC = () => {
             <Card className="relative">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Rapport d'Activité</CardTitle>
+                  <CardTitle className="text-lg">Rapport d&apos;Activité</CardTitle>
                   {activityReport.isLoading ? (
                     <Badge variant="default" className="bg-yellow-100 text-yellow-800">Chargement</Badge>
                   ) : activityReport.error ? (
@@ -394,7 +394,7 @@ const ReportsPage: React.FC = () => {
               <CardContent>
                 <div className="flex gap-2">
                   <Button 
-                    onClick={() => handleGenerateReport('activite')}
+                    onClick={() => handleGenerateReport(&apos;activite')}
                     disabled={isExporting}
                     className="flex-1"
                   >
@@ -477,14 +477,14 @@ const ReportsPage: React.FC = () => {
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    Erreur lors du chargement du rapport d'activité
+                    Erreur lors du chargement du rapport d&apos;activité
                   </AlertDescription>
                 </Alert>
               ) : (
                 <Card>
                   <CardContent className="p-6">
                     <div className="text-center text-muted-foreground">
-                      Aucune donnée d'activité disponible pour la période sélectionnée
+                      Aucune donnée d&apos;activité disponible pour la période sélectionnée
                     </div>
                   </CardContent>
                 </Card>
@@ -529,7 +529,7 @@ const ReportsPage: React.FC = () => {
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span>{report.type}</span>
                             <span>{formatDate(report.creeA)}</span>
-                            <span>{report.taille ? `${(report.taille / 1024 / 1024).toFixed(1)} MB` : 'N/A'}</span>
+                            <span>{report.taille ? `${(report.taille / 1024 / 1024).toFixed(1)} MB` : &apos;N/A&apos;}</span>&apos;
                             <Badge variant="secondary">{report.format.toUpperCase()}</Badge>
                           </div>
                         </div>
@@ -537,7 +537,7 @@ const ReportsPage: React.FC = () => {
                       
                       <div className="flex items-center gap-2">
                         {getStatusBadge(report.statut)}
-                        {report.statut === 'ready' && (
+                        {report.statut === &apos;ready' && (
                           <div className="flex gap-1">
                             <Button variant="outline" size="sm">
                               <Eye className="h-4 w-4" />
@@ -548,7 +548,7 @@ const ReportsPage: React.FC = () => {
                               onClick={() => handleDownloadReport(
                                 report.id, 
                                 report.format, 
-                                `${report.titre}.${report.format}`
+                                `${report.titre}.${report.format}``
                               )}
                               disabled={isDownloading}
                             >
@@ -570,7 +570,7 @@ const ReportsPage: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog d'export */}
+      {/* Dialog d'export */}'
       <ReportExportDialog
         reportType={activeReportType}
         isOpen={exportDialogOpen}

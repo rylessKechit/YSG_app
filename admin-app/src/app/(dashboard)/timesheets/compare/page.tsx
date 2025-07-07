@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/timesheets/compare/page.tsx - VERSION CORRIGÉE
-'use client';
+'use client&apos;;
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -53,7 +53,7 @@ export default function TimesheetsComparePage() {
 
   const handleExport = () => {
     // TODO: Implémenter export CSV/Excel
-    console.log('Export comparison data');
+    console.log('Export comparison data&apos;);
   };
 
   const handleRefresh = () => {
@@ -129,7 +129,7 @@ export default function TimesheetsComparePage() {
               <Select
                 value={filters.agencyId || 'all'}
                 onValueChange={(value) => 
-                  handleFiltersChange({ agencyId: value === 'all' ? undefined : value })
+                  handleFiltersChange({ agencyId: value === &apos;all' ? undefined : value })
                 }
               >
                 <SelectTrigger>
@@ -148,7 +148,7 @@ export default function TimesheetsComparePage() {
               <Select
                 value={filters.userId || 'all'}
                 onValueChange={(value) => 
-                  handleFiltersChange({ userId: value === 'all' ? undefined : value })
+                  handleFiltersChange({ userId: value === &apos;all' ? undefined : value })
                 }
               >
                 <SelectTrigger>
@@ -204,7 +204,7 @@ export default function TimesheetsComparePage() {
               <div className="text-2xl font-bold text-green-600">
                 {comparisonData.summary.onTimeCount}
               </div>
-              <p className="text-xs text-muted-foreground">À l'heure</p>
+              <p className="text-xs text-muted-foreground">À l&apos;heure</p>
             </CardContent>
           </Card>
           
@@ -245,7 +245,7 @@ export default function TimesheetsComparePage() {
               Pointages manquants ({missingData.count})
             </CardTitle>
             <CardDescription className="text-red-700">
-              Ces plannings n'ont pas de pointage correspondant
+              Ces plannings n&apos;ont pas de pointage correspondant
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -316,14 +316,14 @@ export default function TimesheetsComparePage() {
                     
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        comparison.analysis.status === 'on_time' ? 'bg-green-100 text-green-800' :
-                        comparison.analysis.status === 'late' ? 'bg-red-100 text-red-800' :
-                        comparison.analysis.status === 'missing' ? 'bg-gray-100 text-gray-800' :
-                        'bg-orange-100 text-orange-800'
-                      }`}>
-                        {comparison.analysis.status === 'on_time' ? 'Ponctuel' :
-                         comparison.analysis.status === 'late' ? 'En retard' :
-                         comparison.analysis.status === 'missing' ? 'Manquant' :
+                        comparison.analysis.status === &apos;on_time' ? &apos;bg-green-100 text-green-800' :
+                        comparison.analysis.status === &apos;late' ? &apos;bg-red-100 text-red-800' :
+                        comparison.analysis.status === &apos;missing' ? &apos;bg-gray-100 text-gray-800' :
+                        &apos;bg-orange-100 text-orange-800'
+                      }`}>`
+                        {comparison.analysis.status === &apos;on_time' ? &apos;Ponctuel' :
+                         comparison.analysis.status === &apos;late' ? &apos;En retard' :
+                         comparison.analysis.status === &apos;missing' ? &apos;Manquant' :
                          'Autre'}
                       </span>
                     </div>

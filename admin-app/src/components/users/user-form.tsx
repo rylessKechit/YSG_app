@@ -1,5 +1,5 @@
 // src/components/users/user-form.tsx
-'use client';
+'use client&apos;;
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -24,19 +24,19 @@ import { User as UserType } from '@/types/auth';
 
 // Schéma de validation - CORRIGÉ téléphone obligatoire
 const userFormSchema = z.object({
-  email: z.string().email('Format email invalide').min(1, 'Email requis'),
-  password: z.string().min(6, 'Minimum 6 caractères').optional(),
-  firstName: z.string().min(2, 'Minimum 2 caractères').max(50, 'Maximum 50 caractères'),
-  lastName: z.string().min(2, 'Minimum 2 caractères').max(50, 'Maximum 50 caractères'),
+  email: z.string().email('Format email invalide&apos;).min(1, 'Email requis&apos;),
+  password: z.string().min(6, 'Minimum 6 caractères&apos;).optional(),
+  firstName: z.string().min(2, 'Minimum 2 caractères&apos;).max(50, 'Maximum 50 caractères&apos;),
+  lastName: z.string().min(2, 'Minimum 2 caractères&apos;).max(50, 'Maximum 50 caractères&apos;),
   phone: z.string()
     .min(1, 'Téléphone requis')
-    .regex(/^[\+]?[1-9][\d]{0,15}$/, 'Format téléphone invalide'),
+    .regex(/^[\+]?[1-9][\d]{0,15}$/, &apos;Format téléphone invalide&apos;),
   role: z.enum(['admin', 'preparateur']),
   agencies: z.array(z.string()).optional(), // Plus obligatoire
   isActive: z.boolean().default(true)
 }).refine((data) => {
   // Les agences ne sont obligatoires que pour les préparateurs
-  if (data.role === 'preparateur' && (!data.agencies || data.agencies.length === 0)) {
+  if (data.role === &apos;preparateur&apos; && (!data.agencies || data.agencies.length === 0)) {
     return false;
   }
   return true;
@@ -75,12 +75,12 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
   const form = useForm<UserFormData>({
     resolver: zodResolver(userFormSchema),
     defaultValues: {
-      email: '',
-      password: '',
-      firstName: '',
-      lastName: '',
+      email: &apos;&apos;,
+      password: &apos;&apos;,
+      firstName: &apos;&apos;,
+      lastName: &apos;&apos;,
       phone: '', // ✅ CORRECTION: String vide au lieu d'undefined
-      role: 'preparateur',
+      role: &apos;preparateur&apos;,
       agencies: [],
       isActive: true
     }
@@ -95,7 +95,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
         email: existingUser.email,
         firstName: existingUser.firstName,
         lastName: existingUser.lastName,
-        phone: existingUser.phone || '',
+        phone: existingUser.phone || &apos;&apos;,
         role: existingUser.role,
         agencies: existingUser.agencies?.map(agency => agency.id) || [],
         isActive: existingUser.isActive ?? true
@@ -116,7 +116,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
   useEffect(() => {
     // ✅ STOP TOTAL si l'email est déjà validé ET identique au dernier validé
     if (emailValidated && watchedEmail === lastValidatedEmail) {
-      console.log('🛑 Email déjà validé, pas de nouvelle vérification');
+      console.log('🛑 Email déjà validé, pas de nouvelle vérification&apos;);
       return;
     }
 
@@ -127,7 +127,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
 
     if (!shouldCheck) return;
 
-    console.log('🔍 Vérification email:', watchedEmail);
+    console.log('🔍 Vérification email:&apos;, watchedEmail);
 
     const timeoutId = setTimeout(async () => {
       setIsCheckingEmail(true);
@@ -143,10 +143,10 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
         if (result.data.available) {
           setEmailValidated(true);
           setLastValidatedEmail(watchedEmail); // ✅ SAUVEGARDER l'email validé
-          console.log('✅ Email validé et sauvegardé:', watchedEmail);
+          console.log('✅ Email validé et sauvegardé:&apos;, watchedEmail);
         }
       } catch (error) {
-        console.log('❌ Email invalide:', watchedEmail);
+        console.log('❌ Email invalide:&apos;, watchedEmail);
         setEmailValidated(false);
         setLastValidatedEmail(''); // Reset si erreur
       }
@@ -183,9 +183,9 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
         });
 
         toast({
-          title: 'Succès',
-          description: 'Utilisateur modifié avec succès',
-          variant: 'default'
+          title: &apos;Succès&apos;,
+          description: &apos;Utilisateur modifié avec succès&apos;,
+          variant: &apos;default&apos;
         });
 
         onSuccess?.(result.data.user);
@@ -195,24 +195,24 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
           ...data,
           password: data.password!,
           // ✅ CORRECTION: Envoyer un tableau vide pour les admins
-          agencies: data.role === 'admin' ? [] : (data.agencies || [])
+          agencies: data.role === &apos;admin&apos; ? [] : (data.agencies || [])
         };
 
         const result = await createUser.mutateAsync(createData);
 
         toast({
-          title: 'Succès',
-          description: 'Utilisateur créé avec succès',
-          variant: 'default'
+          title: &apos;Succès&apos;,
+          description: &apos;Utilisateur créé avec succès&apos;,
+          variant: &apos;default&apos;
         });
 
         onSuccess?.(result.data.user);
       }
     } catch (error: any) {
       toast({
-        title: 'Erreur',
-        description: error.response?.data?.message || 'Une erreur est survenue',
-        variant: 'destructive'
+        title: &apos;Erreur&apos;,
+        description: error.response?.data?.message || &apos;Une erreur est survenue&apos;,
+        variant: &apos;destructive&apos;
       });
     }
   }, [isEditMode, userId, updateUser, createUser, onSuccess, toast]);
@@ -252,12 +252,12 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
             <div>
               <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
                 <User className="h-8 w-8" />
-                {isEditMode ? 'Modifier l\'utilisateur' : 'Nouveau préparateur'}
+                {isEditMode ? &apos;Modifier l\&apos;utilisateur' : &apos;Nouveau préparateur'}
               </h1>
               <p className="text-gray-600 mt-1">
                 {isEditMode 
-                  ? 'Modifiez les informations de l\'utilisateur'
-                  : 'Créez un nouveau compte préparateur ou administrateur'
+                  ? &apos;Modifiez les informations de l\&apos;utilisateur&apos;
+                  : &apos;Créez un nouveau compte préparateur ou administrateur&apos;
                 }
               </p>
             </div>
@@ -278,7 +278,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
                     Informations personnelles
                   </CardTitle>
                   <CardDescription>
-                    Informations de base de l'utilisateur
+                    Informations de base de l&apos;utilisateur
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -376,7 +376,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
                           <FormControl>
                             <div className="relative">
                               <Input 
-                                type={showPassword ? 'text' : 'password'}
+                                type={showPassword ? &apos;text&apos; : 'password'}
                                 placeholder="Minimum 6 caractères"
                                 {...field} 
                               />
@@ -439,9 +439,9 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
                           </SelectContent>
                         </Select>
                         <FormDescription>
-                          {watchedRole === 'admin' 
-                            ? 'Les administrateurs ont accès à toutes les fonctionnalités'
-                            : 'Les préparateurs ont accès aux fonctions de préparation uniquement'
+                          {watchedRole === &apos;admin&apos; 
+                            ? &apos;Les administrateurs ont accès à toutes les fonctionnalités&apos;
+                            : &apos;Les préparateurs ont accès aux fonctions de préparation uniquement&apos;
                           }
                         </FormDescription>
                         <FormMessage />
@@ -456,12 +456,12 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Agences {watchedRole === 'preparateur' && <span className="text-red-500">*</span>}
+                          Agences {watchedRole === &apos;preparateur&apos; && <span className="text-red-500">*</span>}
                         </FormLabel>
                         <FormDescription>
-                          {watchedRole === 'admin' 
-                            ? 'Les administrateurs ont accès à toutes les agences par défaut'
-                            : 'Sélectionnez les agences assignées au préparateur'
+                          {watchedRole === &apos;admin&apos; 
+                            ? &apos;Les administrateurs ont accès à toutes les agences par défaut&apos;
+                            : &apos;Sélectionnez les agences assignées au préparateur&apos;
                           }
                         </FormDescription>
                         <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -490,7 +490,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
                                 <Label
                                   htmlFor={agency.id}
                                   className={`text-sm font-normal cursor-pointer ${
-                                    watchedRole === 'admin' ? 'text-gray-400' : ''
+                                    watchedRole === &apos;admin&apos; ? &apos;text-gray-400&apos; : &apos;&apos;
                                   }`}
                                 >
                                   {agency.name}
@@ -502,9 +502,9 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
                             ))
                           )}
                           
-                          {watchedRole === 'admin' && (
+                          {watchedRole === &apos;admin&apos; && (
                             <div className="text-sm text-blue-600 bg-blue-50 p-2 rounded">
-                              ℹ️ En tant qu'administrateur, vous avez automatiquement accès à toutes les agences
+                              ℹ️ En tant qu&apos;administrateur, vous avez automatiquement accès à toutes les agences
                             </div>
                           )}
                         </div>
@@ -556,7 +556,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              {isEditMode ? 'Enregistrer' : 'Créer l\'utilisateur'}
+              {isEditMode ? &apos;Enregistrer&apos; : &apos;Créer l\'utilisateur'}
             </Button>
           </div>
         </form>

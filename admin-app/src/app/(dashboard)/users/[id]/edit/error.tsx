@@ -1,4 +1,4 @@
-'use client';
+'use client&apos;;
 
 import { useEffect } from 'react';
 import { AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react';
@@ -14,11 +14,11 @@ export default function EditUserError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('Erreur page édition utilisateur:', error);
+    console.error('Erreur page édition utilisateur:&apos;, error);
   }, [error]);
 
   const handleBackToList = () => {
-    window.location.href = '/users';
+    window.location.href = &apos;/users';
   };
 
   return (
@@ -34,7 +34,7 @@ export default function EditUserError({
             Erreur de chargement
           </h1>
           <p className="text-gray-600 mt-1">
-            Une erreur est survenue lors du chargement de la page d'édition
+            Une erreur est survenue lors du chargement de la page d&apos;édition
           </p>
         </div>
       </div>
@@ -45,7 +45,7 @@ export default function EditUserError({
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Erreur:</strong> {error.message || 'Une erreur inattendue est survenue'}
+              <strong>Erreur:</strong> {error.message || &apos;Une erreur inattendue est survenue'}
               {error.digest && (
                 <div className="mt-2 text-xs text-gray-500">
                   ID: {error.digest}
@@ -64,10 +64,10 @@ export default function EditUserError({
             </Button>
           </div>
 
-          {process.env.NODE_ENV === 'development' && (
+          {process.env.NODE_ENV === &apos;development' && (
             <details className="mt-4">
               <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-800">
-                Détails de l'erreur (dev)
+                Détails de l&apos;erreur (dev)
               </summary>
               <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto">
                 {error.stack}

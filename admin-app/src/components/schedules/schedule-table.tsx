@@ -1,5 +1,5 @@
 // admin-app/src/components/schedules/schedule-table.tsx - VERSION FINALE SANS ERREURS
-'use client';
+'use client&apos;;
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,7 +18,7 @@ import {
   Copy,
   MoreHorizontal,
   AlertCircle
-} from 'lucide-react';
+} from &apos;lucide-react&apos;;
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,7 +33,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from &apos;@/components/ui/select&apos;;
 import {
   Table,
   TableBody,
@@ -41,7 +41,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from &apos;@/components/ui/table&apos;;
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,7 +49,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from &apos;@/components/ui/dropdown-menu&apos;;
 
 import { useSchedules, useDeleteSchedule } from '@/hooks/api/useSchedules';
 import { useUsers } from '@/hooks/api/useUsers';
@@ -60,11 +60,11 @@ interface ScheduleFilters {
   page: number;
   limit: number;
   search?: string;
-  status?: 'all' | 'active' | 'cancelled' | 'completed';
+  status?: &apos;all&apos; | &apos;active&apos; | &apos;cancelled&apos; | &apos;completed&apos;;
   user?: string;
   agency?: string;
   sort?: string;
-  order?: 'asc' | 'desc';
+  order?: &apos;asc&apos; | &apos;desc&apos;;
   startDate?: string;
   endDate?: string;
 }
@@ -158,7 +158,7 @@ interface UseDeleteScheduleReturn {
   isPending?: boolean;
 }
 
-type ViewMode = 'week' | 'day' | 'table';
+type ViewMode = &apos;week&apos; | &apos;day&apos; | &apos;table&apos;;
 
 export function ScheduleTable() {
   const router = useRouter();
@@ -170,10 +170,10 @@ export function ScheduleTable() {
   const [filters, setFilters] = useState<ScheduleFilters>({
     page: 1,
     limit: 20,
-    search: '',
-    status: 'all',
-    sort: 'date',
-    order: 'desc'
+    search: &apos;&apos;,
+    status: &apos;all&apos;,
+    sort: &apos;date&apos;,
+    order: &apos;desc&apos;
   });
 
   // Calcul des dates selon le mode de vue
@@ -181,14 +181,14 @@ export function ScheduleTable() {
     const today = new Date(currentDate);
     
     switch (viewMode) {
-      case 'day':
+      case &apos;day&apos;:
         const dayString = today.toISOString().split('T')[0];
         return {
           startDate: dayString,
           endDate: dayString
         };
         
-      case 'week':
+      case &apos;week&apos;:
         const startOfWeek = new Date(today);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
@@ -202,7 +202,7 @@ export function ScheduleTable() {
           endDate: endOfWeek.toISOString().split('T')[0]
         };
         
-      case 'table':
+      case &apos;table&apos;:
       default:
         return {};
     }
@@ -236,11 +236,11 @@ export function ScheduleTable() {
     const newDate = new Date(currentDate);
     
     switch (viewMode) {
-      case 'day':
-        newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1));
+      case &apos;day&apos;:
+        newDate.setDate(newDate.getDate() + (direction === &apos;next&apos; ? 1 : -1));
         break;
-      case 'week':
-        newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7));
+      case &apos;week&apos;:
+        newDate.setDate(newDate.getDate() + (direction === &apos;next&apos; ? 7 : -7));
         break;
     }
     
@@ -253,16 +253,16 @@ export function ScheduleTable() {
   };
 
   const handleEditSchedule = (id: string) => {
-    console.log('🔄 Navigation vers édition:', id);
+    console.log('🔄 Navigation vers édition:&apos;, id);
     try {
       router.push(`/schedules/${id}/edit`);
     } catch (error) {
-      console.error('❌ Erreur navigation édition:', error);
+      console.error('❌ Erreur navigation édition:&apos;, error);
     }
   };
 
   const handleDeleteSchedule = async (id: string) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer ce planning ?')) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer ce planning ?&apos;)) {
       try {
         await deleteMutation.mutateAsync(id);
         refetch();
@@ -280,7 +280,7 @@ export function ScheduleTable() {
       endTime: schedule.endTime,
       ...(schedule.breakStart && { breakStart: schedule.breakStart }),
       ...(schedule.breakEnd && { breakEnd: schedule.breakEnd }),
-      duplicate: 'true'
+      duplicate: &apos;true&apos;
     });
     router.push(`/schedules/new?${params}`);
   };
@@ -296,17 +296,17 @@ export function ScheduleTable() {
   // Formatage du titre selon la vue
   const getViewTitle = (): string => {
     const options: Intl.DateTimeFormatOptions = { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+      weekday: &apos;long&apos;, 
+      year: &apos;numeric&apos;, 
+      month: &apos;long&apos;, 
+      day: &apos;numeric&apos; 
     };
     
     switch (viewMode) {
-      case 'day':
+      case &apos;day&apos;:
         return currentDate.toLocaleDateString('fr-FR', options);
         
-      case 'week':
+      case &apos;week&apos;:
         const startOfWeek = new Date(currentDate);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
@@ -315,11 +315,11 @@ export function ScheduleTable() {
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         
-        return `${startOfWeek.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} - ${endOfWeek.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+        return `${startOfWeek.toLocaleDateString('fr-FR', { day: &apos;numeric&apos;, month: &apos;short&apos; })} - ${endOfWeek.toLocaleDateString('fr-FR', { day: &apos;numeric&apos;, month: &apos;short&apos;, year: &apos;numeric&apos; })}`;
         
-      case 'table':
+      case &apos;table&apos;:
       default:
-        return 'Tous les plannings';
+        return &apos;Tous les plannings&apos;;
     }
   };
 
@@ -340,9 +340,9 @@ export function ScheduleTable() {
               Aucun planning ce jour
             </h3>
             <p className="text-gray-500 text-center mb-4">
-              Il n'y a aucun planning prévu pour le {currentDate.toLocaleDateString('fr-FR')}
+              Il n&apos;y a aucun planning prévu pour le {currentDate.toLocaleDateString('fr-FR')}
             </p>
-            <Button onClick={() => router.push('/schedules/new')}>
+            <Button onClick={() => router.push(&apos;/schedules/new&apos;)}>
               <Plus className="h-4 w-4 mr-2" />
               Créer un planning
             </Button>
@@ -360,7 +360,7 @@ export function ScheduleTable() {
                 <div className="flex items-center space-x-4">
                   <Avatar className="h-12 w-12">
                     <AvatarFallback className="bg-blue-100 text-blue-600">
-                      {schedule.user.name.split(' ').map(n => n[0]).join('')}
+                      {schedule.user.name.split(' &apos;).map(n => n[0]).join(&apos;&apos;)}
                     </AvatarFallback>
                   </Avatar>
                   
@@ -402,10 +402,10 @@ export function ScheduleTable() {
                 
                 <div className="flex items-center gap-2">
                   <Badge 
-                    variant={schedule.status === 'active' ? 'default' : 'secondary'}
-                    className={schedule.status === 'active' ? 'bg-green-100 text-green-800' : ''}
+                    variant={schedule.status === &apos;active&apos; ? &apos;default&apos; : 'secondary'}
+                    className={schedule.status === &apos;active&apos; ? &apos;bg-green-100 text-green-800&apos; : ''}
                   >
-                    {schedule.status === 'active' ? 'Actif' : 'Inactif'}
+                    {schedule.status === &apos;active&apos; ? &apos;Actif&apos; : 'Inactif'}
                   </Badge>
                   
                   <DropdownMenu>
@@ -471,12 +471,12 @@ export function ScheduleTable() {
           const isToday = dayString === new Date().toISOString().split('T')[0];
 
           return (
-            <Card key={dayName} className={`min-h-[200px] ${isToday ? 'ring-2 ring-blue-500' : ''}`}>
+            <Card key={dayName} className={`min-h-[200px] ${isToday ? &apos;ring-2 ring-blue-500&apos; : ''}`}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium">
                   <div className="flex flex-col items-center">
                     <span className="text-gray-500">{dayName}</span>
-                    <span className={`text-lg ${isToday ? 'text-blue-600 font-bold' : ''}`}>
+                    <span className={`text-lg ${isToday ? &apos;text-blue-600 font-bold&apos; : ''}`}>
                       {dayDate.getDate()}
                     </span>
                   </div>
@@ -528,7 +528,7 @@ export function ScheduleTable() {
             <p className="text-gray-500 text-center mb-4">
               Aucun planning ne correspond à vos critères de recherche
             </p>
-            <Button onClick={() => router.push('/schedules/new')}>
+            <Button onClick={() => router.push(&apos;/schedules/new&apos;)}>
               <Plus className="h-4 w-4 mr-2" />
               Créer un planning
             </Button>
@@ -558,7 +558,7 @@ export function ScheduleTable() {
                   <div className="flex items-center space-x-3">
                     <Avatar className="h-8 w-8">
                       <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
-                        {schedule.user.name.split(' ').map(n => n[0]).join('')}
+                        {schedule.user.name.split(' &apos;).map(n => n[0]).join(&apos;&apos;)}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -596,10 +596,10 @@ export function ScheduleTable() {
                 
                 <TableCell>
                   <Badge 
-                    variant={schedule.status === 'active' ? 'default' : 'secondary'}
-                    className={schedule.status === 'active' ? 'bg-green-100 text-green-800' : ''}
+                    variant={schedule.status === &apos;active&apos; ? &apos;default&apos; : 'secondary'}
+                    className={schedule.status === &apos;active&apos; ? &apos;bg-green-100 text-green-800&apos; : ''}
                   >
-                    {schedule.status === 'active' ? 'Actif' : 'Inactif'}
+                    {schedule.status === &apos;active&apos; ? &apos;Actif&apos; : 'Inactif'}
                   </Badge>
                 </TableCell>
                 
@@ -672,9 +672,9 @@ export function ScheduleTable() {
           <h1 className="text-2xl font-bold">Plannings</h1>
           
           {/* Navigation par date */}
-          {(viewMode === 'day' || viewMode === 'week') && (
+          {(viewMode === &apos;day&apos; || viewMode === &apos;week&apos;) && (
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigateDate('prev')}>
+              <Button variant="outline" size="sm" onClick={() => navigateDate(&apos;prev&apos;)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               
@@ -682,7 +682,7 @@ export function ScheduleTable() {
                 {getViewTitle()}
               </div>
               
-              <Button variant="outline" size="sm" onClick={() => navigateDate('next')}>
+              <Button variant="outline" size="sm" onClick={() => navigateDate(&apos;next&apos;)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
               
@@ -692,7 +692,7 @@ export function ScheduleTable() {
                 onClick={() => setCurrentDate(new Date())}
                 className="text-blue-600"
               >
-                Aujourd'hui
+                Aujourd&apos;hui
               </Button>
             </div>
           )}
@@ -717,7 +717,7 @@ export function ScheduleTable() {
             </TabsList>
           </Tabs>
 
-          <Button onClick={() => router.push('/schedules/new')}>
+          <Button onClick={() => router.push(&apos;/schedules/new&apos;)}>
             <Plus className="h-4 w-4 mr-2" />
             Nouveau planning
           </Button>
@@ -725,7 +725,7 @@ export function ScheduleTable() {
       </div>
 
       {/* Filtres pour la vue tableau */}
-      {viewMode === 'table' && (
+      {viewMode === &apos;table&apos; && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -735,7 +735,7 @@ export function ScheduleTable() {
                     placeholder="Rechercher un utilisateur, agence..."
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    onKeyDown={(e) => e.key === &apos;Enter&apos; && handleSearch()}
                   />
                   <Button onClick={handleSearch}>
                     <Search className="h-4 w-4" />
@@ -771,14 +771,14 @@ export function ScheduleTable() {
         </Card>
       ) : (
         <>
-          {viewMode === 'day' && renderDayView()}
-          {viewMode === 'week' && renderWeekView()}
-          {viewMode === 'table' && renderTableView()}
+          {viewMode === &apos;day&apos; && renderDayView()}
+          {viewMode === &apos;week&apos; && renderWeekView()}
+          {viewMode === &apos;table&apos; && renderTableView()}
         </>
       )}
 
       {/* Pagination pour la vue tableau */}
-      {viewMode === 'table' && pagination && pagination.pages > 1 && (
+      {viewMode === &apos;table&apos; && pagination && pagination.pages > 1 && (
         <div className="flex items-center justify-center gap-2">
           <Button
             variant="outline"

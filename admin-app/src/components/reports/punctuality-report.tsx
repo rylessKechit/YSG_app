@@ -1,4 +1,4 @@
-'use client';
+'use client&apos;;
 
 import React from 'react';
 import { Clock, TrendingUp, TrendingDown, Users, AlertTriangle } from 'lucide-react';
@@ -16,7 +16,7 @@ import {
   PieChart,
   Pie,
   Cell
-} from 'recharts';
+} from &apos;recharts&apos;;
 import { PunctualityReportData } from '@/types/reports';
 
 interface PunctualityReportProps {
@@ -44,17 +44,17 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
   }
 
   const getStatusColor = (taux: number) => {
-    if (taux >= 95) return 'text-green-600 bg-green-50';
-    if (taux >= 85) return 'text-yellow-600 bg-yellow-50';
-    return 'text-red-600 bg-red-50';
+    if (taux >= 95) return &apos;text-green-600 bg-green-50&apos;;
+    if (taux >= 85) return &apos;text-yellow-600 bg-yellow-50&apos;;
+    return &apos;text-red-600 bg-red-50&apos;;
   };
 
   const getStatusLabel = (statut: string) => {
     const labels = {
-      excellent: 'Excellent',
-      bon: 'Bon',
-      moyen: 'Moyen',
-      faible: 'Faible'
+      excellent: &apos;Excellent&apos;,
+      bon: &apos;Bon&apos;,
+      moyen: &apos;Moyen&apos;,
+      faible: &apos;Faible&apos;
     };
     return labels[statut as keyof typeof labels] || statut;
   };
@@ -76,8 +76,8 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
               ) : (
                 <TrendingDown className="h-4 w-4 text-red-500" />
               )}
-              <span className={`text-sm ${data.global.evolution > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {data.global.evolution > 0 ? '+' : ''}{data.global.evolution.toFixed(1)}%
+              <span className={`text-sm ${data.global.evolution > 0 ? &apos;text-green-600&apos; : &apos;text-red-600'}`}>
+                {data.global.evolution > 0 ? &apos;+&apos; : &apos;'}{data.global.evolution.toFixed(1)}%
               </span>
             </div>
             <Progress value={data.global.tauxPonctualite} className="mt-2" />
@@ -118,10 +118,10 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
           <CardContent>
             <div className="text-2xl font-bold">{data.global.objectif}%</div>
             <Badge 
-              variant={data.global.tauxPonctualite >= data.global.objectif ? "default" : "destructive"}
+              variant={data.global.tauxPonctualite >= data.global.objectif ? &quot;default&quot; : "destructive"}
               className="mt-2"
             >
-              {data.global.tauxPonctualite >= data.global.objectif ? 'Atteint' : 'Non atteint'}
+              {data.global.tauxPonctualite >= data.global.objectif ? &apos;Atteint&apos; : &apos;Non atteint&apos;}
             </Badge>
           </CardContent>
         </Card>
@@ -142,7 +142,7 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
               <XAxis dataKey="nom" />
               <YAxis domain={[0, 100]} />
               <Tooltip 
-                formatter={(value) => [`${value}%`, 'Taux de ponctualité']}
+                formatter={(value) => [`${value}%`, &apos;Taux de ponctualité&apos;]}
                 labelFormatter={(label) => `Agence: ${label}`}
               />
               <Bar 
@@ -171,7 +171,7 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
                   <tr className="border-b bg-gray-50">
                     <th className="px-4 py-3 text-left text-sm font-medium">Agence</th>
                     <th className="px-4 py-3 text-right text-sm font-medium">Pointages</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium">À l'heure</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium">À l&apos;heure</th>
                     <th className="px-4 py-3 text-right text-sm font-medium">Retards</th>
                     <th className="px-4 py-3 text-right text-sm font-medium">Taux</th>
                     <th className="px-4 py-3 text-right text-sm font-medium">Retard moyen</th>
@@ -180,7 +180,7 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
                 </thead>
                 <tbody>
                   {data.parAgence.map((agence, index) => (
-                    <tr key={agence.agenceId} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <tr key={agence.agenceId} className={index % 2 === 0 ? &apos;bg-white&apos; : 'bg-gray-50'}>
                       <td className="px-4 py-3">
                         <div>
                           <div className="font-medium">{agence.nom}</div>
@@ -198,12 +198,12 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
                       <td className="px-4 py-3 text-right">{agence.retardMoyen.toFixed(1)} min</td>
                       <td className="px-4 py-3 text-center">
                         <Badge 
-                          variant={agence.statut === 'excellent' || agence.statut === 'bon' ? 'default' : 'secondary'}
+                          variant={agence.statut === &apos;excellent&apos; || agence.statut === &apos;bon&apos; ? &apos;default&apos; : 'secondary'}
                           className={
-                            agence.statut === 'excellent' ? 'bg-green-100 text-green-800' :
-                            agence.statut === 'bon' ? 'bg-blue-100 text-blue-800' :
-                            agence.statut === 'moyen' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
+                            agence.statut === &apos;excellent&apos; ? &apos;bg-green-100 text-green-800&apos; :
+                            agence.statut === &apos;bon&apos; ? &apos;bg-blue-100 text-blue-800&apos; :
+                            agence.statut === &apos;moyen&apos; ? &apos;bg-yellow-100 text-yellow-800&apos; :
+                            &apos;bg-red-100 text-red-800&apos;
                           }
                         >
                           {getStatusLabel(agence.statut)}
@@ -234,7 +234,7 @@ export function PunctualityReport({ data, isLoading }: PunctualityReportProps) {
                 <XAxis dataKey="jour" />
                 <YAxis domain={[0, 100]} />
                 <Tooltip 
-                  formatter={(value) => [`${value}%`, 'Taux de ponctualité']}
+                  formatter={(value) => [`${value}%`, &apos;Taux de ponctualité&apos;]}
                 />
                 <Bar 
                   dataKey="taux" 

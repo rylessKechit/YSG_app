@@ -1,4 +1,4 @@
-'use client';
+'use client&apos;;
 
 import { useState } from 'react';
 import { Plus, Calendar, Users as UsersIcon, Clock, BarChart3, Grid, List } from 'lucide-react';
@@ -101,7 +101,7 @@ export default function SchedulesPage() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Moyenne par jour</p>
               <p className="text-2xl font-bold">
-                {stats?.averagePerDay ? `${stats.averagePerDay}h` : '0h'}
+                {stats?.averagePerDay ? `${stats.averagePerDay}h` : '0h'}`
               </p>
             </div>
           </CardContent>
@@ -136,7 +136,7 @@ export default function SchedulesPage() {
             <CardHeader>
               <CardTitle>Calendrier des Plannings</CardTitle>
               <CardDescription>
-                Vue d'ensemble mensuelle des plannings par préparateur
+                Vue d&apos;ensemble mensuelle des plannings par préparateur
               </CardDescription>
             </CardHeader>
             <CardContent>

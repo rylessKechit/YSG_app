@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/schedules/[id]/page.tsx
-'use client';
+'use client&apos;;
 
 import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -20,7 +20,7 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2
-} from 'lucide-react';
+} from &apos;lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,7 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from &apos;@/components/ui/alert-dialog';
 
 import { useSchedule, useDeleteSchedule, useDuplicateSchedule } from '@/hooks/api/useSchedules';
 
@@ -60,7 +60,7 @@ function calculateDuration(startTime: string, endTime: string, breakStart?: stri
   
   const hours = Math.floor(duration / 60);
   const minutes = duration % 60;
-  return `${hours}h${minutes > 0 ? ` ${minutes}min` : ''}`;
+  return `${hours}h${minutes > 0 ? ` ${minutes}min` : &apos;'}`;
 }
 
 export default function ScheduleViewPage() {
@@ -108,11 +108,11 @@ export default function ScheduleViewPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'active':
+      case &apos;active':
         return <Badge variant="default" className="bg-green-100 text-green-800">Actif</Badge>;
-      case 'cancelled':
+      case &apos;cancelled':
         return <Badge variant="destructive">Annulé</Badge>;
-      case 'completed':
+      case &apos;completed':
         return <Badge variant="secondary">Terminé</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
@@ -139,8 +139,8 @@ export default function ScheduleViewPage() {
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-lg font-semibold mb-2">Planning non trouvé</h2>
-          <p className="text-gray-600 mb-4">Le planning demandé n'existe pas ou a été supprimé.</p>
-          <Button onClick={() => router.push('/schedules')}>
+          <p className="text-gray-600 mb-4">Le planning demandé n&apos;existe pas ou a été supprimé.</p>
+          <Button onClick={() => router.push(&apos;/schedules')}>
             Retour aux plannings
           </Button>
         </div>
@@ -238,16 +238,16 @@ export default function ScheduleViewPage() {
                       <div>
                         <div className="font-medium">
                           {new Date(schedule.date).toLocaleDateString('fr-FR', {
-                            weekday: 'long',
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
+                            weekday: &apos;long',
+                            year: &apos;numeric',
+                            month: &apos;long',
+                            day: &apos;numeric'
                           })}
                         </div>
                         <div className="text-sm text-gray-500">
                           {new Date(schedule.date) < new Date() ? 'Passé' : 
-                           new Date(schedule.date).toDateString() === new Date().toDateString() ? 'Aujourd\'hui' : 
-                           'À venir'}
+                           new Date(schedule.date).toDateString() === new Date().toDateString() ? 'Aujourd\'hui' : &apos;
+                           &apos;À venir'}
                         </div>
                       </div>
                     </div>
@@ -287,14 +287,14 @@ export default function ScheduleViewPage() {
                       {getStatusBadge(schedule.status)}
                     </div>
                     
-                    {schedule.status === 'active' && (
+                    {schedule.status === &apos;active' && (
                       <div className="flex items-center gap-2 text-sm text-green-600">
                         <CheckCircle className="h-4 w-4" />
                         Planning actif
                       </div>
                     )}
                     
-                    {schedule.status === 'cancelled' && (
+                    {schedule.status === &apos;cancelled' && (
                       <div className="flex items-center gap-2 text-sm text-red-600">
                         <AlertCircle className="h-4 w-4" />
                         Planning annulé
@@ -364,7 +364,7 @@ export default function ScheduleViewPage() {
             </CardContent>
           </Card>
 
-          {/* Informations de l'agence */}
+          {/* Informations de l'agence */}'
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -390,7 +390,7 @@ export default function ScheduleViewPage() {
                 )}
 
                 <Button variant="outline" size="sm" onClick={() => router.push(`/agencies/${schedule.agency.id}`)}>
-                  Voir l'agence
+                  Voir l&apos;agence
                 </Button>
               </div>
             </CardContent>
@@ -427,9 +427,9 @@ export default function ScheduleViewPage() {
                     endTime: schedule.endTime,
                     ...(schedule.breakStart && { breakStart: schedule.breakStart }),
                     ...(schedule.breakEnd && { breakEnd: schedule.breakEnd }),
-                    duplicate: 'true'
+                    duplicate: &apos;true'
                   });
-                  router.push(`/schedules/new?${params}`);
+                  router.push(`/schedules/new?${params}`);`
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />
@@ -451,11 +451,11 @@ export default function ScheduleViewPage() {
                 <div className="text-sm text-gray-600">Créé le</div>
                 <div className="font-medium">
                   {new Date(schedule.createdAt).toLocaleDateString('fr-FR', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
+                    day: &apos;numeric',
+                    month: &apos;long',
+                    year: &apos;numeric',
+                    hour: &apos;2-digit',
+                    minute: &apos;2-digit'
                   })}
                 </div>
               </div>
@@ -474,11 +474,11 @@ export default function ScheduleViewPage() {
                   <div className="text-sm text-gray-600">Dernière modification</div>
                   <div className="font-medium">
                     {new Date(schedule.updatedAt).toLocaleDateString('fr-FR', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
+                      day: &apos;numeric',
+                      month: &apos;long',
+                      year: &apos;numeric',
+                      hour: &apos;2-digit',
+                      minute: &apos;2-digit'
                     })}
                   </div>
                 </div>

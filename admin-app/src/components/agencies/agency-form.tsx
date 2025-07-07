@@ -1,5 +1,5 @@
 // admin-app/src/components/agencies/agency-form.tsx - FORMULAIRE AGENCE
-'use client';
+'use client&apos;;
 
 import { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,14 +19,14 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
+} from &apos;@/components/ui/form';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from &apos;@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
@@ -36,20 +36,20 @@ import { Agency, AgencyCreateData, AgencyUpdateData } from '@/types/agency';
 // Schéma de validation
 const agencySchema = z.object({
   name: z.string()
-    .min(2, 'Le nom doit contenir au moins 2 caractères')
-    .max(100, 'Le nom ne peut pas dépasser 100 caractères'),
+    .min(2, 'Le nom doit contenir au moins 2 caractères&apos;)
+    .max(100, 'Le nom ne peut pas dépasser 100 caractères&apos;),
   code: z.string()
-    .min(2, 'Le code doit contenir au moins 2 caractères')
-    .max(20, 'Le code ne peut pas dépasser 20 caractères')
-    .regex(/^[A-Z0-9_-]+$/, 'Le code ne peut contenir que des lettres majuscules, chiffres, _ et -'),
+    .min(2, 'Le code doit contenir au moins 2 caractères&apos;)
+    .max(20, 'Le code ne peut pas dépasser 20 caractères&apos;)
+    .regex(/^[A-Z0-9_-]+$/, 'Le code ne peut contenir que des lettres majuscules, chiffres, _ et -&apos;),
   client: z.string().optional(),
   address: z.string().optional(),
   phone: z.string()
-    .regex(/^[\+]?[1-9][\d]{0,15}$/, 'Format de téléphone invalide')
+    .regex(/^[\+]?[1-9][\d]{0,15}$/, &apos;Format de téléphone invalide&apos;)
     .optional()
     .or(z.literal('')),
   email: z.string()
-    .email('Format d\'email invalide')
+    .email('Format d\'email invalide&apos;)
     .optional()
     .or(z.literal('')),
 });
@@ -63,12 +63,12 @@ interface AgencyFormProps {
 }
 
 const CLIENT_OPTIONS = [
-  { value: 'SIXT', label: 'SIXT' },
-  { value: 'Europcar', label: 'Europcar' },
-  { value: 'Hertz', label: 'Hertz' },
-  { value: 'Avis', label: 'Avis' },
-  { value: 'Budget', label: 'Budget' },
-  { value: 'Enterprise', label: 'Enterprise' },
+  { value: &apos;SIXT', label: &apos;SIXT' },
+  { value: &apos;Europcar', label: &apos;Europcar' },
+  { value: &apos;Hertz', label: &apos;Hertz' },
+  { value: &apos;Avis', label: &apos;Avis' },
+  { value: &apos;Budget', label: &apos;Budget' },
+  { value: &apos;Enterprise', label: &apos;Enterprise' },
 ];
 
 export function AgencyForm({ agency, onSuccess, onCancel }: AgencyFormProps) {
@@ -99,12 +99,12 @@ export function AgencyForm({ agency, onSuccess, onCancel }: AgencyFormProps) {
   const form = useForm<AgencyFormData>({
     resolver: zodResolver(agencySchema),
     defaultValues: {
-      name: agency?.name || '',
-      code: agency?.code || '',
-      client: agency?.client || '',
-      address: agency?.address || '',
-      phone: agency?.phone || '',
-      email: agency?.email || '',
+      name: agency?.name || &apos;',
+      code: agency?.code || &apos;',
+      client: agency?.client || &apos;',
+      address: agency?.address || &apos;',
+      phone: agency?.phone || &apos;',
+      email: agency?.email || &apos;',
     },
   });
 
@@ -190,18 +190,18 @@ export function AgencyForm({ agency, onSuccess, onCancel }: AgencyFormProps) {
               Informations principales
             </CardTitle>
             <CardDescription>
-              Renseignez les informations essentielles de l'agence
+              Renseignez les informations essentielles de l&apos;agence
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Nom de l'agence */}
+              {/* Nom de l'agence */}'
               <FormField
                 control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nom de l'agence *</FormLabel>
+                    <FormLabel>Nom de l&apos;agence *</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="ex: SIXT Paris Charles de Gaulle"
@@ -228,15 +228,15 @@ export function AgencyForm({ agency, onSuccess, onCancel }: AgencyFormProps) {
                           onChange={(e) => handleCodeChange(e.target.value)}
                           className={`font-mono ${
                             debouncedCode && !isCodeAvailable && !isCheckingCode
-                              ? 'border-red-300 focus:border-red-500'
-                              : ''
-                          }`}
+                              ? &apos;border-red-300 focus:border-red-500'
+                              : &apos;'
+                          }`}`
                         />
                         {getCodeStatus()}
                       </div>
                     </FormControl>
                     <FormDescription>
-                      Code unique d'identification (lettres majuscules, chiffres, _ et - autorisés)
+                      Code unique d&apos;identification (lettres majuscules, chiffres, _ et - autorisés)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -283,7 +283,7 @@ export function AgencyForm({ agency, onSuccess, onCancel }: AgencyFormProps) {
               Contact et localisation
             </CardTitle>
             <CardDescription>
-              Informations de contact et adresse de l'agence
+              Informations de contact et adresse de l&apos;agence
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -364,7 +364,7 @@ export function AgencyForm({ agency, onSuccess, onCancel }: AgencyFormProps) {
             <CardContent>
               <div className="flex items-center gap-4">
                 <Badge variant={agency.isActive ? "default" : "secondary"}>
-                  {agency.isActive ? 'Active' : 'Inactive'}
+                  {agency.isActive ? &apos;Active' : 'Inactive'}
                 </Badge>
                 <span className="text-sm text-gray-500">
                   Créée le {new Date(agency.createdAt || '').toLocaleDateString('fr-FR')}
@@ -394,7 +394,7 @@ export function AgencyForm({ agency, onSuccess, onCancel }: AgencyFormProps) {
             disabled={isLoading || (!!debouncedCode && !isCodeAvailable && !isCheckingCode)}
           >
             {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {isEditing ? 'Modifier l\'agence' : 'Créer l\'agence'}
+            {isEditing ? &apos;Modifier l\'agence' : &apos;Créer l\'agence'}
           </Button>
         </div>
       </form>

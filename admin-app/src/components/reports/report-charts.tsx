@@ -1,5 +1,5 @@
 // src/components/reports/report-charts.tsx
-'use client';
+'use client&apos;;
 
 import React from 'react';
 import { 
@@ -19,7 +19,7 @@ import {
   Cell,
   ComposedChart,
   Legend
-} from 'recharts';
+} from &apos;recharts&apos;;
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +27,7 @@ import { ReportChartData } from '@/types/reports';
 
 interface ReportChartsProps {
   data: ReportChartData;
-  type?: 'punctuality' | 'performance' | 'activity';
+  type?: &apos;punctuality&apos; | &apos;performance&apos; | &apos;activity&apos;;
   isLoading?: boolean;
   onChartTypeChange?: (type: string) => void;
 }
@@ -57,7 +57,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
   const formatHours = (value: number) => {
     const hours = Math.floor(value);
     const minutes = Math.round((value - hours) * 60);
-    return minutes > 0 ? `${hours}h${minutes.toString().padStart(2, '0')}` : `${hours}h`;
+    return minutes > 0 ? `${hours}h${minutes.toString().padStart(2, &apos;0&apos;)}` : `${hours}h`;
   };
 
   const renderPunctualityCharts = () => (
@@ -88,20 +88,20 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 dataKey="date" 
-                tickFormatter={(value) => new Date(value).toLocaleDateString('fr-FR', { 
-                  month: 'short', 
-                  day: 'numeric' 
+                tickFormatter={(value) => new Date(value).toLocaleDateString(&apos;fr-FR&apos;, { 
+                  month: &apos;short&apos;, 
+                  day: &apos;numeric&apos; 
                 })}
               />
               <YAxis yAxisId="left" orientation="left" tickFormatter={formatPercentage} />
               <YAxis yAxisId="right" orientation="right" />
               <Tooltip 
                 formatter={(value: number, name: string) => [
-                  name === 'rate' ? formatPercentage(value) : value,
-                  name === 'rate' ? 'Taux de ponctualité' : 
-                  name === 'onTime' ? 'À l\'heure' : 'En retard'
+                  name === &apos;rate&apos; ? formatPercentage(value) : value,
+                  name === &apos;rate&apos; ? &apos;Taux de ponctualité&apos; : 
+                  name === &apos;onTime&apos; ? &apos;À l\&apos;heure' : &apos;En retard&apos;
                 ]}
-                labelFormatter={(label) => new Date(label).toLocaleDateString('fr-FR')}
+                labelFormatter={(label) => new Date(label).toLocaleDateString(&apos;fr-FR&apos;)}
               />
               <Legend />
               <Area 
@@ -117,7 +117,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
                 yAxisId="right"
                 dataKey="onTime" 
                 fill="#3b82f6" 
-                name="À l'heure"
+                name="À l&apos;heure"
               />
               <Bar 
                 yAxisId="right"
@@ -143,7 +143,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
               <XAxis type="number" domain={[0, 100]} tickFormatter={formatPercentage} />
               <YAxis type="category" dataKey="name" width={100} />
               <Tooltip 
-                formatter={(value: number) => [formatPercentage(value), 'Taux de ponctualité']}
+                formatter={(value: number) => [formatPercentage(value), &apos;Taux de ponctualité&apos;]}
               />
               <Bar 
                 dataKey="rate" 
@@ -171,18 +171,18 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 dataKey="date" 
-                tickFormatter={(value) => new Date(value).toLocaleDateString('fr-FR', { 
-                  month: 'short', 
-                  day: 'numeric' 
+                tickFormatter={(value) => new Date(value).toLocaleDateString(&apos;fr-FR&apos;, { 
+                  month: &apos;short&apos;, 
+                  day: &apos;numeric&apos; 
                 })}
               />
               <YAxis tickFormatter={formatTime} />
               <Tooltip 
                 formatter={(value: number, name: string) => [
                   formatTime(value), 
-                  name === 'averageTime' ? 'Temps moyen' : 'Objectif'
+                  name === &apos;averageTime&apos; ? &apos;Temps moyen&apos; : &apos;Objectif&apos;
                 ]}
-                labelFormatter={(label) => new Date(label).toLocaleDateString('fr-FR')}
+                labelFormatter={(label) => new Date(label).toLocaleDateString(&apos;fr-FR&apos;)}
               />
               <Legend />
               <Line 
@@ -190,7 +190,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
                 dataKey="averageTime" 
                 stroke="#3b82f6" 
                 strokeWidth={3}
-                dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                dot={{ fill: &apos;#3b82f6&apos;, strokeWidth: 2, r: 4 }}
                 name="Temps moyen"
               />
               <Line 
@@ -221,8 +221,8 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
               <YAxis />
               <Tooltip 
                 formatter={(value: number, name: string) => [
-                  name === 'count' ? `${value} préparations` : formatPercentage(value),
-                  name === 'count' ? 'Nombre' : 'Pourcentage'
+                  name === &apos;count&apos; ? `${value} préparations` : formatPercentage(value),
+                  name === &apos;count&apos; ? &apos;Nombre&apos; : &apos;Pourcentage&apos;
                 ]}
               />
               <Bar 
@@ -240,9 +240,9 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
                 key={item.range}
                 variant="secondary"
                 className={
-                  item.percentage > 30 ? 'bg-red-100 text-red-800' :
-                  item.percentage > 20 ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-green-100 text-green-800'
+                  item.percentage > 30 ? &apos;bg-red-100 text-red-800&apos; :
+                  item.percentage > 20 ? &apos;bg-yellow-100 text-yellow-800&apos; :
+                  &apos;bg-green-100 text-green-800&apos;
                 }
               >
                 {item.range}: {formatPercentage(item.percentage)}
@@ -260,7 +260,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
       <Card>
         <CardHeader>
           <CardTitle>Activité par Heure</CardTitle>
-          <CardDescription>Répartition de l'activité dans la journée</CardDescription>
+          <CardDescription>Répartition de l&apos;activité dans la journée</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
@@ -272,7 +272,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
               />
               <YAxis />
               <Tooltip 
-                formatter={(value: number) => [`${value}`, 'Activité']}
+                formatter={(value: number) => [`${value}`, &apos;Activité&apos;]}
                 labelFormatter={(label) => `${label}h00`}
               />
               <Area 
@@ -292,9 +292,9 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
                 key={hour.hour}
                 variant="secondary"
                 className={
-                  hour.intensity === 'high' ? 'bg-red-100 text-red-800' :
-                  hour.intensity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                  'bg-gray-100 text-gray-600'
+                  hour.intensity === &apos;high&apos; ? &apos;bg-red-100 text-red-800&apos; :
+                  hour.intensity === &apos;medium&apos; ? &apos;bg-yellow-100 text-yellow-800&apos; :
+                  &apos;bg-gray-100 text-gray-600&apos;
                 }
               >
                 {hour.hour}h - {hour.intensity}
@@ -319,7 +319,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
                 <XAxis dataKey="day" />
                 <YAxis tickFormatter={formatHours} />
                 <Tooltip 
-                  formatter={(value: number) => [formatHours(value), 'Heures']}
+                  formatter={(value: number) => [formatHours(value), &apos;Heures&apos;]}
                 />
                 <Bar 
                   dataKey="hours" 
@@ -347,7 +347,7 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
                   ))}
                 </Pie>
                 <Tooltip 
-                  formatter={(value: number) => [`${value.toFixed(1)}%`, 'Pourcentage']}
+                  formatter={(value: number) => [`${value.toFixed(1)}%`, &apos;Pourcentage&apos;]}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -359,11 +359,11 @@ export function ReportCharts({ data, type = 'punctuality', isLoading, onChartTyp
 
   const renderChartsByType = () => {
     switch (type) {
-      case 'punctuality':
+      case &apos;punctuality&apos;:
         return renderPunctualityCharts();
-      case 'performance':
+      case &apos;performance&apos;:
         return renderPerformanceCharts();
-      case 'activity':
+      case &apos;activity&apos;:
         return renderActivityCharts();
       default:
         return renderPunctualityCharts();

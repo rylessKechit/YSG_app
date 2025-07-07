@@ -1,5 +1,5 @@
 // src/components/reports/report-filters.tsx
-'use client';
+'use client&apos;;
 
 import React, { useState, useEffect } from 'react';
 import { CalendarIcon, Filter, X, RefreshCw } from 'lucide-react';
@@ -25,19 +25,19 @@ interface ReportFiltersProps {
 }
 
 const PERIOD_OPTIONS = [
-  { value: 'today' as ReportPeriod, label: "Aujourd'hui" },
-  { value: 'week' as ReportPeriod, label: 'Cette semaine' },
-  { value: 'month' as ReportPeriod, label: 'Ce mois' },
-  { value: 'quarter' as ReportPeriod, label: 'Ce trimestre' },
-  { value: 'year' as ReportPeriod, label: 'Cette année' },
-  { value: 'custom' as ReportPeriod, label: 'Période personnalisée' },
+  { value: &apos;today&apos; as ReportPeriod, label: "Aujourd&apos;hui" },
+  { value: &apos;week&apos; as ReportPeriod, label: &apos;Cette semaine&apos; },
+  { value: &apos;month&apos; as ReportPeriod, label: &apos;Ce mois&apos; },
+  { value: &apos;quarter&apos; as ReportPeriod, label: &apos;Ce trimestre&apos; },
+  { value: &apos;year&apos; as ReportPeriod, label: &apos;Cette année&apos; },
+  { value: &apos;custom&apos; as ReportPeriod, label: &apos;Période personnalisée&apos; },
 ];
 
 const FORMAT_OPTIONS = [
-  { value: 'json', label: 'JSON (Aperçu)' },
-  { value: 'csv', label: 'CSV' },
-  { value: 'excel', label: 'Excel' },
-  { value: 'pdf', label: 'PDF' },
+  { value: &apos;json&apos;, label: &apos;JSON (Aperçu)' },
+  { value: &apos;csv&apos;, label: &apos;CSV&apos; },
+  { value: &apos;excel&apos;, label: &apos;Excel&apos; },
+  { value: &apos;pdf&apos;, label: &apos;PDF&apos; },
 ];
 
 export function ReportFilters({
@@ -84,7 +84,7 @@ export function ReportFilters({
         ...filters,
         startDate: range.from.toISOString().split('T')[0],
         endDate: range.to.toISOString().split('T')[0],
-        period: 'custom'
+        period: &apos;custom&apos;
       });
     } else {
       onFiltersChange({
@@ -115,8 +115,8 @@ export function ReportFilters({
 
   const handleReset = () => {
     const defaultFilters: ReportFiltersType = {
-      period: 'month',
-      format: 'json',
+      period: &apos;month&apos;,
+      format: &apos;json&apos;,
       includeDetails: false,
       includeComparison: false,
       includeGraphiques: false
@@ -133,8 +133,8 @@ export function ReportFilters({
   };
 
   const getSelectedAgencyNames = () => {
-    if (!filters.agencies || filters.agencies.length === 0) return 'Toutes les agences';
-    if (filters.agencies.length === availableAgencies.length) return 'Toutes les agences';
+    if (!filters.agencies || filters.agencies.length === 0) return 'Toutes les agences&apos;;
+    if (filters.agencies.length === availableAgencies.length) return 'Toutes les agences&apos;;
     
     const names = filters.agencies
       .map(id => availableAgencies.find(a => a.id === id)?.name)
@@ -148,8 +148,8 @@ export function ReportFilters({
   };
 
   const getSelectedUserNames = () => {
-    if (!filters.users || filters.users.length === 0) return 'Tous les utilisateurs';
-    if (filters.users.length === availableUsers.length) return 'Tous les utilisateurs';
+    if (!filters.users || filters.users.length === 0) return 'Tous les utilisateurs&apos;;
+    if (filters.users.length === availableUsers.length) return 'Tous les utilisateurs&apos;;
     
     const names = filters.users
       .map(id => availableUsers.find(u => u.id === id)?.name)
@@ -190,7 +190,7 @@ export function ReportFilters({
             <Label htmlFor="period">Période</Label>
             <Select 
               value={filters.period || 'month'} 
-              onValueChange={(value: ReportPeriod) => updateFilter('period', value)}
+              onValueChange={(value: ReportPeriod) => updateFilter(&apos;period&apos;, value)}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -206,7 +206,7 @@ export function ReportFilters({
           </div>
 
           {/* Dates personnalisées */}
-          {filters.period === 'custom' && (
+          {filters.period === &apos;custom&apos; && (
             <div className="space-y-2">
               <Label>Dates personnalisées</Label>
               <DateRangePicker 
@@ -223,7 +223,7 @@ export function ReportFilters({
             <Label htmlFor="format">Format</Label>
             <Select 
               value={filters.format || 'json'} 
-              onValueChange={(value) => updateFilter('format', value)}
+              onValueChange={(value) => updateFilter(&apos;format&apos;, value)}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -331,13 +331,13 @@ export function ReportFilters({
 
         {/* Options d'inclusion */}
         <div className="space-y-3">
-          <Label>Options d'inclusion</Label>
+          <Label>Options d&apos;inclusion</Label>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="includeDetails"
                 checked={filters.includeDetails || false}
-                onCheckedChange={(checked) => updateFilter('includeDetails', checked)}
+                onCheckedChange={(checked) => updateFilter(&apos;includeDetails&apos;, checked)}
               />
               <Label htmlFor="includeDetails" className="text-sm cursor-pointer">
                 Détails par utilisateur
@@ -348,7 +348,7 @@ export function ReportFilters({
               <Checkbox
                 id="includeComparison"
                 checked={filters.includeComparison || false}
-                onCheckedChange={(checked) => updateFilter('includeComparison', checked)}
+                onCheckedChange={(checked) => updateFilter(&apos;includeComparison&apos;, checked)}
               />
               <Label htmlFor="includeComparison" className="text-sm cursor-pointer">
                 Comparaison période précédente
@@ -359,7 +359,7 @@ export function ReportFilters({
               <Checkbox
                 id="includeGraphiques"
                 checked={filters.includeGraphiques || false}
-                onCheckedChange={(checked) => updateFilter('includeGraphiques', checked)}
+                onCheckedChange={(checked) => updateFilter(&apos;includeGraphiques&apos;, checked)}
               />
               <Label htmlFor="includeGraphiques" className="text-sm cursor-pointer">
                 Graphiques et visualisations
@@ -369,13 +369,13 @@ export function ReportFilters({
         </div>
 
         {/* Résumé des filtres actifs */}
-        {(filters.agencies?.length || filters.users?.length || filters.period !== 'month') && (
+        {(filters.agencies?.length || filters.users?.length || filters.period !== &apos;month&apos;) && (
           <>
             <Separator />
             <div className="space-y-2">
               <Label>Filtres actifs</Label>
               <div className="flex flex-wrap gap-2">
-                {filters.period && filters.period !== 'month' && (
+                {filters.period && filters.period !== &apos;month&apos; && (
                   <Badge variant="secondary">
                     Période: {PERIOD_OPTIONS.find(p => p.value === filters.period)?.label}
                   </Badge>
@@ -384,7 +384,7 @@ export function ReportFilters({
                 {filters.agencies && filters.agencies.length > 0 && (
                   <Badge variant="secondary">
                     {filters.agencies.length === availableAgencies.length 
-                      ? 'Toutes les agences' 
+                      ? &apos;Toutes les agences&apos; 
                       : `${filters.agencies.length} agence(s)`
                     }
                   </Badge>

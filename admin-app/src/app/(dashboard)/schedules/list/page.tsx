@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/schedules/list/page.tsx
-'use client';
+'use client&apos;;
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,7 +18,7 @@ import {
   ChevronRight,
   SortAsc,
   SortDesc
-} from 'lucide-react';
+} from &apos;lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,7 +30,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from &apos;@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -38,7 +38,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from &apos;@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,7 +46,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from &apos;@/components/ui/dropdown-menu';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import {
   AlertDialog,
@@ -58,7 +58,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from &apos;@/components/ui/alert-dialog';
 
 import { useSchedules, useDeleteSchedule, useExportSchedules } from '@/hooks/api/useSchedules';
 import { useUsers } from '@/hooks/api/useUsers';
@@ -72,14 +72,14 @@ export default function ScheduleListPage() {
   const [filters, setFilters] = useState<ScheduleFilters>({
     page: 1,
     limit: 20,
-    search: '',
-    status: 'all',
+    search: &apos;',
+    status: &apos;all',
     user: undefined,
     agency: undefined,
-    startDate: '',
-    endDate: '',
-    sort: 'date',
-    order: 'desc'
+    startDate: &apos;',
+    endDate: &apos;',
+    sort: &apos;date',
+    order: &apos;desc'
   });
   
   const [searchInput, setSearchInput] = useState('');
@@ -120,7 +120,7 @@ export default function ScheduleListPage() {
     setFilters(prev => ({
       ...prev,
       sort: column,
-      order: prev.sort === column && prev.order === 'asc' ? 'desc' : 'asc'
+      order: prev.sort === column && prev.order === &apos;asc' ? &apos;desc' : &apos;asc'
     }));
   };
 
@@ -153,7 +153,7 @@ export default function ScheduleListPage() {
       endTime: schedule.endTime,
       ...(schedule.breakStart && { breakStart: schedule.breakStart }),
       ...(schedule.breakEnd && { breakEnd: schedule.breakEnd }),
-      duplicate: 'true'
+      duplicate: &apos;true'
     });
     router.push(`/schedules/new?${params}`);
   };
@@ -169,11 +169,11 @@ export default function ScheduleListPage() {
   // Fonctions utilitaires
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'active':
+      case &apos;active':
         return <Badge variant="default" className="bg-green-100 text-green-800">Actif</Badge>;
-      case 'cancelled':
+      case &apos;cancelled':
         return <Badge variant="destructive">Annulé</Badge>;
-      case 'completed':
+      case &apos;completed':
         return <Badge variant="secondary">Terminé</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
@@ -197,12 +197,12 @@ export default function ScheduleListPage() {
     
     const hours = Math.floor(duration / 60);
     const minutes = duration % 60;
-    return `${hours}h${minutes > 0 ? `${minutes}m` : ''}`;
+    return `${hours}h${minutes > 0 ? `${minutes}m` : &apos;'}`;
   };
 
   const getSortIcon = (column: string) => {
     if (filters.sort !== column) return null;
-    return filters.order === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />;
+    return filters.order === &apos;asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />;
   };
 
   const users = usersData?.data?.users || [];
@@ -228,21 +228,21 @@ export default function ScheduleListPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuLabel>Format d'export</DropdownMenuLabel>
+              <DropdownMenuLabel>Format d&apos;export</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleExport('csv')}>
+              <DropdownMenuItem onClick={() => handleExport(&apos;csv')}>
                 Fichier CSV
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('excel')}>
+              <DropdownMenuItem onClick={() => handleExport(&apos;excel')}>
                 Fichier Excel
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('pdf')}>
+              <DropdownMenuItem onClick={() => handleExport(&apos;pdf')}>
                 Fichier PDF
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           
-          <Button onClick={() => router.push('/schedules/new')}>
+          <Button onClick={() => router.push(&apos;/schedules/new')}>
             <Plus className="h-4 w-4 mr-2" />
             Nouveau planning
           </Button>
@@ -267,14 +267,14 @@ export default function ScheduleListPage() {
                   placeholder="Rechercher par nom, agence..."
                   value={searchInput}
                   onChange={handleSearchChange}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearchSubmit()}
+                  onKeyPress={(e) => e.key === &apos;Enter&apos; && handleSearchSubmit()}
                   className="pl-10"
                 />
               </div>
             </div>
 
             {/* Statut */}
-            <Select value={filters.status} onValueChange={(value) => handleFilterChange('status', value)}>
+            <Select value={filters.status} onValueChange={(value) => handleFilterChange(&apos;status', value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
@@ -289,7 +289,7 @@ export default function ScheduleListPage() {
             {/* Préparateur */}
             <Select 
               value={filters.user || 'all'} 
-              onValueChange={(value) => handleFilterChange('user', value === 'all' ? undefined : value)}
+              onValueChange={(value) => handleFilterChange(&apos;user', value === &apos;all' ? undefined : value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Préparateur" />
@@ -307,7 +307,7 @@ export default function ScheduleListPage() {
             {/* Agence */}
             <Select 
               value={filters.agency || 'all'} 
-              onValueChange={(value) => handleFilterChange('agency', value === 'all' ? undefined : value)}
+              onValueChange={(value) => handleFilterChange(&apos;agency', value === &apos;all' ? undefined : value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Agence" />
@@ -326,7 +326,7 @@ export default function ScheduleListPage() {
             <Input
               type="date"
               value={filters.startDate}
-              onChange={(e) => handleFilterChange('startDate', e.target.value)}
+              onChange={(e) => handleFilterChange(&apos;startDate', e.target.value)}
               placeholder="Date de début"
             />
 
@@ -334,7 +334,7 @@ export default function ScheduleListPage() {
             <Input
               type="date"
               value={filters.endDate}
-              onChange={(e) => handleFilterChange('endDate', e.target.value)}
+              onChange={(e) => handleFilterChange(&apos;endDate', e.target.value)}
               placeholder="Date de fin"
             />
           </div>
@@ -350,14 +350,14 @@ export default function ScheduleListPage() {
                 setFilters({
                   page: 1,
                   limit: 20,
-                  search: '',
-                  status: 'all',
+                  search: &apos;',
+                  status: &apos;all',
                   user: undefined,
                   agency: undefined,
-                  startDate: '',
-                  endDate: '',
-                  sort: 'date',
-                  order: 'desc'
+                  startDate: &apos;',
+                  endDate: &apos;',
+                  sort: &apos;date',
+                  order: &apos;desc'
                 });
                 setSearchInput('');
               }}
@@ -375,13 +375,13 @@ export default function ScheduleListPage() {
             <div>
               <CardTitle>Plannings</CardTitle>
               <CardDescription>
-                {pagination ? `${pagination.total} planning(s) trouvé(s)` : 'Chargement...'}
+                {pagination ? `${pagination.total} planning(s) trouvé(s)` : 'Chargement...'}`
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Select 
                 value={filters.limit?.toString()} 
-                onValueChange={(value) => handleFilterChange('limit', parseInt(value))}
+                onValueChange={(value) => handleFilterChange(&apos;limit', parseInt(value))}
               >
                 <SelectTrigger className="w-24">
                   <SelectValue />
@@ -424,7 +424,7 @@ export default function ScheduleListPage() {
                   <TableRow>
                     <TableHead 
                       className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => handleSort('date')}
+                      onClick={() => handleSort(&apos;date')}
                     >
                       <div className="flex items-center gap-2">
                         Date {getSortIcon('date')}
@@ -432,7 +432,7 @@ export default function ScheduleListPage() {
                     </TableHead>
                     <TableHead 
                       className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => handleSort('user')}
+                      onClick={() => handleSort(&apos;user')}
                     >
                       <div className="flex items-center gap-2">
                         Préparateur {getSortIcon('user')}
@@ -440,7 +440,7 @@ export default function ScheduleListPage() {
                     </TableHead>
                     <TableHead 
                       className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => handleSort('agency')}
+                      onClick={() => handleSort(&apos;agency')}
                     >
                       <div className="flex items-center gap-2">
                         Agence {getSortIcon('agency')}
@@ -450,7 +450,7 @@ export default function ScheduleListPage() {
                     <TableHead>Durée</TableHead>
                     <TableHead 
                       className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => handleSort('status')}
+                      onClick={() => handleSort(&apos;status')}
                     >
                       <div className="flex items-center gap-2">
                         Statut {getSortIcon('status')}
@@ -466,14 +466,14 @@ export default function ScheduleListPage() {
                         <div>
                           <div className="font-medium">
                             {new Date(schedule.date).toLocaleDateString('fr-FR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric'
+                              day: &apos;2-digit',
+                              month: &apos;2-digit',
+                              year: &apos;numeric'
                             })}
                           </div>
                           <div className="text-sm text-gray-500">
                             {new Date(schedule.date).toLocaleDateString('fr-FR', {
-                              weekday: 'long'
+                              weekday: &apos;long'
                             })}
                           </div>
                         </div>
@@ -591,7 +591,7 @@ export default function ScheduleListPage() {
                 <div className="flex items-center justify-between px-6 py-4 border-t">
                   <div className="text-sm text-gray-500">
                     Page {pagination.page} sur {pagination.pages} 
-                    ({pagination.total} résultat{pagination.total > 1 ? 's' : ''})
+                    ({pagination.total} résultat{pagination.total > 1 ? &apos;s&apos; : ''})
                   </div>
                   
                   <div className="flex items-center gap-2">

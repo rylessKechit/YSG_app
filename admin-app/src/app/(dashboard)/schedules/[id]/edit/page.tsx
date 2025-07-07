@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/schedules/[id]/edit/page.tsx - CORRECTION ERREUR 'DATA'
-'use client';
+'use client&apos;;
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -15,7 +15,7 @@ import {
   Clock,
   Building,
   Calendar
-} from 'lucide-react';
+} from &apos;lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,20 +33,20 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
+} from &apos;@/components/ui/form';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from &apos;@/components/ui/select';
 
 import { 
   useSchedule, 
   useUpdateSchedule, 
   useDeleteSchedule 
-} from '@/hooks/api/useSchedules';
+} from &apos;@/hooks/api/useSchedules';
 import { useUsers } from '@/hooks/api/useUsers';
 import { useAgencies } from '@/hooks/api/useAgencies';
 
@@ -95,10 +95,10 @@ interface UpdateScheduleData {
   breakStart?: string;
   breakEnd?: string;
   notes?: string;
-  status: 'active' | 'cancelled' | 'completed';
+  status: &apos;active' | &apos;cancelled' | &apos;completed';
 }
 
-// ✅ CORRECTION: Types pour les retours d'API
+// ✅ CORRECTION: Types pour les retours d'API'
 interface ApiScheduleResponse {
   data?: {
     schedule?: Schedule;
@@ -122,19 +122,19 @@ const editScheduleSchema = z.object({
   userId: z.string().min(1, 'Utilisateur requis'),
   agencyId: z.string().min(1, 'Agence requise'),
   date: z.string().min(1, 'Date requise'),
-  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Format HH:MM requis'),
-  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Format HH:MM requis'),
+  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Format HH:MM requis&apos;),
+  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Format HH:MM requis&apos;),
   breakStart: z.string().optional(),
   breakEnd: z.string().optional(),
   notes: z.string().optional(),
-  status: z.enum(['active', 'cancelled', 'completed']).default('active')
+  status: z.enum(['active', 'cancelled', &apos;completed']).default('active')
 }).refine((data) => {
   // Validation: heure de fin après heure de début
   const start = new Date(`2000-01-01T${data.startTime}:00`);
   const end = new Date(`2000-01-01T${data.endTime}:00`);
   return end > start;
 }, {
-  message: 'L\'heure de fin doit être après l\'heure de début',
+  message: &apos;L\'heure de fin doit être après l\&apos;heure de début&apos;,
   path: ['endTime']
 }).refine((data) => {
   // Validation: pause cohérente si définie
@@ -149,7 +149,7 @@ const editScheduleSchema = z.object({
          breakEnd <= workEnd && 
          breakEnd > breakStart;
 }, {
-  message: 'Les horaires de pause doivent être cohérents avec les horaires de travail',
+  message: &apos;Les horaires de pause doivent être cohérents avec les horaires de travail&apos;,
   path: ['breakEnd']
 });
 
@@ -173,7 +173,7 @@ function calculateDuration(startTime: string, endTime: string, breakStart?: stri
   
   const hours = Math.floor(duration / 60);
   const minutes = duration % 60;
-  return `${hours}h${minutes > 0 ? ` ${minutes}min` : ''}`;
+  return `${hours}h${minutes > 0 ? ` ${minutes}min` : &apos;'}`;
 }
 
 export default function EditSchedulePage() {
@@ -224,15 +224,15 @@ export default function EditSchedulePage() {
   const form = useForm<EditScheduleForm>({
     resolver: zodResolver(editScheduleSchema),
     defaultValues: {
-      userId: '',
-      agencyId: '',
-      date: '',
-      startTime: '',
-      endTime: '',
-      breakStart: '',
-      breakEnd: '',
-      notes: '',
-      status: 'active'
+      userId: &apos;',
+      agencyId: &apos;',
+      date: &apos;',
+      startTime: &apos;',
+      endTime: &apos;',
+      breakStart: &apos;',
+      breakEnd: &apos;',
+      notes: &apos;',
+      status: &apos;active'
     }
   });
 
@@ -241,18 +241,18 @@ export default function EditSchedulePage() {
   // Pré-remplir le formulaire de manière sécurisée
   useEffect(() => {
     if (schedule && !form.formState.isDirty) {
-      console.log('🔄 Pré-remplissage du formulaire:', schedule);
+      console.log('🔄 Pré-remplissage du formulaire:&apos;, schedule);
       
       const formData: EditScheduleForm = {
-        userId: schedule.user?.id || '',
-        agencyId: schedule.agency?.id || '',
-        date: schedule.date ? new Date(schedule.date).toISOString().split('T')[0] : '',
-        startTime: schedule.startTime || '',
-        endTime: schedule.endTime || '',
-        breakStart: schedule.breakStart || '',
-        breakEnd: schedule.breakEnd || '',
-        notes: schedule.notes || '',
-        status: (schedule.status as 'active' | 'cancelled' | 'completed') || 'active'
+        userId: schedule.user?.id || &apos;',
+        agencyId: schedule.agency?.id || &apos;',
+        date: schedule.date ? new Date(schedule.date).toISOString().split('T')[0] : &apos;',
+        startTime: schedule.startTime || &apos;',
+        endTime: schedule.endTime || &apos;',
+        breakStart: schedule.breakStart || &apos;',
+        breakEnd: schedule.breakEnd || &apos;',
+        notes: schedule.notes || &apos;',
+        status: (schedule.status as 'active' | &apos;cancelled' | &apos;completed') || &apos;active'
       };
 
       form.reset(formData);
@@ -265,15 +265,15 @@ export default function EditSchedulePage() {
     if (schedule) {
       const currentValues = form.getValues();
       const originalValues: EditScheduleForm = {
-        userId: schedule.user?.id || '',
-        agencyId: schedule.agency?.id || '',
-        date: schedule.date ? new Date(schedule.date).toISOString().split('T')[0] : '',
-        startTime: schedule.startTime || '',
-        endTime: schedule.endTime || '',
-        breakStart: schedule.breakStart || '',
-        breakEnd: schedule.breakEnd || '',
-        notes: schedule.notes || '',
-        status: (schedule.status as 'active' | 'cancelled' | 'completed') || 'active'
+        userId: schedule.user?.id || &apos;',
+        agencyId: schedule.agency?.id || &apos;',
+        date: schedule.date ? new Date(schedule.date).toISOString().split('T')[0] : &apos;',
+        startTime: schedule.startTime || &apos;',
+        endTime: schedule.endTime || &apos;',
+        breakStart: schedule.breakStart || &apos;',
+        breakEnd: schedule.breakEnd || &apos;',
+        notes: schedule.notes || &apos;',
+        status: (schedule.status as 'active' | &apos;cancelled' | &apos;completed') || &apos;active'
       };
 
       const hasFormChanges = JSON.stringify(currentValues) !== JSON.stringify(originalValues);
@@ -284,7 +284,7 @@ export default function EditSchedulePage() {
   // Handlers
   const handleBack = () => {
     if (hasChanges) {
-      if (confirm('Vous avez des modifications non sauvegardées. Êtes-vous sûr de vouloir quitter ?')) {
+      if (confirm('Vous avez des modifications non sauvegardées. Êtes-vous sûr de vouloir quitter ?&apos;)) {
         router.back();
       }
     } else {
@@ -293,7 +293,7 @@ export default function EditSchedulePage() {
   };
 
   const handleSubmit = async (data: EditScheduleForm) => {
-    console.log('🚀 Soumission du formulaire:', data);
+    console.log('🚀 Soumission du formulaire:&apos;, data);
     setIsSubmitting(true);
     
     try {
@@ -314,22 +314,22 @@ export default function EditSchedulePage() {
         scheduleData: updateData
       });
 
-      console.log('✅ Planning mis à jour avec succès');
+      console.log('✅ Planning mis à jour avec succès&apos;);
       router.push('/schedules');
     } catch (error) {
-      console.error('❌ Erreur lors de la soumission:', error);
+      console.error('❌ Erreur lors de la soumission:&apos;, error);
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer ce planning ? Cette action est irréversible.')) {
+    if (confirm('Êtes-vous sûr de vouloir supprimer ce planning ? Cette action est irréversible.&apos;)) {
       try {
         await deleteSchedule.mutateAsync(scheduleId);
-        console.log('✅ Planning supprimé avec succès');
+        console.log('✅ Planning supprimé avec succès&apos;);
         router.push('/schedules');
       } catch (error) {
-        console.error('❌ Erreur suppression:', error);
+        console.error('❌ Erreur suppression:&apos;, error);
       }
     }
   };
@@ -344,26 +344,26 @@ export default function EditSchedulePage() {
         ...(schedule.breakStart && { breakStart: schedule.breakStart }),
         ...(schedule.breakEnd && { breakEnd: schedule.breakEnd }),
         ...(schedule.notes && { notes: schedule.notes }),
-        duplicate: 'true'
+        duplicate: &apos;true'
       });
-      router.push(`/schedules/new?${params}`);
+      router.push(`/schedules/new?${params}`);`
     }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'active':
+      case &apos;active':
         return <Badge className="bg-green-100 text-green-800">Actif</Badge>;
-      case 'cancelled':
+      case &apos;cancelled':
         return <Badge variant="destructive">Annulé</Badge>;
-      case 'completed':
+      case &apos;completed':
         return <Badge variant="secondary">Terminé</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
-  // Gestion des états de chargement et d'erreur
+  // Gestion des états de chargement et d'erreur'
   if (isLoadingSchedule || isLoadingUsers || isLoadingAgencies) {
     return (
       <div className="space-y-6">
@@ -405,13 +405,13 @@ export default function EditSchedulePage() {
             <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
             <h2 className="text-lg font-semibold mb-2">Planning non trouvé</h2>
             <p className="text-gray-600 mb-4 text-center">
-              Le planning demandé n'existe pas ou vous n'avez pas les permissions pour y accéder.
+              Le planning demandé n&apos;existe pas ou vous n&apos;avez pas les permissions pour y accéder.
             </p>
             <div className="flex gap-2">
               <Button onClick={() => refetchSchedule()}>
                 Réessayer
               </Button>
-              <Button variant="outline" onClick={() => router.push('/schedules')}>
+              <Button variant="outline" onClick={() => router.push(&apos;/schedules')}>
                 Retour aux plannings
               </Button>
             </div>
@@ -504,14 +504,14 @@ export default function EditSchedulePage() {
         </CardContent>
       </Card>
 
-      {/* Formulaire d'édition */}
+      {/* Formulaire d'édition */}'
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Modifier le planning</CardTitle>
               <CardDescription>
-                Modifiez les informations du planning. Les champs marqués d'un * sont obligatoires.
+                Modifiez les informations du planning. Les champs marqués d&apos;un * sont obligatoires.
               </CardDescription>
             </CardHeader>
             
