@@ -179,7 +179,7 @@ export function ScheduleStats() {
     );
   }
 
-  const agencies = agenciesData?.data?.agencies || [];
+  const agencies = agenciesData?.agencies || [];
 
   return (
     <div className="space-y-6">

@@ -137,7 +137,7 @@ export function UserForm({ userId, onSuccess, onCancel, hideHeader = false }: Us
         const result = await checkEmail.mutateAsync({
           email: watchedEmail,
           excludeUserId: userId
-        });
+        }) as { data: { available: boolean } };
         
         // Si l'email est disponible, marquer comme validé
         if (result.data.available) {

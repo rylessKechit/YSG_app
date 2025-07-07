@@ -206,7 +206,7 @@ export default function ScheduleListPage() {
   };
 
   const users = usersData?.data?.users || [];
-  const agencies = agenciesData?.data?.agencies || [];
+  const agencies = agenciesData?.agencies || [];
 
   return (
     <div className="space-y-6">

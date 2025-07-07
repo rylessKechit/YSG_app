@@ -136,7 +136,7 @@ export function useBulkAction() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: BulkActionData) => usersApi.bulkAction(data),
+    mutationFn: (data: BulkActionData) => usersApi.bulkActions(data),
     onSuccess: (result, variables) => {
       // Invalider la liste des utilisateurs
       queryClient.invalidateQueries({ queryKey: userKeys.lists() });
@@ -159,7 +159,7 @@ export function useBulkAction() {
 export function useCheckEmail() {
   return useMutation({
     mutationFn: ({ email, excludeUserId }: { email: string; excludeUserId?: string }) =>
-      usersApi.checkEmail(email, excludeUserId),
+      usersApi.checkEmailAvailability(email, excludeUserId),
     onError: () => {
       // Ne pas afficher de toast d'erreur pour cette vérification
     }
@@ -171,7 +171,7 @@ export function useResetPassword() {
   return useMutation({
     mutationFn: (id: string) => usersApi.resetPassword(id),
     onSuccess: (data) => {
-      const tempPassword = data.data.tempPassword;
+      const tempPassword = data.data.temporaryPassword;
       toast.success(`Nouveau mot de passe: ${tempPassword}`);
       
       // Copier dans le presse-papier si possible
