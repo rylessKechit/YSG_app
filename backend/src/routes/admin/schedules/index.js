@@ -132,25 +132,30 @@ router.get('/', async (req, res) => {
     res.json({
       success: true,
       data: {
-        schedules: schedules.map(schedule => ({
-          id: schedule._id,
-          user: {
-            id: schedule.user._id,
-            name: `${schedule.user.firstName} ${schedule.user.lastName}`,
-            email: schedule.user.email
-          },
-          agency: {
-            id: schedule.agency._id,
-            name: schedule.agency.name,
-            code: schedule.agency.code
-          },
-          date: schedule.date,
-          startTime: schedule.startTime,
-          endTime: schedule.endTime,
-          breakDuration: schedule.breakDuration,
-          notes: schedule.notes,
-          createdAt: schedule.createdAt
-        })),
+        schedules: schedules
+          // ✅ CORRECTION 1: Filtrer les schedules avec données manquantes AVANT le mapping
+          .filter(schedule => schedule.user && schedule.agency)
+          .map(schedule => ({
+            id: schedule._id,
+            user: {
+              // ✅ CORRECTION 2: Vérifications null dans le mapping
+              id: schedule.user?._id || schedule.user,
+              name: schedule.user ? `${schedule.user.firstName || 'N/A'} ${schedule.user.lastName || 'N/A'}` : 'Utilisateur supprimé',
+              email: schedule.user?.email || 'N/A'
+            },
+            agency: {
+              // ✅ CORRECTION 3: Vérifications null pour agency
+              id: schedule.agency?._id || schedule.agency,
+              name: schedule.agency?.name || 'Agence supprimée',
+              code: schedule.agency?.code || 'N/A'
+            },
+            date: schedule.date,
+            startTime: schedule.startTime,
+            endTime: schedule.endTime,
+            breakDuration: schedule.breakDuration,
+            notes: schedule.notes,
+            createdAt: schedule.createdAt
+          })),
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
