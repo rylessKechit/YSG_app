@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/agencies/[id]/page.tsx - PAGE DETAIL AGENCE
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -20,7 +20,7 @@ import {
   CheckCircle,
   XCircle,
   MoreHorizontal
-} from &apos;lucide-react';
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,7 +34,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from &apos;@/components/ui/dropdown-menu';
+} from '@/components/ui/dropdown-menu';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -47,7 +47,7 @@ import {
   useAgencyUsers, 
   useDeleteAgency, 
   useReactivateAgency 
-} from &apos;@/hooks/api/useAgencies';
+} from '@/hooks/api/useAgencies';
 import { Agency } from '@/types/agency';
 
 interface AgencyDetailPageProps {
@@ -103,11 +103,11 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Non disponible';
     return new Date(dateString).toLocaleDateString('fr-FR', {
-      year: &apos;numeric',
-      month: &apos;long',
-      day: &apos;numeric',
-      hour: &apos;2-digit',
-      minute: &apos;2-digit'
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -147,7 +147,7 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
               <Building className="h-12 w-12 mx-auto text-red-500 mb-4" />
               <h3 className="text-lg font-semibold mb-2">Agence non trouvée</h3>
               <p className="text-gray-600 mb-4">
-                L&apos;agence demandée n&apos;existe pas ou n&apos;est plus accessible.
+                L'agence demandée n'existe pas ou n'est plus accessible.
               </p>
               <Button onClick={handleBack}>
                 Retour à la liste
@@ -204,7 +204,7 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
               
               <DropdownMenuItem onClick={handleEdit}>
                 <Edit className="h-4 w-4 mr-2" />
-                Modifier l&apos;agence
+                Modifier l'agence
               </DropdownMenuItem>
               
               <DropdownMenuSeparator />
@@ -233,7 +233,7 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
       {/* Onglets */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
-          <TabsTrigger value="overview">Vue d&apos;ensemble</TabsTrigger>
+          <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
           <TabsTrigger value="users">Utilisateurs</TabsTrigger>
           <TabsTrigger value="statistics">Statistiques</TabsTrigger>
           <TabsTrigger value="activity">Activité</TabsTrigger>
@@ -401,7 +401,7 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Utilisateurs de l&apos;agence
+                Utilisateurs de l'agence
               </CardTitle>
               <CardDescription>
                 Liste des utilisateurs assignés à cette agence
@@ -429,11 +429,11 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
                       </div>
                       
                       <div className="flex items-center gap-3">
-                        <Badge variant={user.role === &apos;admin' ? &apos;default' : 'secondary'}>
-                          {user.role === &apos;admin' ? &apos;Admin' : 'Préparateur'}
+                        <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                          {user.role === 'admin' ? 'Admin' : 'Préparateur'}
                         </Badge>
-                        <Badge variant={user.isActive ? &apos;default' : 'secondary'}>
-                          {user.isActive ? &apos;Actif' : 'Inactif'}
+                        <Badge variant={user.isActive ? 'default' : 'secondary'}>
+                          {user.isActive ? 'Actif' : 'Inactif'}
                         </Badge>
                         <Button 
                           variant="outline" 
@@ -532,7 +532,7 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
           <Alert>
             <Clock className="h-4 w-4" />
             <AlertDescription>
-              Le journal d&apos;activité sera disponible dans une prochaine version.
+              Le journal d'activité sera disponible dans une prochaine version.
             </AlertDescription>
           </Alert>
         </TabsContent>
@@ -542,9 +542,9 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Modifier l&apos;agence</DialogTitle>
+            <DialogTitle>Modifier l'agence</DialogTitle>
             <DialogDescription>
-              Modifiez les informations de l&apos;agence ci-dessous.
+              Modifiez les informations de l'agence ci-dessous.
             </DialogDescription>
           </DialogHeader>
           
@@ -560,11 +560,11 @@ export default function AgencyDetailPage({ params }: AgencyDetailPageProps) {
       <ConfirmDialog
         open={showDeleteConfirm}
         onOpenChange={setShowDeleteConfirm}
-        title={agency.isActive ? "Désactiver l&apos;agence" : "Réactiver l'agence"}
+        title={agency.isActive ? "Désactiver l'agence" : "Réactiver l'agence"}
         description={
           agency.isActive
-            ? `Êtes-vous sûr de vouloir désactiver l&apos;agence "${agency.name}" ? Elle ne sera plus accessible aux utilisateurs.`
-            : `Êtes-vous sûr de vouloir réactiver l&apos;agence "${agency.name}" ?`
+            ? `Êtes-vous sûr de vouloir désactiver l'agence "${agency.name}" ? Elle ne sera plus accessible aux utilisateurs.`
+            : `Êtes-vous sûr de vouloir réactiver l'agence "${agency.name}" ?`
         }
         confirmText={agency.isActive ? "Désactiver" : "Réactiver"}
         cancelText="Annuler"

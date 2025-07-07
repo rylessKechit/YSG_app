@@ -1,4 +1,4 @@
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import { Plus, Calendar, Users as UsersIcon, Clock, BarChart3, Grid, List } from 'lucide-react';
@@ -136,7 +136,7 @@ export default function SchedulesPage() {
             <CardHeader>
               <CardTitle>Calendrier des Plannings</CardTitle>
               <CardDescription>
-                Vue d&apos;ensemble mensuelle des plannings par préparateur
+                Vue d'ensemble mensuelle des plannings par préparateur
               </CardDescription>
             </CardHeader>
             <CardContent>

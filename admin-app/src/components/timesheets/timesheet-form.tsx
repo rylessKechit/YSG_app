@@ -1,4 +1,4 @@
-'use client&apos;;
+'use client';
 
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
@@ -13,14 +13,14 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from &apos;@/components/ui/form&apos;;
+} from '@/components/ui/form';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from &apos;@/components/ui/select&apos;;
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -35,16 +35,16 @@ import { formatTime, formatVariance } from '@/lib/utils/timesheet-utils';
 
 // Schéma de validation Zod
 const timesheetFormSchema = z.object({
-  userId: z.string().min(1, 'Sélectionnez un employé&apos;),
-  agencyId: z.string().min(1, 'Sélectionnez une agence&apos;),
-  date: z.string().min(1, 'Sélectionnez une date&apos;),
+  userId: z.string().min(1, 'Sélectionnez un employé'),
+  agencyId: z.string().min(1, 'Sélectionnez une agence'),
+  date: z.string().min(1, 'Sélectionnez une date'),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
   breakStart: z.string().optional(),
   breakEnd: z.string().optional(),
   notes: z.string().optional(),
   adminNotes: z.string().optional(),
-  status: z.enum(['incomplete', 'complete', &apos;validated&apos;, 'disputed']).optional(),
+  status: z.enum(['incomplete', 'complete', 'validated', 'disputed']).optional(),
 }).refine((data) => {
   // Validation: heure fin après heure début
   if (data.startTime && data.endTime) {
@@ -52,7 +52,7 @@ const timesheetFormSchema = z.object({
   }
   return true;
 }, {
-  message: "L&apos;heure de fin doit être après l&apos;heure de début",
+  message: "L'heure de fin doit être après l'heure de début",
   path: ["endTime"],
 }).refine((data) => {
   // Validation: pause cohérente
@@ -61,7 +61,7 @@ const timesheetFormSchema = z.object({
   }
   return true;
 }, {
-  message: "L&apos;heure de fin de pause doit être après l&apos;heure de début",
+  message: "L'heure de fin de pause doit être après l'heure de début",
   path: ["breakEnd"],
 });
 
@@ -89,16 +89,16 @@ export function TimesheetForm({
   const form = useForm<TimesheetFormData>({
     resolver: zodResolver(timesheetFormSchema),
     defaultValues: {
-      userId: &apos;&apos;,
-      agencyId: &apos;&apos;,
-      date: &apos;&apos;,
-      startTime: &apos;&apos;,
-      endTime: &apos;&apos;,
-      breakStart: &apos;&apos;,
-      breakEnd: &apos;&apos;,
-      notes: &apos;&apos;,
-      adminNotes: &apos;&apos;,
-      status: &apos;incomplete&apos;,
+      userId: '',
+      agencyId: '',
+      date: '',
+      startTime: '',
+      endTime: '',
+      breakStart: '',
+      breakEnd: '',
+      notes: '',
+      adminNotes: '',
+      status: 'incomplete',
     },
   });
 
@@ -109,15 +109,15 @@ export function TimesheetForm({
       const agency = typeof timesheet.agency === 'object' ? timesheet.agency : null;
       
       form.reset({
-        userId: user?.id || &apos;&apos;,
-        agencyId: agency?.id || &apos;&apos;,
+        userId: user?.id || '',
+        agencyId: agency?.id || '',
         date: timesheet.date.split('T')[0], // Format YYYY-MM-DD
-        startTime: timesheet.startTime ? format(parseISO(timesheet.startTime), 'HH:mm') : &apos;&apos;,
-        endTime: timesheet.endTime ? format(parseISO(timesheet.endTime), 'HH:mm') : &apos;&apos;,
-        breakStart: timesheet.breakStart ? format(parseISO(timesheet.breakStart), 'HH:mm') : &apos;&apos;,
-        breakEnd: timesheet.breakEnd ? format(parseISO(timesheet.breakEnd), 'HH:mm') : &apos;&apos;,
-        notes: timesheet.notes || &apos;&apos;,
-        adminNotes: timesheet.adminNotes || &apos;&apos;,
+        startTime: timesheet.startTime ? format(parseISO(timesheet.startTime), 'HH:mm') : '',
+        endTime: timesheet.endTime ? format(parseISO(timesheet.endTime), 'HH:mm') : '',
+        breakStart: timesheet.breakStart ? format(parseISO(timesheet.breakStart), 'HH:mm') : '',
+        breakEnd: timesheet.breakEnd ? format(parseISO(timesheet.breakEnd), 'HH:mm') : '',
+        notes: timesheet.notes || '',
+        adminNotes: timesheet.adminNotes || '',
         status: timesheet.status,
       });
     }
@@ -153,7 +153,7 @@ export function TimesheetForm({
 
   // Calculer les écarts si on a un planning de référence
   const calculateVariance = () => {
-    if (!timesheet?.schedule || typeof timesheet.schedule === &apos;string&apos;) return null;
+    if (!timesheet?.schedule || typeof timesheet.schedule === 'string') return null;
     
     const formStartTime = form.watch('startTime');
     if (!formStartTime) return null;
@@ -173,7 +173,7 @@ export function TimesheetForm({
   return (
     <div className="space-y-6">
       {/* Header avec comparaison si modification */}
-      {isEdit && timesheet?.schedule && typeof timesheet.schedule === &apos;object&apos; && (
+      {isEdit && timesheet?.schedule && typeof timesheet.schedule === 'object' && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -201,7 +201,7 @@ export function TimesheetForm({
                 <h4 className="font-medium text-sm text-gray-600 mb-2">Écart calculé</h4>
                 {variance !== null && (
                   <div className="flex items-center gap-2">
-                    <Badge variant={variance > 15 ? &apos;destructive&apos; : variance > 5 ? &apos;secondary&apos; : &apos;default'}>
+                    <Badge variant={variance > 15 ? 'destructive' : variance > 5 ? 'secondary' : 'default'}>
                       {formatVariance(variance).text}
                     </Badge>
                     {variance > 15 && <AlertTriangle className="h-4 w-4 text-red-500" />}
@@ -302,7 +302,7 @@ export function TimesheetForm({
                 name="startTime"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Heure d&apos;arrivée</FormLabel>
+                    <FormLabel>Heure d'arrivée</FormLabel>
                     <FormControl>
                       <Input type="time" {...field} />
                     </FormControl>
@@ -401,7 +401,7 @@ export function TimesheetForm({
                 <FormLabel>Notes employé</FormLabel>
                 <FormControl>
                   <Textarea 
-                    placeholder="Notes ou commentaires de l&apos;employé..." 
+                    placeholder="Notes ou commentaires de l'employé..." 
                     {...field} 
                   />
                 </FormControl>
@@ -434,7 +434,7 @@ export function TimesheetForm({
               Annuler
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? &apos;Sauvegarde...&apos; : isEdit ? &apos;Modifier&apos; : 'Créer'}
+              {isLoading ? 'Sauvegarde...' : isEdit ? 'Modifier' : 'Créer'}
             </Button>
           </div>
         </form>

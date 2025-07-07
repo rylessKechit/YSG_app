@@ -1,5 +1,5 @@
 // admin-app/src/components/agencies/bulk-actions-agencies.tsx - ACTIONS EN MASSE AGENCES
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import { 
@@ -9,7 +9,7 @@ import {
   CheckCircle, 
   XCircle,
   Loader2
-} from &apos;lucide-react';
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -19,7 +19,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from &apos;@/components/ui/dropdown-menu';
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -27,14 +27,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from &apos;@/components/ui/dialog';
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from &apos;@/components/ui/select';
+} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
 import { useBulkActionsAgencies, useExportAgencies } from '@/hooks/api/useAgencies';
@@ -44,7 +44,7 @@ interface BulkActionsAgenciesProps {
   onSuccess?: () => void;
 }
 
-type BulkAction = &apos;activate' | &apos;deactivate' | &apos;export';
+type BulkAction = 'activate' | 'deactivate' | 'export';
 
 export function BulkActionsAgencies({ selectedIds, onSuccess }: BulkActionsAgenciesProps) {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -65,7 +65,7 @@ export function BulkActionsAgencies({ selectedIds, onSuccess }: BulkActionsAgenc
     if (!selectedAction) return;
 
     try {
-      if (selectedAction === &apos;export') {
+      if (selectedAction === 'export') {
         // Export spécifique aux IDs sélectionnés
         await exportAgencies.mutateAsync({
           format: exportFormat,
@@ -95,29 +95,29 @@ export function BulkActionsAgencies({ selectedIds, onSuccess }: BulkActionsAgenc
   // Configuration des actions
   const getActionConfig = (action: BulkAction) => {
     switch (action) {
-      case &apos;activate':
+      case 'activate':
         return {
-          title: &apos;Activer les agences&apos;,
-          description: `Êtes-vous sûr de vouloir activer ${selectedIds.length} agence${selectedIds.length > 1 ? &apos;s&apos; : ''} sélectionnée${selectedIds.length > 1 ? &apos;s&apos; : ''} ?`,
-          confirmText: &apos;Activer',
+          title: 'Activer les agences',
+          description: `Êtes-vous sûr de vouloir activer ${selectedIds.length} agence${selectedIds.length > 1 ? 's' : ''} sélectionnée${selectedIds.length > 1 ? 's' : ''} ?`,
+          confirmText: 'Activer',
           icon: CheckCircle,
-          variant: &apos;default' as const,
+          variant: 'default' as const,
         };
-      case &apos;deactivate':
+      case 'deactivate':
         return {
-          title: &apos;Désactiver les agences&apos;,
-          description: `Êtes-vous sûr de vouloir désactiver ${selectedIds.length} agence${selectedIds.length > 1 ? &apos;s&apos; : ''} sélectionnée${selectedIds.length > 1 ? &apos;s&apos; : ''} ? Elles ne seront plus accessibles aux utilisateurs.`,
-          confirmText: &apos;Désactiver',
+          title: 'Désactiver les agences',
+          description: `Êtes-vous sûr de vouloir désactiver ${selectedIds.length} agence${selectedIds.length > 1 ? 's' : ''} sélectionnée${selectedIds.length > 1 ? 's' : ''} ? Elles ne seront plus accessibles aux utilisateurs.`,
+          confirmText: 'Désactiver',
           icon: XCircle,
-          variant: &apos;destructive' as const,
+          variant: 'destructive' as const,
         };
-      case &apos;export':
+      case 'export':
         return {
-          title: &apos;Exporter les agences&apos;,
-          description: `Exporter ${selectedIds.length} agence${selectedIds.length > 1 ? &apos;s&apos; : ''} sélectionnée${selectedIds.length > 1 ? &apos;s&apos; : ''} au format ${exportFormat.toUpperCase()}.`,
-          confirmText: &apos;Exporter',
+          title: 'Exporter les agences',
+          description: `Exporter ${selectedIds.length} agence${selectedIds.length > 1 ? 's' : ''} sélectionnée${selectedIds.length > 1 ? 's' : ''} au format ${exportFormat.toUpperCase()}.`,
+          confirmText: 'Exporter',
           icon: Download,
-          variant: &apos;default' as const,
+          variant: 'default' as const,
         };
       default:
         return null;
@@ -141,19 +141,19 @@ export function BulkActionsAgencies({ selectedIds, onSuccess }: BulkActionsAgenc
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           
-          <DropdownMenuItem onClick={() => handleActionClick(&apos;activate')}>
+          <DropdownMenuItem onClick={() => handleActionClick('activate')}>
             <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
             Activer les agences
           </DropdownMenuItem>
           
-          <DropdownMenuItem onClick={() => handleActionClick(&apos;deactivate')}>
+          <DropdownMenuItem onClick={() => handleActionClick('deactivate')}>
             <XCircle className="h-4 w-4 mr-2 text-red-600" />
             Désactiver les agences
           </DropdownMenuItem>
           
           <DropdownMenuSeparator />
           
-          <DropdownMenuItem onClick={() => handleActionClick(&apos;export')}>
+          <DropdownMenuItem onClick={() => handleActionClick('export')}>
             <Download className="h-4 w-4 mr-2" />
             Exporter la sélection
           </DropdownMenuItem>
@@ -174,11 +174,11 @@ export function BulkActionsAgencies({ selectedIds, onSuccess }: BulkActionsAgenc
           </DialogHeader>
 
           {/* Options pour l'export */}'
-          {selectedAction === &apos;export' && (
+          {selectedAction === 'export' && (
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium">Format d&apos;export</label>
-                <Select value={exportFormat} onValueChange={(value: &apos;excel' | &apos;csv') => setExportFormat(value)}>
+                <label className="text-sm font-medium">Format d'export</label>
+                <Select value={exportFormat} onValueChange={(value: 'excel' | 'csv') => setExportFormat(value)}>
                   <SelectTrigger className="mt-2">
                     <SelectValue />
                   </SelectTrigger>

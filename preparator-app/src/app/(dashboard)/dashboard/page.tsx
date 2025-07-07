@@ -153,7 +153,7 @@ export default function DashboardPage() {
 
       {/* Section Planning du jour */}
       <div className="bg-white mx-4 mt-4 p-6 rounded-lg shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Planning d'aujourd'hui</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Planning d&apos;aujourd&apos;hui</h3>
         
         {/* Statut du jour */}
         <div className="grid grid-cols-4 gap-4 mb-6">
@@ -223,7 +223,7 @@ export default function DashboardPage() {
         ) : (
           <div className="text-center py-6 text-gray-500">
             <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p>Aucun planning pour aujourd'hui</p>
+            <p>Aucun planning pour aujourd&apos;hui</p>
           </div>
         )}
       </div>

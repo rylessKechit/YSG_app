@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/timesheets/[id]/page.tsx
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -16,7 +16,7 @@ import {
   XCircle,
   Save,
   MessageSquare
-} from &apos;lucide-react';
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +32,7 @@ import {
   TIMESHEET_STATUS_LABELS, 
   TIMESHEET_STATUS_COLORS,
   type Timesheet 
-} from &apos;@/types/timesheet';
+} from '@/types/timesheet';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -116,10 +116,10 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
 
   const getStatusIcon = (status: Timesheet['status']) => {
     switch (status) {
-      case &apos;complete':
-      case &apos;validated':
+      case 'complete':
+      case 'validated':
         return <CheckCircle className="h-4 w-4" />;
-      case &apos;disputed':
+      case 'disputed':
         return <XCircle className="h-4 w-4" />;
       default:
         return <Clock className="h-4 w-4" />;
@@ -192,7 +192,7 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
           <AlertDescription>
-            Ce pointage n&apos;existe pas ou a été supprimé.
+            Ce pointage n'existe pas ou a été supprimé.
           </AlertDescription>
         </Alert>
       </div>
@@ -216,7 +216,7 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
               Détail du pointage
             </h1>
             <p className="text-gray-600 mt-1">
-              {format(new Date(timesheet.date), 'EEEE dd MMMM yyyy&apos;, { locale: fr })}
+              {format(new Date(timesheet.date), 'EEEE dd MMMM yyyy', { locale: fr })}
             </p>
           </div>
         </div>
@@ -224,10 +224,10 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
         <div className="flex items-center gap-3">
           <Badge 
             variant="secondary" 
-            className={`${statusColor === &apos;green' ? &apos;bg-green-100 text-green-800' : 
-                        statusColor === &apos;blue' ? &apos;bg-blue-100 text-blue-800' :
-                        statusColor === &apos;orange' ? &apos;bg-orange-100 text-orange-800' :
-                        &apos;bg-red-100 text-red-800'}`}
+            className={`${statusColor === 'green' ? 'bg-green-100 text-green-800' : 
+                        statusColor === 'blue' ? 'bg-blue-100 text-blue-800' :
+                        statusColor === 'orange' ? 'bg-orange-100 text-orange-800' :
+                        'bg-red-100 text-red-800'}`}
           >
             {getStatusIcon(timesheet.status)}
             <span className="ml-1">{statusLabel}</span>
@@ -256,12 +256,12 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Utilisateur</Label>
                   <p className="text-lg font-medium">
-                    {typeof timesheet.user === &apos;object'
+                    {typeof timesheet.user === 'object'
                       ? `${timesheet.user.firstName} ${timesheet.user.lastName}`
-                      : &apos;Utilisateur supprimé'
+                      : 'Utilisateur supprimé'
                     }
                   </p>
-                  {typeof timesheet.user === &apos;object' && (
+                  {typeof timesheet.user === 'object' && (
                     <p className="text-sm text-gray-500">{timesheet.user.email}</p>
                   )}
                 </div>
@@ -269,12 +269,12 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Agence</Label>
                   <p className="text-lg font-medium">
-                    {typeof timesheet.agency === &apos;object' 
+                    {typeof timesheet.agency === 'object' 
                       ? timesheet.agency.name 
-                      : &apos;Agence supprimée'
+                      : 'Agence supprimée'
                     }
                   </p>
-                  {typeof timesheet.agency === &apos;object' && timesheet.agency.code && (
+                  {typeof timesheet.agency === 'object' && timesheet.agency.code && (
                     <p className="text-sm text-gray-500">Code: {timesheet.agency.code}</p>
                   )}
                 </div>
@@ -285,7 +285,7 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
               <div>
                 <Label className="text-sm font-medium text-gray-500">Date</Label>
                 <p className="text-lg font-medium">
-                  {format(new Date(timesheet.date), 'EEEE dd MMMM yyyy&apos;, { locale: fr })}
+                  {format(new Date(timesheet.date), 'EEEE dd MMMM yyyy', { locale: fr })}
                 </p>
               </div>
             </CardContent>
@@ -343,7 +343,7 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5" />
-                  Notes de l&apos;employé
+                  Notes de l'employé
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -405,7 +405,7 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
           </Card>
 
           {/* Actions admin */}
-          {timesheet.status !== &apos;validated' && (
+          {timesheet.status !== 'validated' && (
             <Card>
               <CardHeader>
                 <CardTitle>Actions administrateur</CardTitle>
@@ -434,7 +434,7 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
                     className="w-full"
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    {validateTimesheet.isPending ? &apos;Validation...' : &apos;Valider le pointage'}
+                    {validateTimesheet.isPending ? 'Validation...' : 'Valider le pointage'}
                   </Button>
 
                   {!showDisputeForm ? (
@@ -493,15 +493,15 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
               <CardContent>
                 <div className="space-y-2">
                   <p className="text-sm">
-                    <span className="text-gray-600">Validé par:</span>{&apos; '}
-                    {typeof timesheet.validatedBy === &apos;object'
-                      ? `${timesheet.validatedBy.firstName} ${timesheet.validatedBy.lastName}``
-                      : &apos;Administrateur'
+                    <span className="text-gray-600">Validé par:</span>{' '}
+                    {typeof timesheet.validatedBy === 'object'
+                      ? `${timesheet.validatedBy.firstName} ${timesheet.validatedBy.lastName}`
+                      : 'Administrateur'
                     }
                   </p>
                   <p className="text-sm">
-                    <span className="text-gray-600">Le:</span>{&apos; '}
-                    {format(new Date(timesheet.validatedAt), 'dd/MM/yyyy à HH:mm&apos;, { locale: fr })}
+                    <span className="text-gray-600">Le:</span>{' '}
+                    {format(new Date(timesheet.validatedAt), 'dd/MM/yyyy à HH:mm', { locale: fr })}
                   </p>
                 </div>
               </CardContent>
@@ -516,11 +516,11 @@ export default function TimesheetDetailPage({ params }: TimesheetDetailPageProps
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Créé le:</span>
-                <span>{format(new Date(timesheet.createdAt), &apos;dd/MM/yyyy à HH:mm&apos;, { locale: fr })}</span>&apos;
+                <span>{format(new Date(timesheet.createdAt), 'dd/MM/yyyy à HH:mm', { locale: fr })}</span>'
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Modifié le:</span>
-                <span>{format(new Date(timesheet.updatedAt), &apos;dd/MM/yyyy à HH:mm&apos;, { locale: fr })}</span>&apos;
+                <span>{format(new Date(timesheet.updatedAt), 'dd/MM/yyyy à HH:mm', { locale: fr })}</span>'
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">ID:</span>

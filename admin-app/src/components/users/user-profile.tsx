@@ -1,5 +1,5 @@
 // src/components/users/user-profile.tsx
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,7 +18,7 @@ import {
   Clock,
   TrendingUp,
   MoreHorizontal
-} from &apos;lucide-react&apos;;
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +32,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from &apos;@/components/ui/dropdown-menu&apos;;
+} from '@/components/ui/dropdown-menu';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -101,11 +101,11 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Jamais';
     return new Date(dateString).toLocaleDateString('fr-FR', {
-      day: &apos;2-digit&apos;,
-      month: &apos;2-digit&apos;,
-      year: &apos;numeric&apos;,
-      hour: &apos;2-digit&apos;,
-      minute: &apos;2-digit&apos;
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -212,11 +212,11 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
                 <h2 className="text-2xl font-semibold">
                   {user.firstName} {user.lastName}
                 </h2>
-                <Badge variant={user.role === &apos;admin&apos; ? &apos;default&apos; : 'secondary'}>
-                  {user.role === &apos;admin&apos; ? &apos;Administrateur&apos; : 'Préparateur'}
+                <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                  {user.role === 'admin' ? 'Administrateur' : 'Préparateur'}
                 </Badge>
-                <span className={user.isActive ? &apos;text-green-600 font-medium&apos; : &apos;text-red-600 font-medium'}>
-                  {user.isActive ? &apos;Actif&apos; : 'Inactif'}
+                <span className={user.isActive ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                  {user.isActive ? 'Actif' : 'Inactif'}
                 </span>
               </div>
 
@@ -246,7 +246,7 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
       {/* Onglets */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Vue d&apos;ensemble</TabsTrigger>
+          <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
           <TabsTrigger value="agencies">Agences</TabsTrigger>
           <TabsTrigger value="activity">Activité</TabsTrigger>
         </TabsList>
@@ -320,18 +320,18 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Téléphone:</span>
-                  <span className="font-medium">{user.phone || &apos;Non renseigné&apos;}</span>
+                  <span className="font-medium">{user.phone || 'Non renseigné'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Rôle:</span>
-                  <Badge variant={user.role === &apos;admin&apos; ? &apos;default&apos; : 'secondary'}>
-                    {user.role === &apos;admin&apos; ? &apos;Administrateur&apos; : 'Préparateur'}
+                  <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                    {user.role === 'admin' ? 'Administrateur' : 'Préparateur'}
                   </Badge>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Statut:</span>
-                  <span className={user.isActive ? &apos;text-green-600 font-medium&apos; : &apos;text-red-600 font-medium'}>
-                    {user.isActive ? &apos;Actif&apos; : 'Inactif'}
+                  <span className={user.isActive ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                    {user.isActive ? 'Actif' : 'Inactif'}
                   </span>
                 </div>
               </CardContent>
@@ -405,7 +405,7 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
                   <Building className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                   <p className="text-gray-600">Aucune agence assignée</p>
                   <p className="text-sm text-gray-500">
-                    Modifiez l&apos;utilisateur pour lui assigner des agences
+                    Modifiez l'utilisateur pour lui assigner des agences
                   </p>
                 </div>
               )}
@@ -469,7 +469,7 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
                   <Clock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                   <p className="text-gray-600">Aucune activité récente</p>
                   <p className="text-sm text-gray-500">
-                    L&apos;historique des actions apparaîtra ici
+                    L'historique des actions apparaîtra ici
                   </p>
                 </div>
               </CardContent>
@@ -487,14 +487,14 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
                   <Alert>
                     <Shield className="h-4 w-4" />
                     <AlertDescription>
-                      Ce compte est <strong>actif</strong>. L&apos;utilisateur peut se connecter et effectuer des préparations.
+                      Ce compte est <strong>actif</strong>. L'utilisateur peut se connecter et effectuer des préparations.
                     </AlertDescription>
                   </Alert>
                 ) : (
                   <Alert variant="destructive">
                     <Shield className="h-4 w-4" />
                     <AlertDescription>
-                      Ce compte est <strong>désactivé</strong>. L&apos;utilisateur ne peut pas se connecter.
+                      Ce compte est <strong>désactivé</strong>. L'utilisateur ne peut pas se connecter.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -503,7 +503,7 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
                   <div>
                     <span className="text-gray-600">Permissions:</span>
                     <ul className="mt-1 space-y-1">
-                      {user.role === &apos;admin&apos; ? (
+                      {user.role === 'admin' ? (
                         <>
                           <li>✅ Accès administration</li>
                           <li>✅ Gestion des utilisateurs</li>
@@ -525,7 +525,7 @@ export function UserProfile({ userId, onEdit }: UserProfileProps) {
                     <span className="text-gray-600">Restrictions:</span>
                     <ul className="mt-1 space-y-1">
                       <li>{user.agencies?.length || 0} agence(s) assignée(s)</li>
-                      <li>Accès limité aux données d&apos;agence</li>
+                      <li>Accès limité aux données d'agence</li>
                       {!user.isActive && <li className="text-red-600">Compte désactivé</li>}
                     </ul>
                   </div>

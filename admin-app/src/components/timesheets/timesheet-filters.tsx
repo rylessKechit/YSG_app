@@ -1,4 +1,4 @@
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import {
@@ -7,7 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from &apos;@/components/ui/select&apos;;
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +16,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from &apos;@/components/ui/popover&apos;;
+} from '@/components/ui/popover';
 import {
   Filter,
   Search,
@@ -26,7 +26,7 @@ import {
   Building,
   Users,
   Clock,
-} from &apos;lucide-react&apos;;
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -63,9 +63,9 @@ export function TimesheetFilters({
     onFiltersChange({
       page: 1,
       limit: 20,
-      status: &apos;all&apos;,
-      sort: &apos;date&apos;,
-      order: &apos;desc&apos;,
+      status: 'all',
+      sort: 'date',
+      order: 'desc',
     });
   };
 
@@ -74,12 +74,12 @@ export function TimesheetFilters({
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     switch (type) {
-      case &apos;today&apos;:
+      case 'today':
         updateFilter('startDate', today.toISOString().split('T')[0]);
         updateFilter('endDate', today.toISOString().split('T')[0]);
         break;
 
-      case &apos;week&apos;:
+      case 'week':
         const monday = new Date(today);
         monday.setDate(today.getDate() - today.getDay() + 1);
         const sunday = new Date(monday);
@@ -89,7 +89,7 @@ export function TimesheetFilters({
         updateFilter('endDate', sunday.toISOString().split('T')[0]);
         break;
 
-      case &apos;month&apos;:
+      case 'month':
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
@@ -97,12 +97,12 @@ export function TimesheetFilters({
         updateFilter('endDate', lastDay.toISOString().split('T')[0]);
         break;
 
-      case &apos;late&apos;:
+      case 'late':
         updateFilter('sort', 'delays.startDelay');
         updateFilter('order', 'desc');
         break;
 
-      case &apos;missing&apos;:
+      case 'missing':
         updateFilter('status', 'incomplete');
         break;
     }
@@ -115,7 +115,7 @@ export function TimesheetFilters({
     if (filters.endDate) count++;
     if (filters.userId) count++;
     if (filters.agencyId) count++;
-    if (filters.status && filters.status !== &apos;all&apos;) count++;
+    if (filters.status && filters.status !== 'all') count++;
     return count;
   };
 
@@ -141,7 +141,7 @@ export function TimesheetFilters({
               size="sm"
               onClick={() => setShowAdvanced(!showAdvanced)}
             >
-              {showAdvanced ? &apos;Masquer&apos; : 'Avancés'}
+              {showAdvanced ? 'Masquer' : 'Avancés'}
             </Button>
             
             {activeFiltersCount > 0 && (
@@ -167,16 +167,16 @@ export function TimesheetFilters({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => applyQuickFilter(&apos;today&apos;)}
+              onClick={() => applyQuickFilter('today')}
             >
               <Calendar className="h-4 w-4 mr-1" />
-              Aujourd&apos;hui
+              Aujourd'hui
             </Button>
             
             <Button
               variant="outline"
               size="sm"
-              onClick={() => applyQuickFilter(&apos;week&apos;)}
+              onClick={() => applyQuickFilter('week')}
             >
               <Calendar className="h-4 w-4 mr-1" />
               Cette semaine
@@ -185,7 +185,7 @@ export function TimesheetFilters({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => applyQuickFilter(&apos;month&apos;)}
+              onClick={() => applyQuickFilter('month')}
             >
               <Calendar className="h-4 w-4 mr-1" />
               Ce mois
@@ -194,7 +194,7 @@ export function TimesheetFilters({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => applyQuickFilter(&apos;late&apos;)}
+              onClick={() => applyQuickFilter('late')}
             >
               <Clock className="h-4 w-4 mr-1" />
               Retards
@@ -203,7 +203,7 @@ export function TimesheetFilters({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => applyQuickFilter(&apos;missing&apos;)}
+              onClick={() => applyQuickFilter('missing')}
             >
               <X className="h-4 w-4 mr-1" />
               Manquants
@@ -221,7 +221,7 @@ export function TimesheetFilters({
               <Input
                 placeholder="Nom, email..."
                 value={filters.search || ''}
-                onChange={(e) => updateFilter(&apos;search&apos;, e.target.value)}
+                onChange={(e) => updateFilter('search', e.target.value)}
                 className="pl-9"
               />
             </div>
@@ -232,7 +232,7 @@ export function TimesheetFilters({
             <label className="text-sm font-medium">Statut</label>
             <Select
               value={filters.status || 'all'}
-              onValueChange={(value) => updateFilter(&apos;status&apos;, value)}
+              onValueChange={(value) => updateFilter('status', value)}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -253,7 +253,7 @@ export function TimesheetFilters({
             <Input
               type="date"
               value={filters.startDate || ''}
-              onChange={(e) => updateFilter(&apos;startDate&apos;, e.target.value)}
+              onChange={(e) => updateFilter('startDate', e.target.value)}
             />
           </div>
 
@@ -263,7 +263,7 @@ export function TimesheetFilters({
             <Input
               type="date"
               value={filters.endDate || ''}
-              onChange={(e) => updateFilter(&apos;endDate&apos;, e.target.value)}
+              onChange={(e) => updateFilter('endDate', e.target.value)}
             />
           </div>
         </div>
@@ -280,7 +280,7 @@ export function TimesheetFilters({
                 </label>
                 <Select
                   value={filters.userId || ''}
-                  onValueChange={(value) => updateFilter(&apos;userId&apos;, value || undefined)}
+                  onValueChange={(value) => updateFilter('userId', value || undefined)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Tous les employés" />
@@ -304,7 +304,7 @@ export function TimesheetFilters({
                 </label>
                 <Select
                   value={filters.agencyId || ''}
-                  onValueChange={(value) => updateFilter(&apos;agencyId&apos;, value || undefined)}
+                  onValueChange={(value) => updateFilter('agencyId', value || undefined)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Toutes les agences" />
@@ -326,7 +326,7 @@ export function TimesheetFilters({
                 <div className="flex gap-2">
                   <Select
                     value={filters.sort || 'date'}
-                    onValueChange={(value) => updateFilter(&apos;sort&apos;, value)}
+                    onValueChange={(value) => updateFilter('sort', value)}
                   >
                     <SelectTrigger className="flex-1">
                       <SelectValue />
@@ -342,7 +342,7 @@ export function TimesheetFilters({
                   
                   <Select
                     value={filters.order || 'desc'}
-                    onValueChange={(value) => updateFilter(&apos;order&apos;, value)}
+                    onValueChange={(value) => updateFilter('order', value)}
                   >
                     <SelectTrigger className="w-24">
                       <SelectValue />
@@ -366,16 +366,16 @@ export function TimesheetFilters({
               {filters.search && (
                 <Badge variant="secondary" className="gap-1">
                   Recherche: {filters.search}
-                  <button onClick={() => updateFilter(&apos;search&apos;, undefined)}>
+                  <button onClick={() => updateFilter('search', undefined)}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
               )}
               
-              {filters.status && filters.status !== &apos;all&apos; && (
+              {filters.status && filters.status !== 'all' && (
                 <Badge variant="secondary" className="gap-1">
                   Statut: {filters.status}
-                  <button onClick={() => updateFilter(&apos;status&apos;, 'all')}>
+                  <button onClick={() => updateFilter('status', 'all')}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -384,7 +384,7 @@ export function TimesheetFilters({
               {filters.startDate && (
                 <Badge variant="secondary" className="gap-1">
                   Début: {format(new Date(filters.startDate), 'dd/MM/yyyy', { locale: fr })}
-                  <button onClick={() => updateFilter(&apos;startDate&apos;, undefined)}>
+                  <button onClick={() => updateFilter('startDate', undefined)}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -393,7 +393,7 @@ export function TimesheetFilters({
               {filters.endDate && (
                 <Badge variant="secondary" className="gap-1">
                   Fin: {format(new Date(filters.endDate), 'dd/MM/yyyy', { locale: fr })}
-                  <button onClick={() => updateFilter(&apos;endDate&apos;, undefined)}>
+                  <button onClick={() => updateFilter('endDate', undefined)}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -402,7 +402,7 @@ export function TimesheetFilters({
               {filters.userId && (
                 <Badge variant="secondary" className="gap-1">
                   Employé: {users.find(u => u.id === filters.userId)?.firstName}
-                  <button onClick={() => updateFilter(&apos;userId&apos;, undefined)}>
+                  <button onClick={() => updateFilter('userId', undefined)}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>
@@ -411,7 +411,7 @@ export function TimesheetFilters({
               {filters.agencyId && (
                 <Badge variant="secondary" className="gap-1">
                   Agence: {agencies.find(a => a.id === filters.agencyId)?.name}
-                  <button onClick={() => updateFilter(&apos;agencyId&apos;, undefined)}>
+                  <button onClick={() => updateFilter('agencyId', undefined)}>
                     <X className="h-3 w-3" />
                   </button>
                 </Badge>

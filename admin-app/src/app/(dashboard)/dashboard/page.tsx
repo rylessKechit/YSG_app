@@ -1,5 +1,5 @@
 // src/app/(dashboard)/dashboard/page.tsx
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import { Users, Clock, Activity, Target, AlertTriangle, CheckCircle } from 'lucide-react';
@@ -16,7 +16,7 @@ import { DashboardFilters } from '@/lib/api/dashboard';
 
 export default function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
-    period: &apos;today'
+    period: 'today'
   });
 
   // Récupération des données en temps réel
@@ -47,9 +47,9 @@ export default function DashboardPage() {
   // Calcul des statuts et tendances
   const getKPIStatus = (current: number, target: number) => {
     const ratio = current / target;
-    if (ratio >= 1) return &apos;success';
-    if (ratio >= 0.8) return &apos;warning';
-    return &apos;error';
+    if (ratio >= 1) return 'success';
+    if (ratio >= 0.8) return 'warning';
+    return 'error';
   };
 
   const calculateTrend = (current: number, previous: number) => {
@@ -58,7 +58,7 @@ export default function DashboardPage() {
     return {
       value: change,
       isPositive: change >= 0,
-      label: &apos;vs hier'
+      label: 'vs hier'
     };
   };
 
@@ -69,7 +69,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-gray-600">
-            Vue d&apos;ensemble en temps réel • Dernière mise à jour: {' '}
+            Vue d'ensemble en temps réel • Dernière mise à jour: {' '}
             {kpis.data?.timestamp ? new Date(kpis.data.timestamp).toLocaleTimeString('fr-FR') : '--:--'}
           </p>
         </div>
@@ -81,7 +81,7 @@ export default function DashboardPage() {
             size="sm"
             disabled={isLoading}
           >
-            {isLoading ? &apos;Actualisation...' : 'Actualiser'}
+            {isLoading ? 'Actualisation...' : 'Actualiser'}
           </Button>
         </div>
       </div>
@@ -104,14 +104,14 @@ export default function DashboardPage() {
         <KPICard
           title="Préparateurs actifs"
           value={kpis.data?.preparateurs?.present || 0}
-          subtitle={`sur ${kpis.data?.preparateurs?.total || 0} total`}`
+          subtitle={`sur ${kpis.data?.preparateurs?.total || 0} total`}
           trend={calculateTrend(
             kpis.data?.preparateurs?.present || 0,
             24 // TODO: Récupérer la valeur d'hier depuis l'API
           )}
           target={{
             value: kpis.data?.preparateurs?.total || 0,
-            label: &apos;Présence'
+            label: 'Présence'
           }}
           status={getKPIStatus(
             kpis.data?.preparateurs?.present || 0,
@@ -125,14 +125,14 @@ export default function DashboardPage() {
         <KPICard
           title="Ponctualité"
           value={kpis.data?.ponctualite?.global || 0}
-          subtitle="Taux global aujourd&apos;hui"
+          subtitle="Taux global aujourd'hui"
           trend={calculateTrend(
             kpis.data?.ponctualite?.global || 0,
             94 // TODO: Récupérer la valeur d'hier'
           )}
           target={{
             value: kpis.data?.objectifs?.ponctualiteMin || 95,
-            label: &apos;Objectif'
+            label: 'Objectif'
           }}
           status={getKPIStatus(
             kpis.data?.ponctualite?.global || 0,
@@ -146,14 +146,14 @@ export default function DashboardPage() {
         <KPICard
           title="Préparations"
           value={kpis.data?.preparations?.aujourdhui || 0}
-          subtitle="Véhicules traités aujourd&apos;hui"
+          subtitle="Véhicules traités aujourd'hui"
           trend={calculateTrend(
             kpis.data?.preparations?.aujourdhui || 0,
             42 // TODO: Récupérer la valeur d'hier'
           )}
           target={{
             value: kpis.data?.objectifs?.preparationsJour || 50,
-            label: &apos;Objectif jour'
+            label: 'Objectif jour'
           }}
           status={getKPIStatus(
             kpis.data?.preparations?.aujourdhui || 0,
@@ -174,7 +174,7 @@ export default function DashboardPage() {
           )}
           target={{
             value: kpis.data?.objectifs?.tempsMoyenMax || 30,
-            label: &apos;Max souhaité'
+            label: 'Max souhaité'
           }}
           status={getKPIStatus(
             kpis.data?.objectifs?.tempsMoyenMax || 30,
@@ -290,7 +290,7 @@ export default function DashboardPage() {
                               : "bg-red-50 text-red-700"
                         }
                       >
-                        {agence.rate >= 95 ? &apos;Excellent&apos; : agence.rate >= 85 ? &apos;Correct&apos; : &apos;À améliorer'}
+                        {agence.rate >= 95 ? 'Excellent' : agence.rate >= 85 ? 'Correct' : 'À améliorer'}
                       </Badge>
                     </div>
                   </div>
@@ -314,7 +314,7 @@ export default function DashboardPage() {
             <div className="h-64 flex items-center justify-center border border-dashed border-gray-300 rounded-lg">
               <div className="text-center text-gray-500">
                 <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Graphique en cours d&apos;implémentation</p>
+                <p>Graphique en cours d'implémentation</p>
                 <p className="text-sm">Données disponibles: {charts.data.timeline.length} points</p>
               </div>
             </div>

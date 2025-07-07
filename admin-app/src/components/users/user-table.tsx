@@ -1,11 +1,11 @@
 // src/components/users/user-table.tsx - VERSION MISE À JOUR avec nouvelles actions
-'use client&apos;;
+'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { 
   Search,
   Download
-} from &apos;lucide-react&apos;;
+} from 'lucide-react';
 
 import {
   Table,
@@ -14,7 +14,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from &apos;@/components/ui/table&apos;;
+} from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,7 +24,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from &apos;@/components/ui/select&apos;;
+} from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
@@ -41,7 +41,7 @@ interface UserData {
   firstName: string;
   lastName: string;
   phone?: string;
-  role: &apos;admin&apos; | &apos;preparateur&apos;;
+  role: 'admin' | 'preparateur';
   isActive?: boolean;
   agencies: Array<{
     id: string;
@@ -79,8 +79,8 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
   const [filters, setFilters] = useState<UserFilters>({
     page: 1,
     limit: 20,
-    search: &apos;&apos;,
-    status: &apos;all&apos;,
+    search: '',
+    status: 'all',
     sort: 'role', // ✅ CORRECTION: Tri par rôle par défaut
     order: 'asc'  // ✅ CORRECTION: asc pour avoir admin avant preparateur
   });
@@ -116,7 +116,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
     let sortedUsers = responseData.users || [];
     
     // ✅ CORRECTION: Tri additionnel côté client pour garantir admin > preparateur
-    if (filters.sort === &apos;role&apos;) {
+    if (filters.sort === 'role') {
       sortedUsers = [...sortedUsers].sort((a, b) => {
         // Admins en premier (admin = 0, preparateur = 1)
         const roleOrder = { admin: 0, preparateur: 1 };
@@ -124,7 +124,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
         const bOrder = roleOrder[b.role as keyof typeof roleOrder] || 2;
         
         if (aOrder !== bOrder) {
-          return filters.order === &apos;asc&apos; ? aOrder - bOrder : bOrder - aOrder;
+          return filters.order === 'asc' ? aOrder - bOrder : bOrder - aOrder;
         }
         
         // Si même rôle, trier par nom
@@ -152,7 +152,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
     setFilters(prev => ({
       ...prev,
       sort: column,
-      order: prev.sort === column && prev.order === &apos;asc&apos; ? &apos;desc&apos; : &apos;asc&apos;
+      order: prev.sort === column && prev.order === 'asc' ? 'desc' : 'asc'
     }));
   }, []);
 
@@ -191,7 +191,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
   }, [selectedUsers, bulkAction, refetch]);
 
   const exportUsers = useCallback(() => {
-    console.log('Export des utilisateurs...&apos;);
+    console.log('Export des utilisateurs...');
   }, []);
 
   // Fonctions utilitaires memoized
@@ -202,19 +202,19 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
   const getRoleBadge = useCallback((role: string) => {
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-        role === &apos;admin&apos; 
-          ? &apos;bg-purple-100 text-purple-700&apos; 
-          : &apos;bg-blue-100 text-blue-700&apos;
+        role === 'admin' 
+          ? 'bg-purple-100 text-purple-700' 
+          : 'bg-blue-100 text-blue-700'
       }`}>
-        {role === &apos;admin&apos; ? &apos;Administrateur&apos; : 'Préparateur'}
+        {role === 'admin' ? 'Administrateur' : 'Préparateur'}
       </span>
     );
   }, []);
 
   const getStatusText = useCallback((isActive?: boolean) => {
     return (
-      <span className={isActive ? &apos;text-green-600 font-medium&apos; : &apos;text-red-600 font-medium'}>
-        {isActive ? &apos;Actif&apos; : 'Inactif'}
+      <span className={isActive ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+        {isActive ? 'Actif' : 'Inactif'}
       </span>
     );
   }, []);
@@ -226,14 +226,14 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
     
-    if (diffInHours < 1) return 'Il y a moins d\&apos;1h&apos;;
+    if (diffInHours < 1) return 'Il y a moins d\'1h';
     if (diffInHours < 24) return `Il y a ${diffInHours}h`;
     if (diffInHours < 48) return 'Hier';
     
     return date.toLocaleDateString('fr-FR', {
-      day: &apos;2-digit&apos;,
-      month: &apos;2-digit&apos;,
-      year: &apos;numeric&apos;
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
     });
   }, []);
 
@@ -337,7 +337,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleBulkAction(&apos;activate&apos;)}
+                    onClick={() => handleBulkAction('activate')}
                     disabled={bulkAction.isPending}
                   >
                     Activer
@@ -345,7 +345,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleBulkAction(&apos;deactivate&apos;)}
+                    onClick={() => handleBulkAction('deactivate')}
                     disabled={bulkAction.isPending}
                   >
                     Désactiver
@@ -375,7 +375,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
             
             <Select 
               value={filters.status} 
-              onValueChange={(value) => handleFilterChange(&apos;status&apos;, value)}
+              onValueChange={(value) => handleFilterChange('status', value)}
             >
               <SelectTrigger className="w-32">
                 <SelectValue />
@@ -389,7 +389,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
             
             <Select 
               value={filters.role || 'all'} 
-              onValueChange={(value) => handleFilterChange(&apos;role&apos;, value === &apos;all&apos; ? undefined : value)}
+              onValueChange={(value) => handleFilterChange('role', value === 'all' ? undefined : value)}
             >
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -414,13 +414,13 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                 </TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => handleSort(&apos;firstName&apos;)}
+                  onClick={() => handleSort('firstName')}
                 >
                   Utilisateur
                 </TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => handleSort(&apos;email&apos;)}
+                  onClick={() => handleSort('email')}
                 >
                   Email
                 </TableHead>
@@ -428,18 +428,18 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                 <TableHead>Agences</TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => handleSort(&apos;role&apos;)}
+                  onClick={() => handleSort('role')}
                 >
-                  Rôle {filters.sort === &apos;role&apos; && (
+                  Rôle {filters.sort === 'role' && (
                     <span className="ml-1">
-                      {filters.order === &apos;asc&apos; ? &apos;↑&apos; : '↓'}
+                      {filters.order === 'asc' ? '↑' : '↓'}
                     </span>
                   )}
                 </TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => handleSort(&apos;lastLogin&apos;)}
+                  onClick={() => handleSort('lastLogin')}
                 >
                   Dernière connexion
                 </TableHead>
@@ -487,7 +487,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {user.agencies?.length > 0 ? 
-                        user.agencies.map(agency => agency.name).join(&apos;, &apos;) : 
+                        user.agencies.map(agency => agency.name).join(', ') : 
                         <span className="text-gray-400">Aucune</span>
                       }
                     </div>
@@ -528,7 +528,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                   variant="outline"
                   size="sm"
                   disabled={!paginationData.hasPrev}
-                  onClick={() => handleFilterChange(&apos;page&apos;, paginationData.currentPage - 1)}
+                  onClick={() => handleFilterChange('page', paginationData.currentPage - 1)}
                 >
                   Précédent
                 </Button>
@@ -536,7 +536,7 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
                   variant="outline"
                   size="sm"
                   disabled={!paginationData.hasNext}
-                  onClick={() => handleFilterChange(&apos;page&apos;, paginationData.currentPage + 1)}
+                  onClick={() => handleFilterChange('page', paginationData.currentPage + 1)}
                 >
                   Suivant
                 </Button>
@@ -556,8 +556,8 @@ export function UserTable({ onEditUser, onViewProfile }: UserTableProps) {
               </div>
               <p className="text-gray-600">
                 {filters.search ? 
-                  &apos;Aucun utilisateur trouvé pour cette recherche&apos; : 
-                  &apos;Aucun utilisateur trouvé&apos;
+                  'Aucun utilisateur trouvé pour cette recherche' : 
+                  'Aucun utilisateur trouvé'
                 }
               </p>
               <p className="text-sm text-gray-500 mt-2">

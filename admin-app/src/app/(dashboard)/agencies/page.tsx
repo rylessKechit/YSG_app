@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/agencies/page.tsx - PAGE PRINCIPALE AGENCES
-'use client&apos;;
+'use client';
 
 import { useState } from 'react';
 import { Building, Plus, Filter, Download, MoreHorizontal } from 'lucide-react';
@@ -17,7 +17,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from &apos;@/components/ui/dialog';
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +25,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from &apos;@/components/ui/dropdown-menu';
+} from '@/components/ui/dropdown-menu';
 
 import { useAgencies, useExportAgencies } from '@/hooks/api/useAgencies';
 import { Agency, AgencyFilters } from '@/types/agency';
@@ -38,10 +38,10 @@ export default function AgenciesPage() {
   const [filters, setFilters] = useState<AgencyFilters>({
     page: 1,
     limit: 20,
-    search: &apos;',
-    status: &apos;all',
-    sort: &apos;name',
-    order: &apos;asc'
+    search: '',
+    status: 'all',
+    sort: 'name',
+    order: 'asc'
   });
 
   // Hooks API
@@ -138,12 +138,12 @@ export default function AgenciesPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Format d&apos;export</DropdownMenuLabel>
+                <DropdownMenuLabel>Format d'export</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleExport(&apos;excel')}>
+                <DropdownMenuItem onClick={() => handleExport('excel')}>
                   Fichier Excel (.xlsx)
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExport(&apos;csv')}>
+                <DropdownMenuItem onClick={() => handleExport('csv')}>
                   Fichier CSV (.csv)
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -218,7 +218,7 @@ export default function AgenciesPage() {
           <CardTitle>Liste des Agences</CardTitle>
           <CardDescription>
             {data?.pagination && (
-              `${data.pagination.total} agence${data.pagination.total > 1 ? &apos;s&apos; : ''} au total`
+              `${data.pagination.total} agence${data.pagination.total > 1 ? 's' : ''} au total`
             )}
           </CardDescription>
         </CardHeader>
@@ -246,12 +246,12 @@ export default function AgenciesPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingAgency ? &apos;Modifier l\'agence' : &apos;Créer une nouvelle agence'}
+              {editingAgency ? 'Modifier l\'agence' : 'Créer une nouvelle agence'}
             </DialogTitle>
             <DialogDescription>
               {editingAgency 
-                ? &apos;Modifiez les informations de l\&apos;agence ci-dessous.'
-                : &apos;Complétez les informations pour créer une nouvelle agence.&apos;
+                ? 'Modifiez les informations de l\'agence ci-dessous.'
+                : 'Complétez les informations pour créer une nouvelle agence.'
               }
             </DialogDescription>
           </DialogHeader>

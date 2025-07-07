@@ -1,5 +1,5 @@
 // admin-app/src/components/schedules/schedule-calendar.tsx
-'use client&apos;;
+'use client';
 
 import { useState, useMemo, useCallback } from 'react';
 import { 
@@ -13,7 +13,7 @@ import {
   Calendar as CalendarIcon,
   Filter,
   RefreshCw
-} from &apos;lucide-react&apos;;
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
@@ -27,14 +27,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from &apos;@/components/ui/select&apos;;
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from &apos;@/components/ui/dialog&apos;;
+} from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 import { useScheduleCalendar } from '@/hooks/api/useSchedules';
@@ -84,10 +84,10 @@ export function ScheduleCalendar() {
   const calendarParams = useMemo(() => ({
     year: currentDate.getFullYear(),
     month: currentDate.getMonth() + 1,
-    view: &apos;month&apos; as const,
+    view: 'month' as const,
     // Convertir "all" en undefined pour l'API
-    ...(selectedAgency !== &apos;all&apos; && { agency: selectedAgency }),
-    ...(selectedUser !== &apos;all&apos; && { user: selectedUser })
+    ...(selectedAgency !== 'all' && { agency: selectedAgency }),
+    ...(selectedUser !== 'all' && { user: selectedUser })
   }), [currentDate, selectedAgency, selectedUser]);
 
   // Hooks API
@@ -99,7 +99,7 @@ export function ScheduleCalendar() {
   const navigateMonth = useCallback((direction: 'prev' | 'next') => {
     setCurrentDate(prev => {
       const newDate = new Date(prev);
-      if (direction === &apos;prev&apos;) {
+      if (direction === 'prev') {
         newDate.setMonth(prev.getMonth() - 1);
       } else {
         newDate.setMonth(prev.getMonth() + 1);
@@ -151,13 +151,13 @@ export function ScheduleCalendar() {
 
   // Utilitaires
   const getUserInitials = useCallback((name: string) => {
-    return name.split(' ').map(n => n[0]).join(&apos;&apos;).toUpperCase();
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }, []);
 
   const formatMonth = useCallback((date: Date) => {
     return date.toLocaleDateString('fr-FR', {
-      month: &apos;long&apos;,
-      year: &apos;numeric&apos;
+      month: 'long',
+      year: 'numeric'
     });
   }, []);
 
@@ -200,7 +200,7 @@ export function ScheduleCalendar() {
           "min-h-[120px] border border-gray-200 p-2 cursor-pointer hover:bg-gray-50 transition-colors",
           !day.isCurrentMonth && "bg-gray-50 text-gray-400",
           isToday && "bg-blue-50 border-blue-200",
-          day.schedules.length > 0 && &quot;bg-green-50&quot;
+          day.schedules.length > 0 && "bg-green-50"
         )}
         onClick={() => handleDayClick(day)}
       >
@@ -285,7 +285,7 @@ export function ScheduleCalendar() {
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               Erreur lors du chargement du calendrier. 
-              <Button variant="link" onClick={() => refetch()} className=&quot;ml-2 p-0 h-auto&quot;>
+              <Button variant="link" onClick={() => refetch()} className="ml-2 p-0 h-auto">
                 Réessayer
               </Button>
             </AlertDescription>
@@ -320,7 +320,7 @@ export function ScheduleCalendar() {
           {/* Navigation mois */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigateMonth(&apos;prev&apos;)}>
+              <Button variant="outline" size="sm" onClick={() => navigateMonth('prev')}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               
@@ -328,7 +328,7 @@ export function ScheduleCalendar() {
                 {formatMonth(currentDate)}
               </h2>
               
-              <Button variant="outline" size="sm" onClick={() => navigateMonth(&apos;next&apos;)}>
+              <Button variant="outline" size="sm" onClick={() => navigateMonth('next')}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
               
@@ -359,7 +359,7 @@ export function ScheduleCalendar() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les préparateurs</SelectItem>
-                  {usersData?.data?.users?.filter(user => user.role === &apos;preparateur&apos;).map((user) => (
+                  {usersData?.data?.users?.filter(user => user.role === 'preparateur').map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.firstName} {user.lastName}
                     </SelectItem>
@@ -367,7 +367,7 @@ export function ScheduleCalendar() {
                 </SelectContent>
               </Select>
 
-              {(selectedAgency !== &apos;all&apos; || selectedUser !== &apos;all&apos;) && (
+              {(selectedAgency !== 'all' || selectedUser !== 'all') && (
                 <Button variant="outline" size="sm" onClick={resetFilters}>
                   <Filter className="h-4 w-4 mr-2" />
                   Reset
@@ -407,7 +407,7 @@ export function ScheduleCalendar() {
         <CardContent className="p-0">
           {/* En-têtes des jours de la semaine */}
           <div className="grid grid-cols-7 border-b">
-            {['Lun', &apos;Mar&apos;, 'Mer', &apos;Jeu&apos;, 'Ven', &apos;Sam&apos;, 'Dim'].map((day) => (
+            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day) => (
               <div key={day} className="p-4 text-center font-medium text-gray-600 border-r last:border-r-0">
                 {day}
               </div>
@@ -429,10 +429,10 @@ export function ScheduleCalendar() {
           <DialogHeader>
             <DialogTitle>
               Plannings du {selectedDay?.date.toLocaleDateString('fr-FR', {
-                weekday: &apos;long&apos;,
-                day: &apos;numeric&apos;,
-                month: &apos;long&apos;,
-                year: &apos;numeric&apos;
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
               })}
             </DialogTitle>
             <DialogDescription>

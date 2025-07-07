@@ -1,5 +1,5 @@
 // src/components/reports/activity-report.tsx
-'use client&apos;;
+'use client';
 
 import React from 'react';
 import { 
@@ -11,7 +11,7 @@ import {
   Building, 
   Activity,
   BarChart3
-} from &apos;lucide-react&apos;;
+} from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -30,7 +30,7 @@ import {
   Line,
   Area,
   AreaChart
-} from &apos;recharts&apos;;
+} from 'recharts';
 import { ActivityReportData } from '@/types/reports';
 
 interface ActivityReportProps {
@@ -62,23 +62,23 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
   const formatHours = (hours: number) => {
     const h = Math.floor(hours);
     const m = Math.round((hours - h) * 60);
-    return m > 0 ? `${h}h${m.toString().padStart(2, &apos;0&apos;)}` : `${h}h`;
+    return m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h`;
   };
 
   const getIntensityColor = (intensite: string) => {
     switch (intensite) {
-      case &apos;pic&apos;: return &apos;bg-red-100 text-red-800&apos;;
-      case &apos;forte&apos;: return &apos;bg-orange-100 text-orange-800&apos;;
-      case &apos;moyenne&apos;: return &apos;bg-yellow-100 text-yellow-800&apos;;
-      case &apos;faible&apos;: return &apos;bg-gray-100 text-gray-600&apos;;
-      default: return &apos;bg-gray-100 text-gray-600&apos;;
+      case 'pic': return 'bg-red-100 text-red-800';
+      case 'forte': return 'bg-orange-100 text-orange-800';
+      case 'moyenne': return 'bg-yellow-100 text-yellow-800';
+      case 'faible': return 'bg-gray-100 text-gray-600';
+      default: return 'bg-gray-100 text-gray-600';
     }
   };
 
   const getTrendIcon = (tendance: string) => {
     switch (tendance) {
-      case &apos;hausse&apos;: return <TrendingUp className="h-4 w-4 text-green-500" />;
-      case &apos;baisse&apos;: return <TrendingDown className="h-4 w-4 text-red-500" />;
+      case 'hausse': return <TrendingUp className="h-4 w-4 text-green-500" />;
+      case 'baisse': return <TrendingDown className="h-4 w-4 text-red-500" />;
       default: return <Activity className="h-4 w-4 text-gray-500" />;
     }
   };
@@ -100,8 +100,8 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
               ) : (
                 <TrendingDown className="h-4 w-4 text-red-500" />
               )}
-              <span className={`text-sm ${data.tendances.croissance > 0 ? &apos;text-green-600&apos; : &apos;text-red-600'}`}>
-                {data.tendances.croissance > 0 ? &apos;+&apos; : &apos;'}{data.tendances.croissance.toFixed(1)}%
+              <span className={`text-sm ${data.tendances.croissance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {data.tendances.croissance > 0 ? '+' : ''}{data.tendances.croissance.toFixed(1)}%
               </span>
             </div>
           </CardContent>
@@ -132,7 +132,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
           <CardContent>
             <div className="text-2xl font-bold">{formatHours(data.volumetrie.moyenneHeuresParJour)}</div>
             <p className="text-xs text-muted-foreground">
-              Heures par jour d&apos;activité
+              Heures par jour d'activité
             </p>
           </CardContent>
         </Card>
@@ -144,11 +144,11 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
           </CardHeader>
           <CardContent>
             <div className="text-lg font-bold">
-              {new Date(data.periode.debut).toLocaleDateString('fr-FR', { day: &apos;2-digit&apos;, month: &apos;short&apos; })} - 
-              {new Date(data.periode.fin).toLocaleDateString('fr-FR', { day: &apos;2-digit&apos;, month: &apos;short&apos; })}
+              {new Date(data.periode.debut).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} - 
+              {new Date(data.periode.fin).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
             </div>
             <p className="text-xs text-muted-foreground">
-              Analyse d&apos;activité
+              Analyse d'activité
             </p>
           </CardContent>
         </Card>
@@ -161,7 +161,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
           <CardHeader>
             <CardTitle>Répartition par Agence</CardTitle>
             <CardDescription>
-              Pourcentage d&apos;activité par agence
+              Pourcentage d'activité par agence
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -182,7 +182,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
                   ))}
                 </Pie>
                 <Tooltip 
-                  formatter={(value: number) => [`${value.toFixed(1)}%`, &apos;Pourcentage&apos;]}
+                  formatter={(value: number) => [`${value.toFixed(1)}%`, 'Pourcentage']}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -231,7 +231,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
         <CardHeader>
           <CardTitle>Activité par Jour de la Semaine</CardTitle>
           <CardDescription>
-            Répartition de l&apos;activité selon les jours
+            Répartition de l'activité selon les jours
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -241,7 +241,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
               <XAxis dataKey="jour" />
               <YAxis tickFormatter={(value) => `${value}h`} />
               <Tooltip 
-                formatter={(value: number) => [`${formatHours(value)}`, &apos;Heures totales&apos;]}
+                formatter={(value: number) => [`${formatHours(value)}`, 'Heures totales']}
               />
               <Bar 
                 dataKey="totalHeures" 
@@ -258,7 +258,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
         <CardHeader>
           <CardTitle>Répartition Horaire</CardTitle>
           <CardDescription>
-            Intensité de l&apos;activité par heure de la journée
+            Intensité de l'activité par heure de la journée
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -271,7 +271,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
               />
               <YAxis />
               <Tooltip 
-                formatter={(value: number) => [`${value}`, &apos;Activité totale&apos;]}
+                formatter={(value: number) => [`${value}`, 'Activité totale']}
                 labelFormatter={(label) => `${label}h00`}
               />
               <Area 
@@ -348,7 +348,7 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
           <CardHeader>
             <CardTitle>Tendances Saisonnières</CardTitle>
             <CardDescription>
-              Évolution de l&apos;activité par mois
+              Évolution de l'activité par mois
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -358,14 +358,14 @@ export function ActivityReport({ data, isLoading }: ActivityReportProps) {
                 <XAxis dataKey="mois" />
                 <YAxis />
                 <Tooltip 
-                  formatter={(value: number) => [`${value}`, &apos;Activité&apos;]}
+                  formatter={(value: number) => [`${value}`, 'Activité']}
                 />
                 <Line 
                   type="monotone" 
                   dataKey="activite" 
                   stroke="#8b5cf6" 
                   strokeWidth={2}
-                  dot={{ fill: &apos;#8b5cf6&apos; }}
+                  dot={{ fill: '#8b5cf6' }}
                 />
               </LineChart>
             </ResponsiveContainer>

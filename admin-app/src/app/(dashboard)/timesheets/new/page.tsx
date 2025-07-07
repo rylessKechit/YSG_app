@@ -1,5 +1,5 @@
 // admin-app/src/app/(dashboard)/timesheets/new/page.tsx - VERSION CORRIGÉE
-'use client&apos;;
+'use client';
 
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Clock, Plus } from 'lucide-react';
@@ -13,7 +13,7 @@ export default function NewTimesheetPage() {
   const router = useRouter();
 
   const handleSuccess = (newTimesheet: Timesheet) => {
-    console.log('✅ Pointage créé:&apos;, newTimesheet);
+    console.log('✅ Pointage créé:', newTimesheet);
     router.push('/timesheets');
   };
 
@@ -49,7 +49,7 @@ export default function NewTimesheetPage() {
         <CardHeader>
           <CardTitle>Formulaire de création</CardTitle>
           <CardDescription>
-            Le composant TimesheetForm sera disponible après l&apos;implémentation du chapitre 5
+            Le composant TimesheetForm sera disponible après l'implémentation du chapitre 5
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -62,7 +62,7 @@ export default function NewTimesheetPage() {
               <Button variant="outline" onClick={handleCancel}>
                 Retour aux pointages
               </Button>
-              <Button onClick={() => console.log(&apos;Création temporairement désactivée')}>
+              <Button onClick={() => console.log('Création temporairement désactivée')}>
                 Créer le pointage (Temporaire)
               </Button>
             </div>

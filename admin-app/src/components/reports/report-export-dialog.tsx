@@ -1,5 +1,5 @@
 // src/components/reports/report-export-dialog.tsx
-'use client&apos;;
+'use client';
 
 import React, { useState } from 'react';
 import { 
@@ -10,7 +10,7 @@ import {
   CheckCircle, 
   AlertCircle,
   Loader2
-} from &apos;lucide-react&apos;;
+} from 'lucide-react';
 
 import {
   Dialog,
@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from &apos;@/components/ui/dialog&apos;;
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -46,39 +46,39 @@ interface ReportExportDialogProps {
 
 const FORMAT_OPTIONS = [
   {
-    value: &apos;excel&apos; as ReportFormat,
-    label: &apos;Excel (.xlsx)',
-    description: &apos;Fichier Excel avec tableaux et graphiques&apos;,
-    icon: &apos;📊&apos;,
-    size: &apos;~2-5 MB&apos;
+    value: 'excel' as ReportFormat,
+    label: 'Excel (.xlsx)',
+    description: 'Fichier Excel avec tableaux et graphiques',
+    icon: '📊',
+    size: '~2-5 MB'
   },
   {
-    value: &apos;pdf&apos; as ReportFormat,
-    label: &apos;PDF&apos;,
-    description: &apos;Document PDF prêt à imprimer&apos;,
-    icon: &apos;📄&apos;,
-    size: &apos;~1-3 MB&apos;
+    value: 'pdf' as ReportFormat,
+    label: 'PDF',
+    description: 'Document PDF prêt à imprimer',
+    icon: '📄',
+    size: '~1-3 MB'
   },
   {
-    value: &apos;csv&apos; as ReportFormat,
-    label: &apos;CSV&apos;,
-    description: &apos;Données brutes pour analyse&apos;,
-    icon: &apos;📈&apos;,
-    size: &apos;~100-500 KB&apos;
+    value: 'csv' as ReportFormat,
+    label: 'CSV',
+    description: 'Données brutes pour analyse',
+    icon: '📈',
+    size: '~100-500 KB'
   }
 ];
 
 const DELIVERY_METHODS = [
   {
-    value: &apos;download&apos;,
-    label: &apos;Téléchargement direct&apos;,
-    description: &apos;Télécharger immédiatement le fichier&apos;,
+    value: 'download',
+    label: 'Téléchargement direct',
+    description: 'Télécharger immédiatement le fichier',
     icon: Download
   },
   {
-    value: &apos;email&apos;,
-    label: &apos;Envoi par email&apos;,
-    description: &apos;Recevoir le rapport par email&apos;,
+    value: 'email',
+    label: 'Envoi par email',
+    description: 'Recevoir le rapport par email',
     icon: Mail
   }
 ];
@@ -94,7 +94,7 @@ export function ReportExportDialog({
 }: ReportExportDialogProps) {
   const [options, setOptions] = useState<ReportExportOptions>({
     type: reportType,
-    format: &apos;excel&apos;,
+    format: 'excel',
     period: {
       start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       end: new Date().toISOString().split('T')[0]
@@ -104,7 +104,7 @@ export function ReportExportDialog({
       includeDetails: false
     },
     delivery: {
-      method: &apos;download&apos;
+      method: 'download'
     }
   });
 
@@ -133,23 +133,23 @@ export function ReportExportDialog({
     const endDate = new Date(opts.period.end);
     
     if (startDate >= endDate) {
-      errors.push('La date de fin doit être postérieure à la date de début&apos;);
+      errors.push('La date de fin doit être postérieure à la date de début');
     }
     
     const daysDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
     if (daysDiff > 365) {
-      errors.push('La période ne peut pas dépasser 365 jours&apos;);
+      errors.push('La période ne peut pas dépasser 365 jours');
     }
     
     // Validation email
-    if (opts.delivery.method === &apos;email&apos; && !opts.delivery.email) {
-      errors.push('Adresse email requise pour l\&apos;envoi par email&apos;);
+    if (opts.delivery.method === 'email' && !opts.delivery.email) {
+      errors.push('Adresse email requise pour l\'envoi par email');
     }
     
-    if (opts.delivery.method === &apos;email&apos; && opts.delivery.email) {
+    if (opts.delivery.method === 'email' && opts.delivery.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(opts.delivery.email)) {
-        errors.push('Format d\'email invalide&apos;);
+        errors.push('Format d\'email invalide');
       }
     }
     
@@ -169,15 +169,15 @@ export function ReportExportDialog({
   };
 
   const getFormatIcon = (format: ReportFormat) => {
-    return FORMAT_OPTIONS.find(f => f.value === format)?.icon || &apos;📄&apos;;
+    return FORMAT_OPTIONS.find(f => f.value === format)?.icon || '📄';
   };
 
   const getReportTypeLabel = (type: ReportType) => {
     const labels = {
-      ponctualite: &apos;Ponctualité&apos;,
-      performance: &apos;Performance&apos;,
-      activite: &apos;Activité&apos;,
-      custom: &apos;Personnalisé&apos;
+      ponctualite: 'Ponctualité',
+      performance: 'Performance',
+      activite: 'Activité',
+      custom: 'Personnalisé'
     };
     return labels[type] || type;
   };
@@ -226,17 +226,17 @@ export function ReportExportDialog({
           <div className="space-y-6 py-4">
             {/* Sélection du format */}
             <div className="space-y-3">
-              <Label className="text-base font-medium">Format d&apos;export</Label>
+              <Label className="text-base font-medium">Format d'export</Label>
               <div className="grid gap-3">
                 {FORMAT_OPTIONS.map((format) => (
                   <Card 
                     key={format.value}
                     className={`cursor-pointer transition-all ${
                       options.format === format.value 
-                        ? &apos;ring-2 ring-blue-500 bg-blue-50&apos; 
-                        : &apos;hover:shadow-md&apos;
+                        ? 'ring-2 ring-blue-500 bg-blue-50' 
+                        : 'hover:shadow-md'
                     }`}
-                    onClick={() => updateOption(&apos;format&apos;, format.value)}
+                    onClick={() => updateOption('format', format.value)}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
@@ -274,7 +274,7 @@ export function ReportExportDialog({
                     id="start-date"
                     type="date"
                     value={options.period.start}
-                    onChange={(e) => updateOption(&apos;period.start&apos;, e.target.value)}
+                    onChange={(e) => updateOption('period.start', e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -283,7 +283,7 @@ export function ReportExportDialog({
                     id="end-date"
                     type="date"
                     value={options.period.end}
-                    onChange={(e) => updateOption(&apos;period.end&apos;, e.target.value)}
+                    onChange={(e) => updateOption('period.end', e.target.value)}
                   />
                 </div>
               </div>
@@ -293,13 +293,13 @@ export function ReportExportDialog({
 
             {/* Options d'inclusion */}
             <div className="space-y-3">
-              <Label className="text-base font-medium">Options d&apos;inclusion</Label>
+              <Label className="text-base font-medium">Options d'inclusion</Label>
               <div className="space-y-3">
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="includeGraphiques"
                     checked={options.filters.includeGraphiques || false}
-                    onCheckedChange={(checked) => updateOption(&apos;filters.includeGraphiques&apos;, checked)}
+                    onCheckedChange={(checked) => updateOption('filters.includeGraphiques', checked)}
                   />
                   <Label htmlFor="includeGraphiques">
                     Inclure les graphiques et visualisations
@@ -310,7 +310,7 @@ export function ReportExportDialog({
                   <Checkbox
                     id="includeDetails"
                     checked={options.filters.includeDetails || false}
-                    onCheckedChange={(checked) => updateOption(&apos;filters.includeDetails&apos;, checked)}
+                    onCheckedChange={(checked) => updateOption('filters.includeDetails', checked)}
                   />
                   <Label htmlFor="includeDetails">
                     Inclure les détails par utilisateur
@@ -326,7 +326,7 @@ export function ReportExportDialog({
               <Label className="text-base font-medium">Méthode de livraison</Label>
               <RadioGroup
                 value={options.delivery.method}
-                onValueChange={(value: any) => updateOption(&apos;delivery.method&apos;, value)}
+                onValueChange={(value: any) => updateOption('delivery.method', value)}
               >
                 {DELIVERY_METHODS.map((method) => (
                   <div key={method.value} className="flex items-center space-x-2">
@@ -345,7 +345,7 @@ export function ReportExportDialog({
               </RadioGroup>
 
               {/* Email input si méthode email sélectionnée */}
-              {options.delivery.method === &apos;email&apos; && (
+              {options.delivery.method === 'email' && (
                 <div className="space-y-2 ml-6">
                   <Label htmlFor="email">Adresse email</Label>
                   <Input
@@ -353,7 +353,7 @@ export function ReportExportDialog({
                     type="email"
                     placeholder="votre.email@exemple.com"
                     value={options.delivery.email || ''}
-                    onChange={(e) => updateOption(&apos;delivery.email&apos;, e.target.value)}
+                    onChange={(e) => updateOption('delivery.email', e.target.value)}
                   />
                 </div>
               )}
