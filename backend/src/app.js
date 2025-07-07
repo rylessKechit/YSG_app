@@ -26,6 +26,8 @@ const allowedOrigins = [
   process.env.ADMIN_URL
 ].filter(Boolean); // Enlever les valeurs undefined
 
+console.log(allowedOrigins);
+
 app.use(cors({
   origin: function (origin, callback) {
     // Autoriser les requêtes sans origin (ex: mobile apps, Postman)
