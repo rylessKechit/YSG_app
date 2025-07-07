@@ -1,4 +1,4 @@
-// backend/src/routes/admin/dashboard/overview.js - VERSION CORRIGÉE
+// backend/src/routes/admin/dashboard/overview.js - CORRECTION FINALE
 const express = require('express');
 const Joi = require('joi');
 const User = require('../../../models/User');
@@ -10,7 +10,7 @@ const Vehicle = require('../../../models/Vehicle');
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
 const { validateQuery } = require('../../../middleware/validation');
-const { ERROR_MESSAGES, TIME_LIMITS } = require('../../../utils/constants');
+const { ERROR_MESSAGES } = require('../../../utils/constants');
 
 const router = express.Router();
 
@@ -62,21 +62,22 @@ router.get('/', validateQuery(overviewQuerySchema), async (req, res) => {
       // Véhicules (si le modèle existe)
       Vehicle?.countDocuments?.({}) || Promise.resolve(0),
       
-      // Plannings du jour
+      // ✅ CORRECTION MAJEURE: Plannings du jour (sans filtre status)
       Schedule.countDocuments({
         date: {
           $gte: today,
           $lt: tomorrow
         }
+        // ✅ Suppression du filtre status: 'active' qui empêchait la récupération
       }),
       
-      // Présents aujourd'hui
+      // ✅ CORRECTION: Présents aujourd'hui (qui ont pointé)
       Timesheet.countDocuments({
         date: {
           $gte: today,
           $lt: tomorrow
         },
-        clockInTime: { $exists: true }
+        startTime: { $exists: true, $ne: null } // ✅ startTime au lieu de clockInTime
       }),
       
       // Préparations aujourd'hui
@@ -88,8 +89,8 @@ router.get('/', validateQuery(overviewQuerySchema), async (req, res) => {
       Preparation.countDocuments({ status: 'in_progress' })
     ]);
 
-    // ===== CALCUL DES RETARDS (MÉTHODE SIMPLE) =====
-    const todayLate = await calculateTodayLateCount(today, tomorrow);
+    // ===== ✅ CORRECTION MAJEURE : CALCUL DES RETARDS =====
+    const todayLate = await calculateTodayLateCountFixed(today, tomorrow);
 
     // ===== CALCUL DES TAUX =====
     const presentRate = todaySchedules > 0 ? Math.round((todayPresent / todaySchedules) * 100) : 0;
@@ -98,7 +99,7 @@ router.get('/', validateQuery(overviewQuerySchema), async (req, res) => {
     // ===== ALERTES RÉCENTES =====
     let alerts = [];
     if (includeAlerts) {
-      alerts = await getRecentAlerts(today);
+      alerts = await getRecentAlertsFixed(today);
     }
 
     // ===== RESPONSE =====
@@ -110,7 +111,7 @@ router.get('/', validateQuery(overviewQuerySchema), async (req, res) => {
         totalVehicles,
         todaySchedules,
         todayPresent,
-        todayLate,
+        todayLate, // ✅ Maintenant calculé correctement
         todayPreparations,
         ongoingPreparations
       },
@@ -124,7 +125,7 @@ router.get('/', validateQuery(overviewQuerySchema), async (req, res) => {
     };
 
     console.log('✅ Overview calculé:', {
-      totalUsers,
+      todaySchedules,
       todayPresent,
       todayLate,
       presentRate,
@@ -146,200 +147,169 @@ router.get('/', validateQuery(overviewQuerySchema), async (req, res) => {
   }
 });
 
-// ===== FONCTIONS UTILITAIRES =====
+// ===== ✅ FONCTION COMPLÈTEMENT CORRIGÉE AVEC DEBUG =====
 
 /**
- * Calculer le nombre de retards aujourd'hui - MÉTHODE SIMPLE
+ * ✅ Calculer le nombre d'employés en retard aujourd'hui - AVEC DEBUG COMPLET
  */
-async function calculateTodayLateCount(today, tomorrow) {
+async function calculateTodayLateCountFixed(today, tomorrow) {
   try {
-    const timesheets = await Timesheet.find({
-      date: { $gte: today, $lt: tomorrow },
-      clockInTime: { $exists: true }
-    }).populate('schedule', 'startTime');
+    console.log('🔍 Calcul retards pour le dashboard...');
+    console.log('📅 Période:', today.toISOString().split('T')[0], 'au', tomorrow.toISOString().split('T')[0]);
+    
+    const now = new Date();
+    
+    // ✅ ÉTAPE 1: Debug - Vérifier TOUS les plannings d'aujourd'hui sans filtre status
+    const allTodaySchedules = await Schedule.find({
+      date: {
+        $gte: today,
+        $lt: tomorrow
+      }
+    }).populate('user', 'firstName lastName');
+
+    console.log(`🔍 DEBUG: ${allTodaySchedules.length} planning(s) total(aux) trouvé(s) aujourd'hui (sans filtre status)`);
+    
+    if (allTodaySchedules.length > 0) {
+      console.log('📋 Plannings trouvés:');
+      allTodaySchedules.forEach(schedule => {
+        console.log(`   • ${schedule.user?.firstName || 'User inconnu'} ${schedule.user?.lastName || ''} - ${schedule.startTime} (status: ${schedule.status || 'undefined'})`);
+      });
+    }
+
+    // ✅ ÉTAPE 2: Utiliser TOUS les plannings (sans filtre status)
+    const todaySchedules = allTodaySchedules;
+
+    console.log(`📊 ${todaySchedules.length} planning(s) trouvé(s) pour le calcul des retards`);
+
+    if (todaySchedules.length === 0) {
+      console.log('⚠️  Aucun planning pour aujourd\'hui');
+      return 0;
+    }
 
     let lateCount = 0;
-    
-    timesheets.forEach(timesheet => {
-      if (timesheet.schedule && timesheet.clockInTime) {
-        const clockInHour = timesheet.clockInTime.getHours();
-        const clockInMinute = timesheet.clockInTime.getMinutes();
-        const clockInTime = clockInHour * 60 + clockInMinute;
+    const TIME_THRESHOLD = 15; // minutes de retard acceptable
+
+    for (const schedule of todaySchedules) {
+      console.log(`🔍 Vérification: ${schedule.user.firstName} ${schedule.user.lastName} (${schedule.startTime})`);
+      
+      // Vérifier s'il y a un pointage
+      const timesheet = await Timesheet.findOne({
+        user: schedule.user._id,
+        date: {
+          $gte: today,
+          $lt: tomorrow
+        }
+      });
+
+      // Si pas de pointage OU pas d'heure de début
+      if (!timesheet || !timesheet.startTime) {
+        // Calculer si l'employé est considéré comme "en retard"
+        const [hour, minute] = schedule.startTime.split(':').map(Number);
+        const scheduledTime = new Date(today);
+        scheduledTime.setHours(hour, minute, 0, 0);
         
-        const [scheduleHour, scheduleMinute] = timesheet.schedule.startTime.split(':').map(Number);
-        const scheduleTime = scheduleHour * 60 + scheduleMinute;
+        const delayMinutes = Math.floor((now - scheduledTime) / (1000 * 60));
         
-        // Retard si arrivée > 5 minutes après l'heure prévue
-        if (clockInTime > scheduleTime + 5) {
+        console.log(`   ⏰ ${schedule.user.firstName}: pas de pointage, retard de ${delayMinutes}min depuis ${schedule.startTime}`);
+        
+        // Compter comme "en retard" si dépassement du seuil
+        if (delayMinutes > TIME_THRESHOLD) {
           lateCount++;
+          console.log(`   🚨 RETARD: ${schedule.user.firstName} ${schedule.user.lastName} - ${delayMinutes}min`);
+        } else {
+          console.log(`   ⏳ En attente: ${schedule.user.firstName} - ${delayMinutes}min (seuil: ${TIME_THRESHOLD}min)`);
+        }
+      } else {
+        // Si pointage existe, vérifier s'il était en retard
+        const [scheduleHour, scheduleMinute] = schedule.startTime.split(':').map(Number);
+        const scheduledTime = new Date(today);
+        scheduledTime.setHours(scheduleHour, scheduleMinute, 0, 0);
+        
+        const actualStartTime = new Date(timesheet.startTime);
+        const delayMinutes = Math.floor((actualStartTime - scheduledTime) / (1000 * 60));
+        
+        console.log(`   ✅ ${schedule.user.firstName}: pointé à ${actualStartTime.toLocaleTimeString('fr-FR')}, retard de ${delayMinutes}min`);
+        
+        if (delayMinutes > TIME_THRESHOLD) {
+          lateCount++;
+          console.log(`   🚨 RETARD POINTÉ: ${schedule.user.firstName} ${schedule.user.lastName} - ${delayMinutes}min`);
+        } else {
+          console.log(`   ✅ À l'heure: ${schedule.user.firstName} - ${delayMinutes}min`);
         }
       }
-    });
+    }
 
+    console.log(`📊 RÉSULTAT FINAL: ${lateCount} employé(s) en retard sur ${todaySchedules.length} planifié(s)`);
     return lateCount;
+
   } catch (error) {
-    console.error('Erreur calcul retards:', error);
+    console.error('❌ Erreur calcul retards dashboard:', error);
     return 0;
   }
 }
 
 /**
- * ✅ CORRECTION : Récupérer les alertes récentes avec gestion des dates invalides
+ * ✅ FONCTION CORRIGÉE POUR LES ALERTES RÉCENTES
  */
-async function getRecentAlerts(today) {
+async function getRecentAlertsFixed(today) {
   try {
     const alerts = [];
-
-    // 1. Retards de pointage
     const now = new Date();
-    const lateTimesheets = await Timesheet.find({
-      date: { $gte: today },
-      clockInTime: null,
-      schedule: { $exists: true }
+
+    // 1. Alertes de retards de pointage - ✅ SANS FILTRE STATUS
+    const todaySchedules = await Schedule.find({
+      date: {
+        $gte: today,
+        $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+      }
+      // ✅ Suppression du filtre status: 'active'
     })
     .populate('user', 'firstName lastName')
     .populate('agency', 'name')
-    .populate('schedule', 'startTime')
-    .limit(5);
+    .limit(10);
 
-    lateTimesheets.forEach(timesheet => {
-      if (timesheet.user && timesheet.schedule) {
-        try {
-          const [scheduleHour, scheduleMinute] = timesheet.schedule.startTime.split(':').map(Number);
-          const scheduleTime = new Date(today);
-          scheduleTime.setHours(scheduleHour, scheduleMinute, 0, 0);
-          
-          if (now > scheduleTime) {
-            const delayMinutes = Math.floor((now - scheduleTime) / (1000 * 60));
-            alerts.push({
-              id: `late_${timesheet._id}`,
-              type: 'late_start',
-              priority: delayMinutes > 30 ? 'critical' : delayMinutes > 15 ? 'high' : 'medium',
-              title: 'Retard de pointage',
-              message: `${timesheet.user.firstName} ${timesheet.user.lastName} en retard de ${delayMinutes} minutes`,
-              userId: timesheet.user._id,
-              userName: `${timesheet.user.firstName} ${timesheet.user.lastName}`,
-              agencyId: timesheet.agency?._id,
-              agencyName: timesheet.agency?.name,
-              timestamp: now.toISOString(),
-              isRead: false,
-              actionRequired: true,
-              actionUrl: `/admin/users/${timesheet.user._id}`
-            });
-          }
-        } catch (timeError) {
-          console.warn('⚠️ Erreur traitement timesheet:', timeError.message);
-        }
-      }
-    });
-
-    // ✅ CORRECTION : 2. Préparations en retard avec gestion des dates invalides
-    try {
-      // Utiliser une constante par défaut si TIME_LIMITS n'est pas défini
-      const maxMinutes = TIME_LIMITS?.PREPARATION_MAX_MINUTES || 30;
-      const cutoffTime = new Date(Date.now() - maxMinutes * 60 * 1000);
-      
-      console.log('🔍 Recherche préparations longues avant:', cutoffTime.toISOString());
-
-      // ✅ CORRECTION : Requête avec protection contre les dates invalides
-      const overtimePreparations = await Preparation.find({
-        status: 'in_progress',
-        startTime: {
-          $exists: true,
-          $ne: null,
-          $type: 'date',  // ✅ S'assurer que c'est bien une date valide
-          $lte: cutoffTime
-        }
-      })
-      .populate('preparateur', 'firstName lastName')
-      .populate('vehicle', 'licensePlate')
-      .populate('agency', 'name')
-      .limit(5);
-
-      console.log(`📊 ${overtimePreparations.length} préparations longues trouvées`);
-
-      overtimePreparations.forEach(prep => {
-        // ✅ CORRECTION : Vérifier que startTime est une date valide
-        if (prep.preparateur && prep.startTime && prep.startTime instanceof Date && !isNaN(prep.startTime.getTime())) {
-          const durationMinutes = Math.floor((Date.now() - prep.startTime.getTime()) / (1000 * 60));
-          
-          alerts.push({
-            id: `overtime_${prep._id}`,
-            type: 'long_preparation',
-            priority: durationMinutes > 60 ? 'high' : 'medium',
-            title: 'Préparation en retard',
-            message: `Préparation du véhicule ${prep.vehicle?.licensePlate || 'N/A'} dépasse ${maxMinutes} minutes`,
-            userId: prep.preparateur._id,
-            userName: `${prep.preparateur.firstName} ${prep.preparateur.lastName}`,
-            agencyId: prep.agency?._id,
-            agencyName: prep.agency?.name,
-            timestamp: new Date().toISOString(),
-            isRead: false,
-            actionRequired: true,
-            actionUrl: `/admin/preparations/${prep._id}`
-          });
-        } else {
-          console.warn('⚠️ Préparation avec startTime invalide dans overview:', {
-            id: prep._id,
-            startTime: prep.startTime,
-            hasPreparateur: !!prep.preparateur
-          });
+    for (const schedule of todaySchedules) {
+      // ✅ CORRECTION: Utiliser startTime
+      const timesheet = await Timesheet.findOne({
+        user: schedule.user._id,
+        date: {
+          $gte: today,
+          $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
         }
       });
-    } catch (prepError) {
-      console.error('❌ Erreur récupération préparations longues:', prepError);
-      // Ne pas faire planter la fonction, continuer avec les autres alertes
-    }
 
-    // 3. Fin de service manquante (hier)
-    try {
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      const missingClockOuts = await Timesheet.find({
-        date: { $gte: yesterday, $lt: today },
-        clockInTime: { $exists: true },
-        clockOutTime: null
-      })
-      .populate('user', 'firstName lastName')
-      .populate('agency', 'name')
-      .limit(3);
-
-      missingClockOuts.forEach(timesheet => {
-        if (timesheet.user) {
+      // Si pas de pointage et que l'heure est dépassée
+      if (!timesheet || !timesheet.startTime) {
+        const [hour, minute] = schedule.startTime.split(':').map(Number);
+        const scheduledTime = new Date(today);
+        scheduledTime.setHours(hour, minute, 0, 0);
+        
+        const delayMinutes = Math.floor((now - scheduledTime) / (1000 * 60));
+        
+        if (delayMinutes > 15) {
           alerts.push({
-            id: `missing_out_${timesheet._id}`,
-            type: 'missing_clock_out',
-            priority: 'medium',
-            title: 'Fin de service non pointée',
-            message: `${timesheet.user.firstName} ${timesheet.user.lastName} n'a pas pointé sa fin de service`,
-            userId: timesheet.user._id,
-            userName: `${timesheet.user.firstName} ${timesheet.user.lastName}`,
-            agencyId: timesheet.agency?._id,
-            agencyName: timesheet.agency?.name,
-            timestamp: new Date().toISOString(),
+            id: `late_${schedule._id}`,
+            type: 'late_start',
+            priority: delayMinutes > 30 ? 'critical' : 'high',
+            title: 'Retard de pointage',
+            message: `${schedule.user.firstName} ${schedule.user.lastName} en retard de ${delayMinutes} minutes`,
+            userId: schedule.user._id,
+            userName: `${schedule.user.firstName} ${schedule.user.lastName}`,
+            agencyName: schedule.agency?.name,
+            timestamp: now.toISOString(),
             isRead: false,
-            actionRequired: true,
-            actionUrl: `/admin/timesheets/${timesheet._id}`
+            actionRequired: true
           });
         }
-      });
-    } catch (clockOutError) {
-      console.error('❌ Erreur récupération clock-out manquants:', clockOutError);
+      }
     }
 
-    // Trier par priorité et timestamp
-    return alerts.sort((a, b) => {
-      const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-        return priorityOrder[b.priority] - priorityOrder[a.priority];
-      }
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-    }).slice(0, 10);
+    console.log(`🚨 ${alerts.length} alerte(s) récente(s) trouvée(s)`);
+    return alerts.slice(0, 10);
 
   } catch (error) {
     console.error('❌ Erreur récupération alertes:', error);
-    return []; // ✅ Retourner un tableau vide au lieu de faire planter l'API
+    return [];
   }
 }
 

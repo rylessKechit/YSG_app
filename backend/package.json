@@ -15,7 +15,9 @@
     "reports:daily": "node scripts/manual-daily-report.js",
     "reports:weekly": "node scripts/manual-weekly-report.js",
     "reports:test": "node scripts/test-reports.js",
-    "reports:create-data": "node scripts/create-test-data.js"
+    "reports:create-data": "node scripts/create-test-data.js",
+    "alerts:test": "node scripts/test-alerts-manual.js",
+    "alerts:test-email": "node scripts/test-alerts-manual.js --send-test-email"
   },
   "keywords": [
     "vehicle",

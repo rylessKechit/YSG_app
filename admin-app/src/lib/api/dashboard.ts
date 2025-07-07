@@ -56,6 +56,9 @@ export interface DashboardOverview {
     agencyId?: string;
     timestamp: string;
   }>;
+  // ✅ AJOUT de la propriété timestamp qui manquait
+  timestamp: string;
+  date: string;
 }
 
 export interface ChartData {

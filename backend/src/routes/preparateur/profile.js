@@ -28,16 +28,52 @@ router.get('/dashboard', async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + 1); // Lundi
+    console.log('🔍 Recherche planning pour:', {
+      userId,
+      date: today.toISOString().split('T')[0]
+    });
 
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6); // Dimanche
+    // ✅ FIX: Supprimer le filtre status strict et ajouter des logs
+    const todaySchedule = await Schedule.findOne({
+      user: userId,
+      date: {
+        $gte: today,
+        $lt: tomorrow
+      }
+      // ✅ SUPPRIMÉ: status: 'active' - peut ne pas exister ou être différent
+    })
+    .populate('agency', 'name code client')
+    .sort({ createdAt: -1 }); // Prendre le plus récent en cas de multiples
 
-    // Récupérer les données en parallèle
+    // ✅ LOG: Debug pour voir ce qui est trouvé
+    if (todaySchedule) {
+      console.log('✅ Planning trouvé:', {
+        id: todaySchedule._id,
+        agency: todaySchedule.agency?.name,
+        horaires: `${todaySchedule.startTime} - ${todaySchedule.endTime}`,
+        status: todaySchedule.status || 'undefined',
+        date: todaySchedule.date
+      });
+    } else {
+      console.log('❌ Aucun planning trouvé pour aujourd\'hui');
+      
+      // ✅ DEBUG: Chercher tous les plannings de l'utilisateur pour debug
+      const allUserSchedules = await Schedule.find({ user: userId })
+        .sort({ date: -1 })
+        .limit(5)
+        .populate('agency', 'name');
+        
+      console.log('📋 Derniers plannings utilisateur:', allUserSchedules.map(s => ({
+        date: s.date.toISOString().split('T')[0],
+        agency: s.agency?.name,
+        status: s.status || 'undefined',
+        horaires: `${s.startTime} - ${s.endTime}`
+      })));
+    }
+
+    // Récupérer les autres données en parallèle
     const [
       user,
-      todaySchedule,
       todayTimesheet,
       currentPreparation,
       weekStats,
@@ -46,17 +82,13 @@ router.get('/dashboard', async (req, res) => {
       // Utilisateur avec ses agences
       User.findById(userId).populate('agencies', 'name code client'),
 
-      // Planning d'aujourd'hui
-      Schedule.findOne({
-        user: userId,
-        date: today,
-        status: 'active'
-      }).populate('agency', 'name code client'),
-
       // Pointage d'aujourd'hui
       Timesheet.findOne({
         user: userId,
-        date: today
+        date: {
+          $gte: today,
+          $lt: tomorrow
+        }
       }).populate('agency', 'name code client'),
 
       // Préparation en cours
@@ -72,22 +104,24 @@ router.get('/dashboard', async (req, res) => {
         Preparation.countDocuments({
           user: userId,
           status: 'completed',
-          createdAt: { $gte: weekStart, $lte: weekEnd }
+          createdAt: { $gte: getWeekStart(today), $lte: getWeekEnd(today) }
         }),
         Preparation.countDocuments({
           user: userId,
           status: 'completed',
           isOnTime: true,
-          createdAt: { $gte: weekStart, $lte: weekEnd }
+          createdAt: { $gte: getWeekStart(today), $lte: getWeekEnd(today) }
         }),
+        // Compter les jours ponctuel cette semaine
         Timesheet.countDocuments({
           user: userId,
-          date: { $gte: weekStart, $lte: weekEnd },
-          'delays.startDelay': { $lte: 15 }
+          date: { $gte: getWeekStart(today), $lte: getWeekEnd(today) },
+          isLate: false,
+          clockInTime: { $exists: true }
         })
       ]),
 
-      // Dernières préparations (5)
+      // Préparations récentes
       Preparation.find({
         user: userId,
         status: { $in: ['completed', 'cancelled'] }
@@ -100,61 +134,61 @@ router.get('/dashboard', async (req, res) => {
 
     const [weekPreparations, weekOnTime, weekPunctual] = weekStats;
 
-    // Calculer le temps travaillé aujourd'hui
-    let todayWorkedMinutes = 0;
-    if (todayTimesheet?.startTime) {
-      const endTime = todayTimesheet.endTime || new Date();
-      todayWorkedMinutes = Math.floor((endTime - todayTimesheet.startTime) / (1000 * 60));
-      
-      // Soustraire les pauses
-      if (todayTimesheet.breakStart && todayTimesheet.breakEnd) {
-        const breakTime = Math.floor((todayTimesheet.breakEnd - todayTimesheet.breakStart) / (1000 * 60));
-        todayWorkedMinutes -= breakTime;
-      }
-    }
-
-    // Statut actuel
+    // Calculer le statut actuel
     const currentStatus = {
-      isClockedIn: !!todayTimesheet?.startTime && !todayTimesheet?.endTime,
-      isClockedOut: !!todayTimesheet?.endTime,
-      isOnBreak: !!todayTimesheet?.breakStart && !todayTimesheet?.breakEnd,
-      hasPreparationInProgress: !!currentPreparation,
-      todayWorkedTime: todayWorkedMinutes > 0 ? 
-        `${Math.floor(todayWorkedMinutes / 60)}h${(todayWorkedMinutes % 60).toString().padStart(2, '0')}` : null
+      isClockedIn: !!todayTimesheet?.clockInTime && !todayTimesheet?.clockOutTime,
+      isClockedOut: !!todayTimesheet?.clockOutTime,
+      isOnBreak: !!todayTimesheet?.breaks?.some(b => b.startTime && !b.endTime),
+      hasActivePreparation: !!currentPreparation
     };
 
-    res.json({
+    // ✅ FIX: Construction de la réponse avec planning corrigé
+    const response = {
       success: true,
       data: {
         user: {
           id: user._id,
           firstName: user.firstName,
           lastName: user.lastName,
-          fullName: user.getFullName(),
           email: user.email,
-          phone: user.phone,
-          agencies: user.agencies,
-          stats: user.stats,
-          lastLogin: user.lastLogin
+          role: user.role,
+          agencies: user.agencies.map(agency => ({
+            id: agency._id,
+            name: agency.name,
+            code: agency.code,
+            client: agency.client,
+            isDefault: agency.isDefault || false
+          }))
         },
         today: {
           date: today,
+          // ✅ FIX: Retourner le planning même sans status 'active'
           schedule: todaySchedule ? {
-            agency: todaySchedule.agency,
+            id: todaySchedule._id,
+            agency: {
+              id: todaySchedule.agency._id,
+              name: todaySchedule.agency.name,
+              code: todaySchedule.agency.code,
+              client: todaySchedule.agency.client
+            },
             startTime: todaySchedule.startTime,
             endTime: todaySchedule.endTime,
             breakStart: todaySchedule.breakStart,
             breakEnd: todaySchedule.breakEnd,
-            workingDuration: todaySchedule.workingDuration
+            workingDuration: todaySchedule.workingDuration,
+            timeRange: `${todaySchedule.startTime} - ${todaySchedule.endTime}`,
+            // ✅ Inclure le status même s'il est undefined
+            status: todaySchedule.status || 'active'
           } : null,
           timesheet: todayTimesheet ? {
+            id: todayTimesheet._id,
             agency: todayTimesheet.agency,
-            startTime: todayTimesheet.startTime,
-            endTime: todayTimesheet.endTime,
-            breakStart: todayTimesheet.breakStart,
-            breakEnd: todayTimesheet.breakEnd,
-            delays: todayTimesheet.delays,
-            totalWorkedMinutes: todayTimesheet.totalWorkedMinutes,
+            clockInTime: todayTimesheet.clockInTime,
+            clockOutTime: todayTimesheet.clockOutTime,
+            breaks: todayTimesheet.breaks,
+            totalWorkTime: todayTimesheet.totalWorkTime,
+            isLate: todayTimesheet.isLate,
+            lateMinutes: todayTimesheet.lateMinutes,
             status: todayTimesheet.status
           } : null,
           currentPreparation: currentPreparation ? {
@@ -162,13 +196,16 @@ router.get('/dashboard', async (req, res) => {
             vehicle: currentPreparation.vehicle,
             agency: currentPreparation.agency,
             startTime: currentPreparation.startTime,
-            currentDuration: currentPreparation.currentDuration,
-            progress: currentPreparation.progress
+            currentDuration: Math.floor((new Date() - currentPreparation.startTime) / (1000 * 60)),
+            progress: Math.round((currentPreparation.steps.filter(s => s.completed).length / currentPreparation.steps.length) * 100)
           } : null,
           currentStatus
         },
         weekStats: {
-          period: { start: weekStart, end: weekEnd },
+          period: { 
+            start: getWeekStart(today), 
+            end: getWeekEnd(today) 
+          },
           preparations: weekPreparations,
           onTimePreparations: weekOnTime,
           punctualDays: weekPunctual,
@@ -180,20 +217,29 @@ router.get('/dashboard', async (req, res) => {
           vehicle: prep.vehicle,
           agency: prep.agency,
           date: prep.createdAt,
-          duration: prep.totalMinutes,
+          duration: prep.totalTime,
           isOnTime: prep.isOnTime,
           status: prep.status,
-          completedSteps: prep.steps.filter(s => s.completed).length,
-          totalSteps: prep.steps.length
+          completedSteps: prep.steps?.filter(s => s.completed).length || 0,
+          totalSteps: prep.steps?.length || 6
         }))
       }
+    };
+
+    console.log('📊 Réponse dashboard:', {
+      hasSchedule: !!response.data.today.schedule,
+      hasTimesheet: !!response.data.today.timesheet,
+      hasPreparation: !!response.data.today.currentPreparation
     });
 
+    res.json(response);
+
   } catch (error) {
-    console.error('Erreur dashboard préparateur:', error);
+    console.error('❌ Erreur dashboard préparateur:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR
+      message: 'Erreur serveur',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -573,5 +619,19 @@ router.get('/achievements', async (req, res) => {
     });
   }
 });
+
+function getWeekStart(date) {
+  const weekStart = new Date(date);
+  weekStart.setDate(date.getDate() - date.getDay() + 1); // Lundi
+  weekStart.setHours(0, 0, 0, 0);
+  return weekStart;
+}
+
+function getWeekEnd(date) {
+  const weekEnd = new Date(date);
+  weekEnd.setDate(date.getDate() - date.getDay() + 7); // Dimanche
+  weekEnd.setHours(23, 59, 59, 999);
+  return weekEnd;
+}
 
 module.exports = router;
