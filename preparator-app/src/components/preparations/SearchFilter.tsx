@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AgencySelector } from './AgencySelector';
-import { Agency } from '@/lib/api/preparations';
+import { Agency } from '@/lib/types';
 
 interface SearchFilterProps {
   searchTerm: string;

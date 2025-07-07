@@ -5,7 +5,7 @@ import { Car, Clock, CheckCircle, Camera } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Preparation } from '@/lib/types';
+import { Preparation, getStepDefinition } from '@/lib/types';
 import { formatWorkTime } from '@/lib/utils';
 
 interface CurrentPreparationProps {
@@ -15,8 +15,22 @@ interface CurrentPreparationProps {
 export function CurrentPreparation({ preparation }: CurrentPreparationProps) {
   const router = useRouter();
 
-  const completedSteps = preparation.steps.filter(step => step.completed).length;
-  const totalSteps = preparation.steps.length;
+  // ✅ Fonction pour enrichir les steps avec les labels
+  const getEnrichedSteps = () => {
+    return preparation.steps.map(step => {
+      const stepDefinition = getStepDefinition(step.step);
+      return {
+        ...step,
+        label: stepDefinition?.label || step.step,
+        icon: stepDefinition?.icon || '📋',
+        description: stepDefinition?.description || ''
+      };
+    });
+  };
+
+  const enrichedSteps = getEnrichedSteps();
+  const completedSteps = enrichedSteps.filter(step => step.completed).length;
+  const totalSteps = enrichedSteps.length;
   const progressPercent = Math.round((completedSteps / totalSteps) * 100);
 
   // Déterminer la couleur du chrono selon le temps écoulé
@@ -83,48 +97,55 @@ export function CurrentPreparation({ preparation }: CurrentPreparationProps) {
         <div className="space-y-2">
           <h4 className="font-medium text-sm">Prochaines étapes</h4>
           <div className="space-y-1">
-            {preparation.steps
+            {enrichedSteps
               .filter(step => !step.completed)
               .slice(0, 2)
               .map((step, index) => (
-                <div key={step.type} className="flex items-center space-x-2 text-sm">
+                <div key={step.step} className="flex items-center space-x-2 text-sm">
                   <div className="w-4 h-4 border border-gray-300 rounded-full flex items-center justify-center">
-                    <span className="text-xs text-gray-500">{completedSteps + index + 1}</span>
+                    <span className="text-xs text-gray-500">
+                      {completedSteps + index + 1}
+                    </span>
                   </div>
-                  <span className="text-gray-700">{step.label}</span>
+                  <span className="text-gray-700">
+                    {step.icon} {step.label}
+                  </span>
                 </div>
               ))}
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex space-x-2">
-          <Button 
-            className="flex-1"
+        <div className="flex space-x-2 pt-2">
+          <Button
             onClick={() => router.push(`/preparations/${preparation.id}`)}
+            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Camera className="w-4 h-4 mr-2" />
             Continuer
           </Button>
-          <Button 
-            variant="outline"
-            onClick={() => router.push('/preparations')}
-          >
-            Voir détails
-          </Button>
+          
+          {completedSteps > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/preparations/${preparation.id}?action=complete`)}
+              className="px-4 py-2"
+            >
+              <CheckCircle className="w-4 h-4" />
+            </Button>
+          )}
         </div>
 
-        {/* Alertes temps */}
+        {/* Indicateur de performance */}
         {preparation.currentDuration > 25 && (
-          <div className={`text-center text-xs px-2 py-1 rounded ${
-            preparation.currentDuration > 30 
-              ? 'bg-red-50 text-red-700 border border-red-200'
-              : 'bg-orange-50 text-orange-700 border border-orange-200'
-          }`}>
-            {preparation.currentDuration > 30 
-              ? '⚠️ Temps limite dépassé'
-              : '🕐 Temps limite proche (30 min)'
-            }
+          <div className="flex items-center space-x-2 text-xs bg-orange-50 text-orange-700 p-2 rounded">
+            <Clock className="w-3 h-3" />
+            <span>
+              {preparation.currentDuration > 30 
+                ? '⚠️ Temps dépassé - Accélérer le processus'
+                : '⏰ Attention au temps - 5min restantes'
+              }
+            </span>
           </div>
         )}
       </CardContent>

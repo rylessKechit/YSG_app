@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation';
 import { Clock, Car, Play, Square, Coffee, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useTimesheetStore } from '@/lib/stores';
-import { TimesheetStatus, Preparation, Agency } from '@/lib/types';
+import { useTimesheetStore, TimesheetStatus } from '@/lib/stores/timesheet';
+import { Preparation, Agency } from '@/lib/types';
 import { useState } from 'react';
 import { useAppStore } from '@/lib/stores';
 
@@ -27,6 +27,7 @@ export function QuickActions({
   const { addNotification } = useAppStore();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // ✅ MAINTENANT ON PEUT UTILISER DIRECTEMENT currentStatus
   const currentStatus = todayStatus?.currentStatus;
   const selectedAgency = agencies.find(a => a.id === selectedAgencyId);
 
@@ -70,99 +71,11 @@ export function QuickActions({
     }
   };
 
-  const getClockInButton = () => {
-    if (currentStatus?.isClockedOut) {
-      return (
-        <Button disabled className="w-full">
-          <Square className="w-4 h-4 mr-2" />
-          Service terminé
-        </Button>
-      );
-    }
-
-    if (currentStatus?.isClockedIn) {
-      return (
-        <Button 
-          variant="destructive" 
-          className="w-full"
-          onClick={() => handleClockAction('clock-out', () => clockOut(selectedAgencyId))}
-          disabled={actionLoading === 'clock-out'}
-        >
-          <Square className="w-4 h-4 mr-2" />
-          Pointer le départ
-        </Button>
-      );
-    }
-
-    return (
-      <Button 
-        className="w-full"
-        onClick={() => handleClockAction('clock-in', () => clockIn(selectedAgencyId))}
-        disabled={actionLoading === 'clock-in'}
-      >
-        <Play className="w-4 h-4 mr-2" />
-        Pointer l'arrivée
-      </Button>
-    );
-  };
-
-  const getBreakButton = () => {
-    if (!currentStatus?.isClockedIn || currentStatus?.isClockedOut) {
-      return null;
-    }
-
-    if (currentStatus?.isOnBreak) {
-      return (
-        <Button 
-          variant="outline" 
-          className="w-full"
-          onClick={() => handleClockAction('break-end', () => endBreak(selectedAgencyId))}
-          disabled={actionLoading === 'break-end'}
-        >
-          <Coffee className="w-4 h-4 mr-2" />
-          Terminer la pause
-        </Button>
-      );
-    }
-
-    return (
-      <Button 
-        variant="outline" 
-        className="w-full"
-        onClick={() => handleClockAction('break-start', () => startBreak(selectedAgencyId))}
-        disabled={actionLoading === 'break-start'}
-      >
-        <Coffee className="w-4 h-4 mr-2" />
-        Commencer la pause
-      </Button>
-    );
-  };
-
-  const getPreparationButton = () => {
-    if (currentPreparation) {
-      return (
-        <Button 
-          variant="secondary" 
-          className="w-full"
-          onClick={() => router.push(`/preparations/${currentPreparation.id}`)}
-        >
-          <Car className="w-4 h-4 mr-2" />
-          Continuer préparation
-        </Button>
-      );
-    }
-
-    return (
-      <Button 
-        variant="secondary" 
-        className="w-full"
-        onClick={() => router.push('/preparations/new')}
-      >
-        <Car className="w-4 h-4 mr-2" />
-        Nouvelle préparation
-      </Button>
-    );
-  };
+  // ✅ Actions disponibles calculées simplement
+  const canClockIn = currentStatus === 'not_started';
+  const canClockOut = currentStatus === 'working' || currentStatus === 'on_break';
+  const canStartBreak = currentStatus === 'working';
+  const canEndBreak = currentStatus === 'on_break';
 
   return (
     <Card>
@@ -172,29 +85,102 @@ export function QuickActions({
           <span>Actions rapides</span>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Sélection d'agence si nécessaire */}
-        {!selectedAgency && (
-          <div className="bg-amber-50 border border-amber-200 rounded p-3">
-            <p className="text-sm text-amber-800">
-              Sélectionnez une agence pour commencer le pointage
+      <CardContent className="space-y-4">
+        {/* Statut actuel */}
+        <div className="text-center p-3 bg-gray-50 rounded-lg">
+          <p className="text-sm text-gray-600">Statut actuel</p>
+          <p className="font-semibold text-gray-900">
+            {currentStatus === 'not_started' && '⚪ Pas encore pointé'}
+            {currentStatus === 'working' && '🟢 En service'}
+            {currentStatus === 'on_break' && '🟡 En pause'}
+            {currentStatus === 'finished' && '🔵 Service terminé'}
+          </p>
+          {selectedAgency && (
+            <p className="text-xs text-gray-500 mt-1">
+              {selectedAgency.name}
             </p>
-          </div>
+          )}
+        </div>
+
+        {/* Actions de pointage */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* Arrivée */}
+          <Button
+            onClick={() => handleClockAction('clock-in', () => clockIn(selectedAgencyId))}
+            disabled={!canClockIn || actionLoading !== null}
+            className="flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 disabled:opacity-50"
+          >
+            {actionLoading === 'clock-in' ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            <span>Arriver</span>
+          </Button>
+
+          {/* Départ */}
+          <Button
+            onClick={() => handleClockAction('clock-out', () => clockOut(selectedAgencyId))}
+            disabled={!canClockOut || actionLoading !== null}
+            className="flex items-center justify-center space-x-2 bg-red-600 hover:bg-red-700 disabled:opacity-50"
+          >
+            {actionLoading === 'clock-out' ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <LogOut className="w-4 h-4" />
+            )}
+            <span>Partir</span>
+          </Button>
+
+          {/* Pause début */}
+          <Button
+            onClick={() => handleClockAction('break-start', () => startBreak(selectedAgencyId))}
+            disabled={!canStartBreak || actionLoading !== null}
+            variant="outline"
+            className="flex items-center justify-center space-x-2"
+          >
+            {actionLoading === 'break-start' ? (
+              <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Coffee className="w-4 h-4" />
+            )}
+            <span>Pause</span>
+          </Button>
+
+          {/* Pause fin */}
+          <Button
+            onClick={() => handleClockAction('break-end', () => endBreak(selectedAgencyId))}
+            disabled={!canEndBreak || actionLoading !== null}
+            variant="outline"
+            className="flex items-center justify-center space-x-2"
+          >
+            {actionLoading === 'break-end' ? (
+              <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Square className="w-4 h-4" />
+            )}
+            <span>Fin pause</span>
+          </Button>
+        </div>
+
+        {/* Action préparation si pas de préparation en cours */}
+        {!currentPreparation && currentStatus === 'working' && (
+          <Button
+            onClick={() => router.push('/preparations/new')}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Car className="w-4 h-4 mr-2" />
+            Démarrer une préparation
+          </Button>
         )}
 
-        {/* Bouton pointage principal */}
-        {getClockInButton()}
-
-        {/* Bouton pause */}
-        {getBreakButton()}
-
-        {/* Bouton préparation */}
-        {getPreparationButton()}
-
-        {/* Informations contextuelles */}
-        {selectedAgency && (
-          <div className="text-xs text-gray-500 text-center">
-            Agence: {selectedAgency.name}
+        {/* Temps travaillé aujourd'hui */}
+        {todayStatus?.currentWorkedMinutes && todayStatus.currentWorkedMinutes > 0 && (
+          <div className="text-center text-sm text-gray-600 mt-3 pt-3 border-t">
+            Temps travaillé: <span className="font-medium">
+              {Math.floor(todayStatus.currentWorkedMinutes / 60)}h
+              {(todayStatus.currentWorkedMinutes % 60).toString().padStart(2, '0')}
+            </span>
           </div>
         )}
       </CardContent>

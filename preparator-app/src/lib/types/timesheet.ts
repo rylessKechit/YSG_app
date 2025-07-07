@@ -57,7 +57,10 @@ export interface TimesheetEntry {
   updatedAt: string;
 }
 
-// Types pour le statut de pointage actuel
+// ✅ TYPES POUR LES STATUTS POSSIBLES
+export type TimesheetStatusType = 'not_started' | 'working' | 'on_break' | 'finished';
+
+// ✅ INTERFACE TIMESHEET STATUS COMPLÈTE AVEC CURRENTSTATUS
 export interface TimesheetStatus {
   timesheet: {
     id?: string;
@@ -78,13 +81,16 @@ export interface TimesheetStatus {
     };
   } | null;
   
-  // Statuts calculés
+  // Statuts calculés existants
   isNotStarted: boolean;
   isClockedIn: boolean;
   isClockedOut: boolean;
   isOnBreak: boolean;
   currentWorkedMinutes: number;
   currentWorkedTime: string | null;
+  
+  // ✅ AJOUT DU STATUT ACTUEL MANQUANT
+  currentStatus: TimesheetStatusType;
 }
 
 // Types pour les paramètres d'historique
@@ -213,9 +219,6 @@ export interface Notification {
 
 // Types pour les actions de pointage
 export type TimesheetAction = 'clock-in' | 'clock-out' | 'break-start' | 'break-end';
-
-// Types pour les statuts possibles
-export type TimesheetStatusType = 'not_started' | 'working' | 'on_break' | 'finished';
 
 // Types pour les validations
 export interface ValidationError {

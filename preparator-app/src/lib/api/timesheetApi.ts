@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 
-// Types pour les données de retour API
+// ✅ IMPORT DU TYPE UPDATÉ
 interface TimesheetStatus {
   timesheet: {
     id?: string;
@@ -27,6 +27,8 @@ interface TimesheetStatus {
   isOnBreak: boolean;
   currentWorkedMinutes: number;
   currentWorkedTime: string | null;
+  // ✅ AJOUT DU CURRENTSTATUS
+  currentStatus: 'not_started' | 'working' | 'on_break' | 'finished';
 }
 
 interface TimesheetEntry {
@@ -81,8 +83,29 @@ interface BreakData {
   reason?: string;
 }
 
+// ✅ FONCTION UTILITAIRE POUR CALCULER LE STATUT
+const calculateCurrentStatus = (data: any): 'not_started' | 'working' | 'on_break' | 'finished' => {
+  if (!data.timesheet) return 'not_started';
+  
+  const { timesheet } = data;
+  
+  // Si pas encore pointé
+  if (!timesheet.startTime) return 'not_started';
+  
+  // Si parti (clocké out)
+  if (timesheet.endTime) return 'finished';
+  
+  // Si en pause (break start mais pas break end)
+  if (timesheet.breakStart && !timesheet.breakEnd) return 'on_break';
+  
+  // Si arrivé mais pas parti
+  if (timesheet.startTime && !timesheet.endTime) return 'working';
+  
+  return 'not_started';
+};
+
 export const timesheetApi = {
-  // 🔧 CORRECTION MAJEURE - Récupérer le statut du jour
+  // ✅ CORRECTION MAJEURE - Récupérer le statut du jour
   getTodayStatus: async (agencyId: string): Promise<TimesheetStatus> => {
     if (!agencyId) {
       throw new Error('ID d\'agence requis pour récupérer le statut');
@@ -103,19 +126,24 @@ export const timesheetApi = {
 
       const data = response.data.data;
       
+      // ✅ CALCUL AUTOMATIQUE DU STATUT ACTUEL
+      const currentStatus = calculateCurrentStatus(data);
+      
       // 🔧 CORRECTION CRITIQUE - Logique basée sur la vraie structure backend
       const adaptedData: TimesheetStatus = {
         timesheet: data.timesheet,
         // ✅ CORRECTION - Si pas de timesheet, c'est "not started"
-        isNotStarted: !data.timesheet || (!data.timesheet.startTime && !data.timesheet.endTime),
-        isClockedIn: data.currentStatus?.isClockedIn || false,
-        isClockedOut: data.currentStatus?.isClockedOut || false,
-        isOnBreak: data.currentStatus?.isOnBreak || false,
+        isNotStarted: currentStatus === 'not_started',
+        isClockedIn: currentStatus === 'working' || currentStatus === 'on_break',
+        isClockedOut: currentStatus === 'finished',
+        isOnBreak: currentStatus === 'on_break',
         currentWorkedMinutes: data.currentStatus?.currentWorkedMinutes || 0,
-        currentWorkedTime: data.currentStatus?.currentWorkedTime || null
+        currentWorkedTime: data.currentStatus?.currentWorkedTime || null,
+        // ✅ NOUVEAU - Statut calculé automatiquement
+        currentStatus
       };
 
-      console.log('✅ Données adaptées avec correction:', adaptedData);
+      console.log('✅ Données adaptées avec currentStatus:', adaptedData);
       return adaptedData;
 
     } catch (error: any) {
@@ -134,255 +162,100 @@ export const timesheetApi = {
   },
 
   // Pointer l'arrivée
-  clockIn: async (agencyId: string, data?: ClockInData): Promise<void> => {
-    if (!agencyId) {
-      throw new Error('ID d\'agence requis pour pointer l\'arrivée');
-    }
-
+  clockIn: async (agencyId: string, data?: ClockInData): Promise<TimesheetStatus> => {
     try {
-      console.log('⏰ API Call: clockIn avec agencyId:', agencyId);
-      
-      const payload = {
+      const response = await apiClient.post('/timesheets/clock-in', {
         agencyId,
-        timestamp: data?.timestamp || new Date().toISOString(),
-        location: data?.location || null
-      };
+        ...data
+      });
 
-      console.log('📤 Payload clockIn:', payload);
-
-      const response = await apiClient.post('/timesheets/clock-in', payload);
-      
-      console.log('✅ Réponse clockIn:', response.data);
-      
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Erreur lors du pointage d\'arrivée');
       }
 
-      return response.data;
-
+      // Recalculer le statut après l'action
+      return await timesheetApi.getTodayStatus(agencyId);
     } catch (error: any) {
       console.error('❌ Erreur clockIn:', error);
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      
-      throw new Error('Erreur lors du pointage d\'arrivée');
+      throw error;
     }
   },
 
   // Pointer le départ
-  clockOut: async (agencyId: string, notes?: string, data?: ClockOutData): Promise<void> => {
-    if (!agencyId) {
-      throw new Error('ID d\'agence requis pour pointer le départ');
-    }
-
+  clockOut: async (agencyId: string, data?: ClockOutData): Promise<TimesheetStatus> => {
     try {
-      console.log('⏰ API Call: clockOut avec agencyId:', agencyId, 'notes:', notes);
-      
-      const payload = {
+      const response = await apiClient.post('/timesheets/clock-out', {
         agencyId,
-        timestamp: data?.timestamp || new Date().toISOString(),
-        notes: notes || null,
-        location: data?.location || null
-      };
+        ...data
+      });
 
-      console.log('📤 Payload clockOut:', payload);
-
-      const response = await apiClient.post('/timesheets/clock-out', payload);
-      
-      console.log('✅ Réponse clockOut:', response.data);
-      
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Erreur lors du pointage de départ');
       }
 
-      return response.data;
-
+      // Recalculer le statut après l'action
+      return await timesheetApi.getTodayStatus(agencyId);
     } catch (error: any) {
       console.error('❌ Erreur clockOut:', error);
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      
-      throw new Error('Erreur lors du pointage de départ');
+      throw error;
     }
   },
 
   // Commencer une pause
-  startBreak: async (agencyId: string, data?: BreakData): Promise<void> => {
-    if (!agencyId) {
-      throw new Error('ID d\'agence requis pour commencer la pause');
-    }
-
+  startBreak: async (agencyId: string, data?: BreakData): Promise<TimesheetStatus> => {
     try {
-      console.log('☕ API Call: startBreak avec agencyId:', agencyId);
-      
-      const payload = {
+      const response = await apiClient.post('/timesheets/break-start', {
         agencyId,
-        timestamp: data?.timestamp || new Date().toISOString()
-      };
+        ...data
+      });
 
-      console.log('📤 Payload startBreak:', payload);
-
-      const response = await apiClient.post('/timesheets/break-start', payload);
-      
-      console.log('✅ Réponse startBreak:', response.data);
-      
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Erreur lors du début de pause');
       }
 
-      return response.data;
-
+      // Recalculer le statut après l'action
+      return await timesheetApi.getTodayStatus(agencyId);
     } catch (error: any) {
       console.error('❌ Erreur startBreak:', error);
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      
-      throw new Error('Erreur lors du début de pause');
+      throw error;
     }
   },
 
   // Terminer une pause
-  endBreak: async (agencyId: string, data?: BreakData): Promise<void> => {
-    if (!agencyId) {
-      throw new Error('ID d\'agence requis pour terminer la pause');
-    }
-
+  endBreak: async (agencyId: string, data?: BreakData): Promise<TimesheetStatus> => {
     try {
-      console.log('🔄 API Call: endBreak avec agencyId:', agencyId);
-      
-      const payload = {
+      const response = await apiClient.post('/timesheets/break-end', {
         agencyId,
-        timestamp: data?.timestamp || new Date().toISOString()
-      };
+        ...data
+      });
 
-      console.log('📤 Payload endBreak:', payload);
-
-      const response = await apiClient.post('/timesheets/break-end', payload);
-      
-      console.log('✅ Réponse endBreak:', response.data);
-      
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Erreur lors de la fin de pause');
       }
 
-      return response.data;
-
+      // Recalculer le statut après l'action
+      return await timesheetApi.getTodayStatus(agencyId);
     } catch (error: any) {
       console.error('❌ Erreur endBreak:', error);
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      
-      throw new Error('Erreur lors de la fin de pause');
+      throw error;
     }
   },
 
-  // Récupérer l'historique
-  getHistory: async (params?: TimesheetHistoryParams): Promise<TimesheetEntry[]> => {
+  // Récupérer l'historique des pointages
+  getHistory: async (params?: TimesheetHistoryParams) => {
     try {
-      console.log('📋 API Call: getHistory avec params:', params);
-      
-      const queryParams: Record<string, any> = {
-        startDate: params?.startDate || null,
-        endDate: params?.endDate || null,
-        agency: params?.agency || null,
-        status: params?.status || null,
-        page: params?.page || 1,
-        limit: params?.limit || 20
-      };
-
-      // Nettoyer les paramètres null
-      Object.keys(queryParams).forEach(key => {
-        if (queryParams[key] === null || queryParams[key] === undefined) {
-          delete queryParams[key];
-        }
-      });
-
-      console.log('📤 Query params history:', queryParams);
-
       const response = await apiClient.get('/timesheets/history', {
-        params: queryParams
+        params
       });
-
-      console.log('✅ Réponse history:', response.data);
 
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Erreur lors de la récupération de l\'historique');
       }
 
-      return response.data.data?.timesheets || [];
-
+      return response.data.data;
     } catch (error: any) {
       console.error('❌ Erreur getHistory:', error);
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      
-      throw new Error('Erreur lors de la récupération de l\'historique');
-    }
-  },
-
-  // Récupérer les statistiques
-  getStats: async (): Promise<any> => {
-    try {
-      console.log('📊 API Call: getStats');
-      
-      const response = await apiClient.get('/timesheets/stats');
-      
-      console.log('✅ Réponse stats:', response.data);
-      
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || 'Erreur lors de la récupération des statistiques');
-      }
-
-      return response.data.data;
-
-    } catch (error: any) {
-      console.error('❌ Erreur getStats:', error);
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      
-      throw new Error('Erreur lors de la récupération des statistiques');
-    }
-  },
-
-  // Modifier/corriger un pointage
-  updateTimesheet: async (id: string, data: Partial<TimesheetEntry>): Promise<void> => {
-    if (!id) {
-      throw new Error('ID de pointage requis');
-    }
-
-    try {
-      console.log('📝 API Call: updateTimesheet avec ID:', id, 'data:', data);
-      
-      const response = await apiClient.put(`/timesheets/${id}`, data);
-      
-      console.log('✅ Réponse updateTimesheet:', response.data);
-      
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || 'Erreur lors de la modification du pointage');
-      }
-
-      return response.data;
-
-    } catch (error: any) {
-      console.error('❌ Erreur updateTimesheet:', error);
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      }
-      
-      throw new Error('Erreur lors de la modification du pointage');
+      throw error;
     }
   }
 };

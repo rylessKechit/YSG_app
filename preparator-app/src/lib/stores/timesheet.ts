@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { timesheetApi, handleApiError } from '../api';
 
-// Types pour le store Timesheet
+// ✅ TYPES CORRIGÉS AVEC CURRENTSTATUS
 interface TimesheetStatus {
   timesheet: {
     id?: string;
@@ -29,6 +29,8 @@ interface TimesheetStatus {
   isOnBreak: boolean;
   currentWorkedMinutes: number;
   currentWorkedTime: string | null;
+  // ✅ AJOUT DU CURRENTSTATUS MANQUANT
+  currentStatus: 'not_started' | 'working' | 'on_break' | 'finished';
 }
 
 interface TimesheetEntry {
@@ -74,7 +76,7 @@ interface TimesheetStore extends TimesheetState {
   endBreak: (agencyId: string) => Promise<void>;
   getHistory: (params?: TimesheetHistoryParams) => Promise<void>;
   clearError: () => void;
-  refreshStatus: (agencyId: string) => Promise<void>;
+  refreshStatus: () => Promise<void>;
 }
 
 export const useTimesheetStore = create<TimesheetStore>()(
@@ -88,34 +90,17 @@ export const useTimesheetStore = create<TimesheetStore>()(
 
       // Récupérer le statut du jour
       getTodayStatus: async (agencyId: string) => {
-        if (!agencyId) {
-          console.error('❌ getTodayStatus: agencyId requis');
-          set({ 
-            error: 'ID d\'agence requis pour récupérer le statut',
-            isLoading: false 
-          });
-          return;
-        }
-
         set({ isLoading: true, error: null });
         
         try {
-          console.log('🔄 Récupération statut avec agencyId:', agencyId);
+          console.log('🔄 Store: getTodayStatus pour agence:', agencyId);
           const status = await timesheetApi.getTodayStatus(agencyId);
           
-          console.log('📄 Données statut reçues:', status);
-          
-          if (!status) {
-            throw new Error('Aucune donnée de statut reçue');
-          }
-
           set({ 
             todayStatus: status,
             isLoading: false 
           });
-          
-          console.log('✅ Statut pointage récupéré avec succès');
-          
+          console.log('✅ Store: statut mis à jour:', status);
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
@@ -123,123 +108,102 @@ export const useTimesheetStore = create<TimesheetStore>()(
             isLoading: false, 
             error: errorMessage 
           });
-          console.error('❌ Erreur récupération statut:', errorMessage);
-          throw error;
+          console.error('❌ Store: erreur getTodayStatus:', errorMessage);
         }
       },
 
       // Pointer l'arrivée
       clockIn: async (agencyId: string) => {
-        if (!agencyId) {
-          const error = 'ID d\'agence requis pour pointer l\'arrivée';
-          set({ error });
-          throw new Error(error);
-        }
-
         set({ isLoading: true, error: null });
         
         try {
-          console.log('⏰ Pointage arrivée pour agence:', agencyId);
-          await timesheetApi.clockIn(agencyId);
+          console.log('🔄 Store: clockIn pour agence:', agencyId);
+          const status = await timesheetApi.clockIn(agencyId);
           
-          // Rafraîchir le statut après pointage
-          await get().getTodayStatus(agencyId);
-          
-          console.log('✅ Pointage arrivée réussi');
+          set({ 
+            todayStatus: status,
+            isLoading: false 
+          });
+          console.log('✅ Store: arrivée pointée, nouveau statut:', status);
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
             isLoading: false, 
             error: errorMessage 
           });
-          console.error('❌ Erreur pointage arrivée:', errorMessage);
+          console.error('❌ Store: erreur clockIn:', errorMessage);
           throw error;
         }
       },
 
       // Pointer le départ
       clockOut: async (agencyId: string, notes?: string) => {
-        if (!agencyId) {
-          const error = 'ID d\'agence requis pour pointer le départ';
-          set({ error });
-          throw new Error(error);
-        }
-
         set({ isLoading: true, error: null });
         
         try {
-          console.log('⏰ Pointage départ pour agence:', agencyId, notes ? `avec notes: ${notes}` : '');
-          await timesheetApi.clockOut(agencyId, notes);
+          console.log('🔄 Store: clockOut pour agence:', agencyId);
+          const status = await timesheetApi.clockOut(agencyId, { notes });
           
-          // Rafraîchir le statut après pointage
-          await get().getTodayStatus(agencyId);
-          
-          console.log('✅ Pointage départ réussi');
+          set({ 
+            todayStatus: status,
+            isLoading: false 
+          });
+          console.log('✅ Store: départ pointé, nouveau statut:', status);
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
             isLoading: false, 
             error: errorMessage 
           });
-          console.error('❌ Erreur pointage départ:', errorMessage);
+          console.error('❌ Store: erreur clockOut:', errorMessage);
           throw error;
         }
       },
 
-      // Commencer la pause
+      // Commencer une pause
       startBreak: async (agencyId: string) => {
-        if (!agencyId) {
-          const error = 'ID d\'agence requis pour commencer la pause';
-          set({ error });
-          throw new Error(error);
-        }
-
         set({ isLoading: true, error: null });
         
         try {
-          console.log('☕ Début pause pour agence:', agencyId);
-          await timesheetApi.startBreak(agencyId);
+          console.log('🔄 Store: startBreak pour agence:', agencyId);
+          const status = await timesheetApi.startBreak(agencyId);
           
-          // Rafraîchir le statut après pointage
-          await get().getTodayStatus(agencyId);
-          
-          console.log('✅ Début pause réussi');
+          set({ 
+            todayStatus: status,
+            isLoading: false 
+          });
+          console.log('✅ Store: pause commencée, nouveau statut:', status);
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
             isLoading: false, 
             error: errorMessage 
           });
-          console.error('❌ Erreur début pause:', errorMessage);
+          console.error('❌ Store: erreur startBreak:', errorMessage);
           throw error;
         }
       },
 
-      // Terminer la pause
+      // Terminer une pause
       endBreak: async (agencyId: string) => {
-        if (!agencyId) {
-          const error = 'ID d\'agence requis pour terminer la pause';
-          set({ error });
-          throw new Error(error);
-        }
-
         set({ isLoading: true, error: null });
         
         try {
-          console.log('🔄 Fin pause pour agence:', agencyId);
-          await timesheetApi.endBreak(agencyId);
+          console.log('🔄 Store: endBreak pour agence:', agencyId);
+          const status = await timesheetApi.endBreak(agencyId);
           
-          // Rafraîchir le statut après pointage
-          await get().getTodayStatus(agencyId);
-          
-          console.log('✅ Fin pause réussie');
+          set({ 
+            todayStatus: status,
+            isLoading: false 
+          });
+          console.log('✅ Store: pause terminée, nouveau statut:', status);
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
             isLoading: false, 
             error: errorMessage 
           });
-          console.error('❌ Erreur fin pause:', errorMessage);
+          console.error('❌ Store: erreur endBreak:', errorMessage);
           throw error;
         }
       },
@@ -249,15 +213,14 @@ export const useTimesheetStore = create<TimesheetStore>()(
         set({ isLoading: true, error: null });
         
         try {
-          console.log('📋 Récupération historique pointages:', params);
-          const historyData = await timesheetApi.getHistory(params);
+          console.log('🔄 Store: getHistory avec params:', params);
+          const history = await timesheetApi.getHistory(params);
           
           set({ 
-            history: historyData,
+            history: history.items || history,
             isLoading: false 
           });
-          
-          console.log('✅ Historique récupéré:', historyData?.length || 0, 'entrées');
+          console.log('✅ Store: historique récupéré:', history);
         } catch (error) {
           const errorMessage = handleApiError(error);
           set({ 
@@ -265,32 +228,31 @@ export const useTimesheetStore = create<TimesheetStore>()(
             isLoading: false, 
             error: errorMessage 
           });
-          console.error('❌ Erreur récupération historique:', errorMessage);
+          console.error('❌ Store: erreur getHistory:', errorMessage);
         }
       },
 
       // Nettoyer les erreurs
       clearError: () => {
         set({ error: null });
-        console.log('🧹 Erreurs nettoyées');
       },
 
       // Rafraîchir le statut
-      refreshStatus: async (agencyId: string) => {
-        if (!agencyId) {
-          console.warn('⚠️ refreshStatus: agencyId requis');
-          return;
+      refreshStatus: async () => {
+        const { todayStatus } = get();
+        if (todayStatus?.timesheet?.agency?.id) {
+          await get().getTodayStatus(todayStatus.timesheet.agency.id);
         }
-        
-        console.log('🔄 Rafraîchissement statut pour agence:', agencyId);
-        await get().getTodayStatus(agencyId);
       }
     }),
     {
       name: 'timesheet-store',
       partialize: (state) => ({
-        history: state.history
+        todayStatus: state.todayStatus
       })
     }
   )
 );
+
+// Export des types pour utilisation externe
+export type { TimesheetStatus, TimesheetEntry, TimesheetHistoryParams };

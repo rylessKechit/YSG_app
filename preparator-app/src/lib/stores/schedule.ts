@@ -96,9 +96,15 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
   // Récupérer le statut du jour
   getTodayStatus: async () => {
     set({ isLoadingStatus: true, error: null });
-    
+
     try {
-      const status = await timesheetApi.getTodayStatus();
+      // Récupérer l'agencyId depuis le planning du jour
+      const { todaySchedule } = get();
+      const agencyId = todaySchedule?.agency?.id;
+      if (!agencyId) {
+        throw new Error("Aucune agence sélectionnée pour le planning du jour.");
+      }
+      const status = await timesheetApi.getTodayStatus(agencyId);
       set({ 
         todayStatus: status,
         isLoadingStatus: false 
@@ -142,7 +148,7 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     set({ isLoadingStatus: true, error: null });
     
     try {
-      await timesheetApi.clockOut(agencyId, notes);
+      await timesheetApi.clockOut(agencyId, notes ? { notes } : undefined);
       
       // Rafraîchir le statut après pointage
       await get().getTodayStatus();

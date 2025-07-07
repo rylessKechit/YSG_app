@@ -28,7 +28,8 @@ import {
   PREPARATION_STEPS, 
   adaptBackendStep,
   type PreparationStepData,
-  type StepDefinition 
+  type StepDefinition,
+  type StepType
 } from '@/lib/types/preparation';
 
 // ✅ Types locaux simplifiés
@@ -131,7 +132,7 @@ const PreparationWorkflowPage = () => {
     try {
       // ✅ Appel corrigé avec les bons paramètres
       await completeStep(currentPreparation.id, {
-        step: selectedStep,
+        step: selectedStep as StepType,
         photo,
         notes: notes || ''
       });

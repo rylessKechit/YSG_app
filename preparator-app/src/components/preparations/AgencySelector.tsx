@@ -1,7 +1,7 @@
 import React from 'react';
-import { Building2 } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Agency } from '@/lib/api/preparations';
+import { ChevronDown } from 'lucide-react';
+// ✅ CORRECTION: Import Agency depuis le bon module
+import { Agency } from '@/lib/types';
 
 interface AgencySelectorProps {
   agencies: Agency[];
@@ -21,28 +21,33 @@ export const AgencySelector: React.FC<AgencySelectorProps> = ({
   showAllOption = false
 }) => {
   return (
-    <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger className="w-full">
-        <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-gray-500" />
-          <SelectValue placeholder={placeholder} />
-        </div>
-      </SelectTrigger>
-      <SelectContent>
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-4 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        
         {showAllOption && (
-          <SelectItem value="all">Toutes les agences</SelectItem>
+          <option value="all">
+            Toutes les agences
+          </option>
         )}
+        
         {agencies.map((agency) => (
-          <SelectItem key={agency.id} value={agency.id}>
-            <div className="flex flex-col">
-              <span className="font-medium">{agency.name}</span>
-              <span className="text-sm text-gray-500">
-                {agency.client} • {agency.code}
-              </span>
-            </div>
-          </SelectItem>
+          <option key={agency.id} value={agency.id}>
+            {agency.name} - {agency.client}
+          </option>
         ))}
-      </SelectContent>
-    </Select>
+      </select>
+      
+      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+        <ChevronDown className="h-4 w-4 text-gray-400" />
+      </div>
+    </div>
   );
 };

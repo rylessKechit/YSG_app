@@ -4,28 +4,41 @@ import { useState } from 'react';
 import { Play, Square, Coffee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TimesheetStatus } from '@/lib/types/timesheet';
-import { useTimesheetActions } from '@/hooks/useTimesheet';
+import { useTimesheetStore } from '@/lib/stores/timesheet';
 import { useAppStore } from '@/lib/stores/app';
 
 interface TimesheetActionsProps {
-  status: TimesheetStatus | null;
+  status: any; // ✅ Simplifié pour éviter les conflits de types
+  selectedAgencyId: string; // ✅ Ajout de l'agence sélectionnée
 }
 
-export function TimesheetActions({ status }: TimesheetActionsProps) {
-  const { clockIn, clockOut, startBreak, endBreak } = useTimesheetActions();
+export function TimesheetActions({ status, selectedAgencyId }: TimesheetActionsProps) {
+  // ✅ CORRECTION: Utilisation directe du store au lieu du hook
+  const { clockIn, clockOut, startBreak, endBreak, isLoading } = useTimesheetStore();
   const { addNotification } = useAppStore();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const canClockIn = status?.currentStatus === 'not_started';
+  // ✅ Calcul des actions disponibles
+  const canClockIn = !status || status.currentStatus === 'not_started';
   const canClockOut = status?.currentStatus === 'working' || status?.currentStatus === 'on_break';
   const canStartBreak = status?.currentStatus === 'working';
   const canEndBreak = status?.currentStatus === 'on_break';
 
-  const handleAction = async (action: string, handler: () => Promise<void>) => {
+  // ✅ CORRECTION: Fonction pour gérer les actions avec agencyId
+  const handleAction = async (action: string, handler: (agencyId: string) => Promise<void>) => {
+    if (!selectedAgencyId) {
+      addNotification({
+        type: 'error',
+        title: 'Erreur',
+        message: 'Veuillez sélectionner une agence',
+        duration: 3000
+      });
+      return;
+    }
+
     setActionLoading(action);
     try {
-      await handler();
+      await handler(selectedAgencyId); // ✅ Passer l'agencyId
       
       const messages = {
         'clock-in': 'Arrivée pointée avec succès',
@@ -62,7 +75,7 @@ export function TimesheetActions({ status }: TimesheetActionsProps) {
           {/* Arriver */}
           <Button
             onClick={() => handleAction('clock-in', clockIn)}
-            disabled={!canClockIn || actionLoading !== null}
+            disabled={!canClockIn || actionLoading !== null || isLoading}
             className="flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 disabled:opacity-50"
           >
             {actionLoading === 'clock-in' ? (
@@ -75,8 +88,8 @@ export function TimesheetActions({ status }: TimesheetActionsProps) {
 
           {/* Partir */}
           <Button
-            onClick={() => handleAction('clock-out', clockOut)}
-            disabled={!canClockOut || actionLoading !== null}
+            onClick={() => handleAction('clock-out', (agencyId) => clockOut(agencyId))}
+            disabled={!canClockOut || actionLoading !== null || isLoading}
             className="flex items-center justify-center space-x-2 bg-red-600 hover:bg-red-700 disabled:opacity-50"
           >
             {actionLoading === 'clock-out' ? (
@@ -90,44 +103,63 @@ export function TimesheetActions({ status }: TimesheetActionsProps) {
           {/* Commencer pause */}
           <Button
             onClick={() => handleAction('break-start', startBreak)}
-            disabled={!canStartBreak || actionLoading !== null}
+            disabled={!canStartBreak || actionLoading !== null || isLoading}
             variant="outline"
-            className="flex items-center justify-center space-x-2 disabled:opacity-50"
+            className="flex items-center justify-center space-x-2"
           >
             {actionLoading === 'break-start' ? (
-              <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
             ) : (
               <Coffee className="w-5 h-5" />
             )}
-            <span>Pause</span>
+            <span>Commencer pause</span>
           </Button>
 
           {/* Terminer pause */}
           <Button
             onClick={() => handleAction('break-end', endBreak)}
-            disabled={!canEndBreak || actionLoading !== null}
+            disabled={!canEndBreak || actionLoading !== null || isLoading}
             variant="outline"
-            className="flex items-center justify-center space-x-2 disabled:opacity-50"
+            className="flex items-center justify-center space-x-2"
           >
             {actionLoading === 'break-end' ? (
-              <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
             ) : (
-              <Play className="w-5 h-5" />
+              <Square className="w-5 h-5" />
             )}
-            <span>Reprendre</span>
+            <span>Terminer pause</span>
           </Button>
         </div>
 
-        {/* Indicateurs d'aide */}
-        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">
-            {!status && 'Chargement du statut...'}
-            {status?.currentStatus === 'not_started' && 'Vous pouvez pointer votre arrivée'}
-            {status?.currentStatus === 'working' && 'Vous êtes en service - Vous pouvez prendre une pause ou pointer votre départ'}
-            {status?.currentStatus === 'on_break' && 'Vous êtes en pause - Vous pouvez reprendre le travail ou pointer votre départ'}
-            {status?.currentStatus === 'finished' && 'Votre service est terminé pour aujourd\'hui'}
-          </p>
-        </div>
+        {/* Statut actuel */}
+        {status && (
+          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+            <p className="text-sm text-gray-600">Statut actuel</p>
+            <p className="font-medium text-gray-900">
+              {status.currentStatus === 'not_started' && '⚪ Pas encore pointé'}
+              {status.currentStatus === 'working' && '🟢 En service'}
+              {status.currentStatus === 'on_break' && '🟡 En pause'}
+              {status.currentStatus === 'finished' && '🔵 Service terminé'}
+            </p>
+            
+            {/* Temps travaillé */}
+            {status.currentWorkedMinutes > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                Temps travaillé: {Math.floor(status.currentWorkedMinutes / 60)}h
+                {(status.currentWorkedMinutes % 60).toString().padStart(2, '0')}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Agence sélectionnée */}
+        {selectedAgencyId && (
+          <div className="mt-3 text-center">
+            <p className="text-xs text-gray-500">
+              Actions pour l'agence sélectionnée
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

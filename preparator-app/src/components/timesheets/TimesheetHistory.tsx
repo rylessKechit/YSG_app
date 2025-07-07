@@ -102,9 +102,9 @@ export function TimesheetHistory({ history, isLoading, onRefresh }: TimesheetHis
                       '--:--'
                     }
                   </p>
-                  {entry.breakDurationMinutes > 0 && (
+                  {(entry.breakDurationMinutes ?? 0) > 0 && (
                     <p className="text-xs text-gray-500">
-                      Pause: {Math.floor(entry.breakDurationMinutes / 60)}h{(entry.breakDurationMinutes % 60).toString().padStart(2, '0')}
+                      Pause: {Math.floor((entry.breakDurationMinutes ?? 0) / 60)}h{((entry.breakDurationMinutes ?? 0) % 60).toString().padStart(2, '0')}
                     </p>
                   )}
                   

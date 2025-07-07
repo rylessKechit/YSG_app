@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { profileApi, timesheetApi, handleApiError } from '../api';
 
-// CORRIGÉ: Types basés sur la vraie structure de l'API backend
+// ✅ Types basés sur la vraie structure de l'API backend
 export interface DashboardData {
   user: {
     id: string;
@@ -24,7 +24,6 @@ export interface DashboardData {
     };
   };
   today: {
-    // Planning d'aujourd'hui - structure correcte selon l'API
     schedule: {
       id: string;
       agency: {
@@ -42,7 +41,6 @@ export interface DashboardData {
       formatted: any;
     } | null;
     
-    // Timesheet d'aujourd'hui
     timesheet: {
       id?: string;
       agency: {
@@ -62,7 +60,6 @@ export interface DashboardData {
       status: 'incomplete' | 'complete' | 'pending';
     } | null;
     
-    // Préparation en cours
     currentPreparation: {
       id: string;
       vehicle: {
@@ -80,7 +77,6 @@ export interface DashboardData {
       progress: number;
     } | null;
     
-    // Statut actuel calculé
     currentStatus: string;
   };
   weekStats: {
@@ -176,6 +172,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
+      // ✅ CORRECTION: Appel direct sans data supplémentaire
       await timesheetApi.clockIn(agencyId);
       await get().loadDashboard();
       console.log('✅ Pointage arrivée réussi');
@@ -191,27 +188,29 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   clockOut: async (agencyId: string, notes?: string) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      await timesheetApi.clockOut(agencyId, notes);
-      await get().loadDashboard();
-      console.log('✅ Pointage départ réussi');
-    } catch (error) {
-      const errorMessage = handleApiError(error);
-      set({ 
-        isLoading: false, 
-        error: errorMessage 
-      });
-      console.error('❌ Erreur pointage départ:', errorMessage);
-      throw error;
-    }
-  },
+  set({ isLoading: true, error: null });
+  
+  try {
+    // ✅ CORRECTION: Passer les notes correctement à l'API
+    await timesheetApi.clockOut(agencyId, notes ? { notes } : undefined);
+    await get().loadDashboard();
+    console.log('✅ Pointage départ réussi');
+  } catch (error) {
+    const errorMessage = handleApiError(error);
+    set({ 
+      isLoading: false, 
+      error: errorMessage 
+    });
+    console.error('❌ Erreur pointage départ:', errorMessage);
+    throw error;
+  }
+},
 
   startBreak: async (agencyId: string) => {
     set({ isLoading: true, error: null });
     
     try {
+      // ✅ CORRECTION: Appel direct
       await timesheetApi.startBreak(agencyId);
       await get().loadDashboard();
       console.log('✅ Début pause réussi');
@@ -230,6 +229,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
+      // ✅ CORRECTION: Appel direct
       await timesheetApi.endBreak(agencyId);
       await get().loadDashboard();
       console.log('✅ Fin pause réussie');
