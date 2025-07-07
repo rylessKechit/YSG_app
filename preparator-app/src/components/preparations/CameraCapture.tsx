@@ -1,5 +1,5 @@
 // preparator-app/src/components/preparations/CameraCapture.tsx
-// ✅ Composant de capture photo SIMPLE et FONCTIONNEL
+// ✅ Composant de capture photo avec BOUTONS FIXES EN BAS
 
 'use client';
 
@@ -175,8 +175,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-black/90 text-white p-4 flex items-center justify-between">
+      {/* Header - FIXE EN HAUT */}
+      <div className="fixed top-0 left-0 right-0 bg-black/90 text-white p-4 flex items-center justify-between z-[60]">
         <div>
           <h2 className="font-semibold text-lg">Photo - {stepLabel}</h2>
           <p className="text-sm text-gray-300">Prenez une photo claire de l'étape</p>
@@ -192,8 +192,11 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
         </Button>
       </div>
 
-      {/* Zone principale */}
-      <div className="flex-1 relative bg-black">
+      {/* Zone principale - AVEC PADDING POUR HEADER ET FOOTER */}
+      <div className="fixed inset-0 bg-black" style={{
+        paddingTop: '80px', // Espace pour header
+        paddingBottom: '120px' // Espace pour boutons
+      }}>
         {capturedPhoto ? (
           // ✅ PREVIEW DE LA PHOTO CAPTURÉE
           <div className="w-full h-full flex items-center justify-center">
@@ -251,59 +254,66 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      {/* Boutons en bas */}
-      <div className="bg-black/90 p-6">
-        {capturedPhoto ? (
-          // ✅ BOUTONS APRÈS CAPTURE : REPRENDRE / VALIDER
-          <div className="flex items-center justify-center space-x-4">
-            <Button
-              onClick={retakePhoto}
-              variant="outline"
-              size="lg"
-              className="flex-1 max-w-32 bg-gray-600 border-gray-500 text-white hover:bg-gray-700"
-            >
-              Reprendre
-            </Button>
-            
-            <Button
-              onClick={validatePhoto}
-              disabled={isLoading}
-              size="lg"
-              className="flex-1 max-w-32 bg-green-600 hover:bg-green-700 text-white"
-            >
-              {isLoading ? (
-                <div className="flex items-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Envoi...</span>
-                </div>
-              ) : (
-                'Valider'
-              )}
-            </Button>
-          </div>
-        ) : (
-          // ✅ BOUTONS AVANT CAPTURE : ANNULER / PRENDRE PHOTO
-          <div className="flex items-center justify-center space-x-6">
-            <Button
-              onClick={onCancel}
-              variant="outline"
-              size="lg"
-              className="bg-gray-600 border-gray-500 text-white hover:bg-gray-700"
-            >
-              Annuler
-            </Button>
-            
-            <Button
-              onClick={takePhoto}
-              disabled={!isInitialized || cameraError !== null}
-              size="lg"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4"
-            >
-              <Camera className="h-6 w-6 mr-2" />
-              Prendre la photo
-            </Button>
-          </div>
-        )}
+      {/* 🔥 BOUTONS EN BAS - MAINTENANT FIXES ET TOUJOURS VISIBLES */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-sm border-t border-gray-700 z-[60]" 
+           style={{
+             paddingBottom: `max(24px, env(safe-area-inset-bottom))`, // Safe area iOS
+             paddingLeft: `max(16px, env(safe-area-inset-left))`,
+             paddingRight: `max(16px, env(safe-area-inset-right))`
+           }}>
+        <div className="p-6">
+          {capturedPhoto ? (
+            // ✅ BOUTONS APRÈS CAPTURE : REPRENDRE / VALIDER
+            <div className="flex items-center justify-center space-x-4">
+              <Button
+                onClick={retakePhoto}
+                variant="outline"
+                size="lg"
+                className="flex-1 max-w-32 bg-gray-600 border-gray-500 text-white hover:bg-gray-700 min-h-[44px]"
+              >
+                Reprendre
+              </Button>
+              
+              <Button
+                onClick={validatePhoto}
+                disabled={isLoading}
+                size="lg"
+                className="flex-1 max-w-32 bg-green-600 hover:bg-green-700 text-white min-h-[44px]"
+              >
+                {isLoading ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Envoi...</span>
+                  </div>
+                ) : (
+                  'Valider'
+                )}
+              </Button>
+            </div>
+          ) : (
+            // ✅ BOUTONS AVANT CAPTURE : ANNULER / PRENDRE PHOTO
+            <div className="flex items-center justify-center space-x-6">
+              <Button
+                onClick={onCancel}
+                variant="outline"
+                size="lg"
+                className="bg-gray-600 border-gray-500 text-white hover:bg-gray-700 min-h-[44px]"
+              >
+                Annuler
+              </Button>
+              
+              <Button
+                onClick={takePhoto}
+                disabled={!isInitialized || cameraError !== null}
+                size="lg"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 min-h-[44px]"
+              >
+                <Camera className="h-6 w-6 mr-2" />
+                Prendre la photo
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
