@@ -1,8 +1,8 @@
-// admin-app/src/app/(dashboard)/preparations/components/photos-viewer.tsx
+// admin-app/src/components/preparations/photos-viewer.tsx
 'use client';
 
-import { useState } from 'react';
-import { Camera, X, ChevronLeft, ChevronRight, Download, ZoomIn } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Camera, X, ChevronLeft, ChevronRight, Download, ZoomIn, AlertCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 
 import { usePreparationPhotos } from '@/hooks/api/usePreparations';
@@ -33,6 +34,7 @@ interface PhotoData {
   photoIndex: number;
   completedAt: string;
   notes?: string;
+  description?: string;
 }
 
 export function PhotosViewer({
@@ -42,12 +44,28 @@ export function PhotosViewer({
 }: PhotosViewerProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoData | null>(null);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
-  const { data: photosData, isLoading } = usePreparationPhotos(
+  const { data: photosData, isLoading, error } = usePreparationPhotos(
     preparation?.id || ''
   );
 
-  const photos = photosData?.data.photos || [];
+  const photos = photosData?.data?.photos || [];
+
+  // ✅ AJOUT : Debug des données reçues
+  useEffect(() => {
+    if (photosData && !isLoading) {
+      // Debug des URLs de photos
+      photos.forEach((photo, index) => {
+        console.log(`Photo ${index + 1}:`, {
+          stepType: photo.stepType,
+          photoUrl: photo.photoUrl,
+          urlLength: photo.photoUrl?.length,
+          isValidUrl: photo.photoUrl?.startsWith('http')
+        });
+      });
+    }
+  }, [photosData, isLoading, photos]);
 
   const handlePhotoClick = (photo: PhotoData, index: number) => {
     setSelectedPhoto(photo);
@@ -80,6 +98,21 @@ export function PhotosViewer({
     document.body.removeChild(link);
   };
 
+  // ✅ AJOUT : Gestion des erreurs d'image
+  const handleImageError = (photoUrl: string) => {
+    console.error('❌ Erreur de chargement image:', photoUrl);
+    setImageErrors(prev => new Set([...prev, photoUrl]));
+  };
+
+  const handleImageLoad = (photoUrl: string) => {
+    console.log('✅ Image chargée avec succès:', photoUrl);
+    setImageErrors(prev => {
+      const newErrors = new Set(prev);
+      newErrors.delete(photoUrl);
+      return newErrors;
+    });
+  };
+
   if (!preparation) return null;
 
   return (
@@ -98,41 +131,52 @@ export function PhotosViewer({
           </DialogHeader>
 
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <LoadingSpinner />
+            <div className="flex items-center justify-center py-8">
+              <LoadingSpinner size="lg" />
             </div>
+          ) : error ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Erreur lors du chargement des photos : {error.message}
+              </AlertDescription>
+            </Alert>
           ) : photos.length === 0 ? (
             <div className="text-center py-8">
               <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <div className="text-muted-foreground">
-                Aucune photo disponible pour cette préparation
-              </div>
+              <p className="text-muted-foreground">Aucune photo disponible pour cette préparation</p>
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Statistiques */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center">
+              {/* Résumé */}
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div className="space-y-1">
                   <div className="text-2xl font-bold">{photos.length}</div>
                   <div className="text-sm text-muted-foreground">Total photos</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold">
-                    {Object.keys(photosData?.data.preparation.photosByStep || {}).length}
-                  </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">{photosData?.data?.completedSteps || 0}</div>
                   <div className="text-sm text-muted-foreground">Étapes avec photos</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold">
-                    {preparation.steps.filter(s => s.completed).length}
-                  </div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">{photosData?.data?.totalSteps || 0}</div>
                   <div className="text-sm text-muted-foreground">Étapes terminées</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{preparation.progress}%</div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">{photosData?.data?.progress || 0}%</div>
                   <div className="text-sm text-muted-foreground">Progression</div>
                 </div>
               </div>
+
+              {/* ✅ AJOUT : Alerte si des images n'ont pas pu charger */}
+              {imageErrors.size > 0 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {imageErrors.size} image(s) n'ont pas pu être chargées. Vérifiez les URLs Cloudinary.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Galerie par étapes */}
               <div className="space-y-4">
@@ -159,11 +203,24 @@ export function PhotosViewer({
                           className="relative group cursor-pointer"
                           onClick={() => handlePhotoClick(photo, photos.findIndex(p => p === photo))}
                         >
-                          <img
-                            src={photo.photoUrl}
-                            alt={`${photo.stepLabel} - Photo ${photo.photoIndex + 1}`}
-                            className="w-full h-24 object-cover rounded-lg border hover:border-primary transition-colors"
-                          />
+                          {imageErrors.has(photo.photoUrl) ? (
+                            // ✅ AJOUT : Placeholder pour les images en erreur
+                            <div className="w-full h-24 bg-gray-100 border border-red-300 rounded-lg flex items-center justify-center">
+                              <div className="text-center">
+                                <AlertCircle className="h-6 w-6 text-red-500 mx-auto mb-1" />
+                                <div className="text-xs text-red-500">Erreur</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <img
+                              src={photo.photoUrl}
+                              alt={`${photo.stepLabel} - Photo ${photo.photoIndex + 1}`}
+                              className="w-full h-24 object-cover rounded-lg border hover:border-primary transition-colors"
+                              onError={() => handleImageError(photo.photoUrl)}
+                              onLoad={() => handleImageLoad(photo.photoUrl)}
+                            />
+                          )}
+                          
                           <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity rounded-lg flex items-center justify-center">
                             <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
@@ -188,90 +245,80 @@ export function PhotosViewer({
       </Dialog>
 
       {/* Dialog photo en grand */}
-      <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
-        <DialogContent className="sm:max-w-4xl p-0">
-          {selectedPhoto && (
-            <div className="relative">
-              {/* Header */}
-              <div className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
-                <div className="flex items-center gap-2 bg-black bg-opacity-50 text-white px-3 py-1 rounded">
-                  <span>{selectedPhoto.stepIcon}</span>
-                  <span className="font-medium">{selectedPhoto.stepLabel}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDownload(
-                      selectedPhoto.photoUrl,
-                      `${preparation.vehicle.licensePlate}_${selectedPhoto.stepType}_${selectedPhoto.photoIndex + 1}.jpg`
-                    )}
-                    className="bg-black bg-opacity-50 text-white hover:bg-opacity-70"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedPhoto(null)}
-                    className="bg-black bg-opacity-50 text-white hover:bg-opacity-70"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+      <Dialog open={!!selectedPhoto} onOpenChange={(open) => !open && setSelectedPhoto(null)}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-lg">{selectedPhoto?.stepIcon}</span>
+              {selectedPhoto?.stepLabel} - Photo {(currentPhotoIndex + 1)} sur {photos.length}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedPhoto?.description || `Photo prise le ${selectedPhoto?.completedAt ? new Date(selectedPhoto.completedAt).toLocaleDateString() : 'Date inconnue'}`}
+            </DialogDescription>
+          </DialogHeader>
 
-              {/* Photo */}
-              <div className="relative bg-black">
-                <img
-                  src={selectedPhoto.photoUrl}
-                  alt={`${selectedPhoto.stepLabel} - Photo ${selectedPhoto.photoIndex + 1}`}
-                  className="w-full max-h-[70vh] object-contain mx-auto"
-                />
+          <div className="relative">
+            {selectedPhoto && (
+              <img
+                src={selectedPhoto.photoUrl}
+                alt={`${selectedPhoto.stepLabel} - Photo ${selectedPhoto.photoIndex + 1}`}
+                className="w-full max-h-[60vh] object-contain rounded-lg"
+                onError={() => handleImageError(selectedPhoto.photoUrl)}
+                onLoad={() => handleImageLoad(selectedPhoto.photoUrl)}
+              />
+            )}
 
-                {/* Navigation */}
-                {photos.length > 1 && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handlePrevPhoto}
-                      disabled={currentPhotoIndex === 0}
-                      className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white hover:bg-opacity-70"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleNextPhoto}
-                      disabled={currentPhotoIndex === photos.length - 1}
-                      className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 text-white hover:bg-opacity-70"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </>
-                )}
-              </div>
+            {/* Navigation */}
+            {photos.length > 1 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white"
+                  onClick={handlePrevPhoto}
+                  disabled={currentPhotoIndex === 0}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white"
+                  onClick={handleNextPhoto}
+                  disabled={currentPhotoIndex === photos.length - 1}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
 
-              {/* Footer */}
-              <div className="absolute bottom-4 left-4 right-4 z-10">
-                <div className="bg-black bg-opacity-50 text-white p-3 rounded">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">
-                      Photo {currentPhotoIndex + 1} sur {photos.length}
-                    </span>
-                    <span className="text-xs">
-                      {new Date(selectedPhoto.completedAt).toLocaleString('fr-FR')}
-                    </span>
-                  </div>
-                  {selectedPhoto.notes && (
-                    <div className="text-sm">
-                      <strong>Notes:</strong> {selectedPhoto.notes}
-                    </div>
-                  )}
-                </div>
-              </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">
+                {selectedPhoto?.stepType}
+              </Badge>
+              <span className="text-sm text-muted-foreground">
+                {selectedPhoto?.completedAt ? new Date(selectedPhoto.completedAt).toLocaleString() : 'Date inconnue'}
+              </span>
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => selectedPhoto && handleDownload(
+                selectedPhoto.photoUrl,
+                `${preparation.vehicle.licensePlate}_${selectedPhoto.stepType}_photo_${selectedPhoto.photoIndex + 1}.jpg`
+              )}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Télécharger
+            </Button>
+          </div>
+
+          {selectedPhoto?.notes && (
+            <div className="bg-muted p-3 rounded-lg">
+              <strong>Notes:</strong> {selectedPhoto.notes}
             </div>
           )}
         </DialogContent>

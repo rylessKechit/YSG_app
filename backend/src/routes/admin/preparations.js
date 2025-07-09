@@ -299,6 +299,7 @@ router.get('/:id', validateObjectId(), async (req, res) => {
   }
 });
 
+// backend/src/routes/admin/preparations.js
 /**
  * @route   GET /api/admin/preparations/:id/photos
  * @desc    Récupérer les photos d'une préparation
@@ -317,41 +318,64 @@ router.get('/:id/photos', validateObjectId(), async (req, res) => {
     const photos = [];
     preparation.steps.forEach(step => {
       if (step.photos && step.photos.length > 0) {
-        step.photos.forEach((photoUrl, index) => {
-          photos.push({
-            stepType: step.step,
-            stepLabel: STEP_LABELS[step.step],
-            stepIcon: STEP_ICONS[step.step],
-            photoUrl,
-            photoIndex: index,
-            completedAt: step.completedAt,
-            notes: step.notes
-          });
+        step.photos.forEach((photo, index) => {
+          // ✅ CORRECTION : Gérer les deux formats possibles
+          let photoUrl;
+          let description = '';
+          let uploadedAt = step.completedAt;
+
+          // Si c'est un objet avec url, description, etc.
+          if (typeof photo === 'object' && photo !== null) {
+            photoUrl = photo.url || photo.secure_url;
+            description = photo.description || '';
+            uploadedAt = photo.uploadedAt || step.completedAt;
+          } 
+          // Si c'est juste une string (ancien format)
+          else if (typeof photo === 'string') {
+            photoUrl = photo;
+            description = `Photo étape ${step.step}`;
+          }
+
+          // Vérifier que nous avons une URL valide
+          if (photoUrl && photoUrl.trim()) {
+            photos.push({
+              stepType: step.step,
+              stepLabel: STEP_LABELS[step.step],
+              stepIcon: STEP_ICONS[step.step],
+              photoUrl: photoUrl.trim(), // ✅ S'assurer qu'il n'y a pas d'espaces
+              photoIndex: index,
+              completedAt: uploadedAt || step.completedAt,
+              notes: step.notes || '',
+              description: description
+            });
+          } else {
+            console.warn(`⚠️ Photo invalide trouvée pour l'étape ${step.step}:`, photo);
+          }
         });
       }
+    });
+
+    // ✅ AJOUT : Statistiques pour debug
+    const totalSteps = preparation.steps.length;
+    const completedSteps = preparation.steps.filter(step => step.completed).length;
+    const stepsWithPhotos = preparation.steps.filter(step => step.photos && step.photos.length > 0).length;
+
+    console.log(`✅ Photos récupérées pour préparation ${req.params.id}:`, {
+      totalPhotos: photos.length,
+      totalSteps,
+      completedSteps,
+      stepsWithPhotos
     });
 
     res.json({
       success: true,
       data: {
-        preparation: {
-          id: preparation._id,
-          vehicle: {
-            licensePlate: preparation.vehicle?.licensePlate,
-            model: preparation.vehicle?.model,
-            brand: preparation.vehicle?.brand
-          },
-          user: {
-            name: `${preparation.user.firstName} ${preparation.user.lastName}`,
-            email: preparation.user.email
-          },
-          totalPhotos: photos.length,
-          photosByStep: photos.reduce((acc, photo) => {
-            acc[photo.stepType] = (acc[photo.stepType] || 0) + 1;
-            return acc;
-          }, {})
-        },
-        photos
+        photos,
+        totalPhotos: photos.length,
+        totalSteps,
+        completedSteps,
+        stepsWithPhotos,
+        progress: Math.round((completedSteps / totalSteps) * 100)
       }
     });
 
