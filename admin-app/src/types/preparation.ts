@@ -1,11 +1,4 @@
-// admin-app/src/types/preparation.ts
-
-/**
- * Types et interfaces pour les préparations
- */
-
-// ===== ENUMS =====
-
+// admin-app/src/types/preparation.ts - TYPES CORRIGÉS
 export enum PreparationStatus {
   PENDING = 'pending',
   IN_PROGRESS = 'in_progress',
@@ -41,11 +34,12 @@ export enum IssueSeverity {
 
 export interface PreparationVehicle {
   id: string;
-  licensePlate: string;
-  model: string;
   brand: string;
+  model: string;
+  licensePlate: string;
   year?: number;
   color?: string;
+  mileage?: number;
   condition?: string;
 }
 
@@ -60,8 +54,10 @@ export interface PreparationAgency {
   id: string;
   name: string;
   code: string;
-  client: string;
+  client?: string;
   address?: string;
+  phone?: string;
+  email?: string;
 }
 
 export interface PreparationStepData {
@@ -70,75 +66,47 @@ export interface PreparationStepData {
   completedAt?: Date;
   notes?: string;
   photos?: string[];
-  photosCount?: number;
 }
 
 export interface PreparationIssue {
   type: IssueType;
-  severity: IssueSeverity;
   description: string;
+  severity: IssueSeverity;
   photos?: string[];
-  reportedAt: Date;
-  resolvedAt?: Date;
-  resolution?: string;
+  reportedAt?: Date;
 }
 
 export interface AgencyChangeHistory {
-  fromAgency: {
-    id: string;
-    name: string;
-    code: string;
-  };
-  toAgency: {
-    id: string;
-    name: string;
-    code: string;
-  };
+  fromAgency?: PreparationAgency;
+  toAgency: PreparationAgency;
+  changedAt: Date;
   changedBy: {
     id: string;
     name: string;
     email: string;
   };
   reason?: string;
-  changedAt: Date;
 }
 
 export interface AdminModification {
+  modifiedAt: Date;
   modifiedBy: {
     id: string;
     name: string;
     email: string;
   };
-  modifiedAt: Date;
-  type: 'steps_modification' | 'agency_change' | 'status_change';
-  previousSteps?: Array<{
+  type: 'step_update' | 'status_change' | 'agency_change' | 'notes_update';
+  changes: {
+    field: string;
+    oldValue: any;
+    newValue: any;
+  }[];
+  reason?: string;
+  modified: Array<{
     step: string;
     completed: boolean;
     notes?: string;
   }>;
-  newSteps?: Array<{
-    step: string;
-    completed: boolean;
-    notes?: string;
-  }>;
-  adminNotes?: string;
-  changes?: {
-    added: Array<{
-      step: string;
-      completed: boolean;
-      notes?: string;
-    }>;
-    removed: Array<{
-      step: string;
-      completed: boolean;
-      notes?: string;
-    }>;
-    modified: Array<{
-      step: string;
-      completed: boolean;
-      notes?: string;
-    }>;
-  };
 }
 
 // ===== INTERFACE PRÉPARATION PRINCIPALE =====
@@ -150,9 +118,9 @@ export interface Preparation {
   agency: PreparationAgency;
   status: PreparationStatus;
   progress: number;
-  duration: number;
+  duration?: number;
   totalTime?: number;
-  isOnTime: boolean;
+  isOnTime?: boolean;
   startTime?: Date;
   endTime?: Date;
   steps: PreparationStepData[];
@@ -177,6 +145,7 @@ export interface PreparationFilters {
   endDate?: string;
   sort?: 'createdAt' | 'startTime' | 'endTime' | 'totalTime' | 'user' | 'agency' | 'vehicle';
   order?: 'asc' | 'desc';
+  selectedIds?: string[]; // Pour les exports de sélection
 }
 
 export interface PreparationSearchParams {
@@ -231,17 +200,23 @@ export interface PreparationStats {
   byStatus: PreparationStatusStats;
   byAgency: PreparationAgencyStats[];
   topUsers: PreparationUserStats[];
+  // ✅ Propriétés additionnelles pour compatibility
+  totalPreparations?: number;
+  averageTime?: number;
+  onTimeRate?: number;
+  completionRate?: number;
 }
 
-// ===== PAGINATION =====
+// ===== PAGINATION CORRIGÉE =====
 
 export interface Pagination {
   page: number;
   limit: number;
   total: number;
-  pages: number;
-  hasNext: boolean;
-  hasPrev: boolean;
+  totalPages: number; // ✅ Ajouté pour corriger l'erreur
+  pages?: number; // ✅ Kept for backward compatibility
+  hasNext?: boolean;
+  hasPrev?: boolean;
 }
 
 // ===== RÉPONSES API =====
@@ -354,6 +329,10 @@ export interface UpdateStepsResponse {
   };
 }
 
+// ===== TYPE AGENCY ALIASÉ POUR COMPATIBILITY =====
+
+export type Agency = PreparationAgency;
+
 // ===== PROPS DES COMPOSANTS =====
 
 export interface PreparationTableProps {
@@ -364,19 +343,21 @@ export interface PreparationTableProps {
   onPreparationSelect: (preparationId: string) => void;
   agencies: PreparationAgency[];
   isLoading?: boolean;
+  selectedPreparations?: string[];
+  onSelectionChange?: (preparationIds: string[]) => void;
 }
 
 export interface PreparationFiltersProps {
   filters: PreparationFilters;
   onFiltersChange: (filters: Partial<PreparationFilters>) => void;
   agencies: PreparationAgency[];
-  users: PreparationUser[];
+  users: PreparationUser[]; // ✅ Changé de PreparationUser[] vers User[]
   isLoading?: boolean;
 }
 
 export interface PreparationStatsProps {
-  stats: PreparationStats['global'];
-  statusStats: PreparationStatusStats;
+  stats?: PreparationGlobalStats; // ✅ Optionnel au lieu de PreparationStats['global']
+  statusStats?: PreparationStatusStats; // ✅ Optionnel
   isLoading?: boolean;
 }
 
@@ -431,48 +412,61 @@ export const ISSUE_SEVERITY_LABELS: Record<IssueSeverity, string> = {
 
 // ===== FONCTIONS UTILITAIRES =====
 
-export const getStatusColor = (status: PreparationStatus): string => {
+export const getStatusColor = (status: PreparationStatus): 'default' | 'secondary' | 'destructive' | 'outline' => {
   switch (status) {
     case PreparationStatus.PENDING:
-      return 'bg-yellow-100 text-yellow-800';
+      return 'secondary';
     case PreparationStatus.IN_PROGRESS:
-      return 'bg-blue-100 text-blue-800';
+      return 'default';
     case PreparationStatus.COMPLETED:
-      return 'bg-green-100 text-green-800';
+      return 'outline';
     case PreparationStatus.CANCELLED:
-      return 'bg-red-100 text-red-800';
+      return 'destructive';
     case PreparationStatus.ON_HOLD:
-      return 'bg-gray-100 text-gray-800';
+      return 'secondary';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'secondary';
   }
 };
 
-export const getProgressColor = (progress: number, isOnTime: boolean): string => {
+export const getProgressColor = (progress: number, isOnTime?: boolean): string => {
   if (progress === 100) return 'bg-green-500';
-  if (!isOnTime) return 'bg-red-500';
+  if (isOnTime === false) return 'bg-red-500';
   if (progress >= 75) return 'bg-blue-500';
   if (progress >= 50) return 'bg-yellow-500';
   return 'bg-gray-300';
 };
 
-export const formatDuration = (minutes: number): string => {
+export const formatDuration = (minutes?: number): string => {
+  if (!minutes || minutes === 0) return '0min';
+  
   if (minutes < 60) {
     return `${minutes}min`;
   }
+  
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  return remainingMinutes > 0 ? `${hours}h${remainingMinutes}min` : `${hours}h`;
+  
+  return remainingMinutes > 0 
+    ? `${hours}h${remainingMinutes}min`
+    : `${hours}h`;
 };
 
-export const getStepProgress = (steps: PreparationStepData[]): number => {
-  if (!steps || steps.length === 0) return 0;
-  const completedSteps = steps.filter(step => step.completed).length;
-  return Math.round((completedSteps / steps.length) * 100);
-};
+// ===== TYPES POUR L'EXPORT =====
 
-// ===== TYPES DE COMPATIBILITÉ =====
+export interface ExportOptions {
+  format: 'excel' | 'csv' | 'pdf';
+  includePhotos?: boolean;
+  includeDetails?: boolean;
+  includeStats?: boolean;
+}
 
-export type Vehicle = PreparationVehicle;
-export type User = PreparationUser;
-export type Agency = PreparationAgency;
+export interface BulkActionResult {
+  success: boolean;
+  processed: number;
+  failed: number;
+  errors?: Array<{
+    id: string;
+    error: string;
+  }>;
+}

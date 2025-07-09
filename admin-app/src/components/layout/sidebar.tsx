@@ -6,10 +6,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, 
-  Users, 
-  Building, 
+  Users,
   Calendar, 
-  Clock,  // ✅ AJOUTÉ pour Timesheets
+  Clock,
   BarChart3, 
   Wrench,
   Settings,
@@ -47,7 +46,11 @@ const navigationItems = [
     href: '/schedules',
     icon: Calendar,
   },
-  // ✅ NOUVEAU MENU
+  {
+    title: 'Pointages',
+    href: '/timesheets',
+    icon: Clock,
+  },
   {
     title: 'Préparations',
     href: '/preparations',

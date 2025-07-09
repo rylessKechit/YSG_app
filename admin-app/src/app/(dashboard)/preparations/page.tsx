@@ -1,4 +1,4 @@
-// admin-app/src/app/(dashboard)/preparations/page.tsx
+// admin-app/src/app/(dashboard)/preparations/page.tsx - VERSION MISE À JOUR
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -13,15 +13,18 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  Pause
+  Pause,
+  Trash2,
+  Plus
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
+import { Badge } from '@/components/ui/badge';
 
-import { usePreparations, usePreparationsStats, useExportPreparations } from '@/hooks/api/usePreparations';
+import { usePreparations, usePreparationsStats } from '@/hooks/api/usePreparations';
 import { useUsers } from '@/hooks/api/useUsers';
 import { useAgencies } from '@/hooks/api/useAgencies';
 
@@ -32,6 +35,8 @@ import type { Agency as AgencyType } from '@/types/agency';
 import { PreparationsTable } from '@/components/preparations/preparations-table';
 import { PreparationFiltersComponent } from '@/components/preparations/preparation-filters';
 import { PreparationStatsCards } from '@/components/preparations/preparation-stats';
+import { ExportDialog } from '@/components/preparations/export-dialog';
+import { DeletePreparationDialog } from '@/components/preparations/delete-preparation-dialog';
 
 export default function PreparationsPage() {
   const router = useRouter();
@@ -51,13 +56,14 @@ export default function PreparationsPage() {
   });
 
   const [searchInput, setSearchInput] = useState('');
+  const [selectedPreparations, setSelectedPreparations] = useState<string[]>([]);
 
   // Hooks API
   const { 
     data: preparationsData, 
-    isLoading: isLoadingPreparations, 
-    error: preparationsError,
-    refetch: refetchPreparations 
+    isLoading: isLoadingPreparations,
+    refetch: refetchPreparations,
+    error: preparationsError
   } = usePreparations(filters);
 
   const { 
@@ -70,185 +76,172 @@ export default function PreparationsPage() {
   });
 
   const { data: usersData } = useUsers({ 
-    role: 'preparateur',
-    status: 'active',
-    limit: 100 
+    page: 1, 
+    limit: 100, 
+    role: 'preparateur'
   });
 
   const { data: agenciesData } = useAgencies({ 
-    status: 'active',
-    limit: 100 
+    page: 1, 
+    limit: 100
   });
 
-  const { mutate: exportPreparations, isPending: isExporting } = useExportPreparations();
+  // Données extraites
+  const preparations = preparationsData?.data?.preparations || [];
+  const pagination = preparationsData?.data?.pagination;
+  const stats = statsData?.data?.stats;
+  const users = usersData?.data?.users || [];
+  const agencies = agenciesData?.agencies || [];
+
+  // Préparations sélectionnées pour suppression
+  const selectedPreparationsData = useMemo(() => {
+    return preparations.filter(prep => selectedPreparations.includes(prep.id));
+  }, [preparations, selectedPreparations]);
 
   // Handlers
   const handleFiltersChange = (newFilters: Partial<PreparationFilters>) => {
-    setFilters(prev => ({ 
-      ...prev, 
-      ...newFilters,
-      page: newFilters.page || 1 // Reset à la page 1 si changement de filtre
-    }));
+    setFilters(prev => ({ ...prev, ...newFilters }));
   };
 
   const handleSearch = () => {
     handleFiltersChange({ search: searchInput, page: 1 });
   };
 
-  const handlePreparationSelect = (preparationId: string) => {
-    router.push(`/preparations/${preparationId}`);
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
   };
 
-  const handleExport = () => {
-    exportPreparations(filters);
+  const handlePreparationSelect = (preparationId: string) => {
+    router.push(`/preparations/${preparationId}`);
   };
 
   const handleRefresh = () => {
     refetchPreparations();
   };
 
-  // Données formatées pour les composants
-  const preparations = preparationsData?.data.preparations || [];
-  const pagination = preparationsData?.data.pagination;
-  const listStats = preparationsData?.data.stats;
-  const globalStats = statsData?.data.stats;
-  
-  // Conversion des types pour compatibilité
-  const users = (usersData?.data.users || []).map((user: AuthUser) => ({
-    id: user.id,
-    name: `${user.firstName} ${user.lastName}`,
-    email: user.email,
-    phone: user.phone
-  }));
-  
-  const agencies = (agenciesData?.agencies || []).map((agency: AgencyType) => ({
-    id: agency.id,
-    name: agency.name,
-    code: agency.code,
-    client: agency.client || '',
-    address: agency.address
-  }));
+  const handleSelectionChange = (preparationIds: string[]) => {
+    setSelectedPreparations(preparationIds);
+  };
 
-  // État de chargement global
-  const isLoading = isLoadingPreparations || isLoadingStats;
+  const handleDeleteSuccess = () => {
+    setSelectedPreparations([]);
+    refetchPreparations();
+  };
 
-  // Statistiques pour les cartes
-  const statsCards = useMemo(() => {
-    if (!listStats) return null;
-
-    return [
-      {
-        title: 'Total',
-        value: listStats.total,
-        icon: Building2,
-        color: 'text-blue-600'
-      },
-      {
-        title: 'En cours',
-        value: listStats.inProgress,
-        icon: Clock,
-        color: 'text-yellow-600'
-      },
-      {
-        title: 'Terminées',
-        value: listStats.completed,
-        icon: CheckCircle,
-        color: 'text-green-600'
-      },
-      {
-        title: 'En attente',
-        value: listStats.pending,
-        icon: Pause,
-        color: 'text-gray-600'
-      }
-    ];
-  }, [listStats]);
+  // États de chargement et d'erreur
+  if (preparationsError) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Erreur de chargement
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Impossible de charger les préparations
+            </p>
+            <Button onClick={handleRefresh} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Réessayer
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto p-6 space-y-6">
       {/* En-tête */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Préparations</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-bold text-gray-900">Préparations</h1>
+          <p className="text-gray-600 mt-1">
             Gestion et suivi des préparations de véhicules
           </p>
         </div>
-        
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-3">
+          {/* Actions de sélection multiple */}
+          {selectedPreparations.length > 0 && (
+            <>
+              <Badge variant="secondary" className="px-3 py-1">
+                {selectedPreparations.length} sélectionnée(s)
+              </Badge>
+              
+              <DeletePreparationDialog
+                preparations={selectedPreparationsData}
+                onSuccess={handleDeleteSuccess}
+              >
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer ({selectedPreparations.length})
+                </Button>
+              </DeletePreparationDialog>
+            </>
+          )}
+
+          {/* Export */}
+          <ExportDialog currentFilters={filters}>
+            <Button variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Exporter
+            </Button>
+          </ExportDialog>
+
+          {/* Actualiser */}
           <Button
             variant="outline"
-            size="sm"
             onClick={handleRefresh}
-            disabled={isLoading}
+            disabled={isLoadingPreparations}
           >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingPreparations ? 'animate-spin' : ''}`} />
             Actualiser
           </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            disabled={isExporting || preparations.length === 0}
-          >
-            <Download className="h-4 w-4" />
-            {isExporting ? 'Export...' : 'Exporter'}
+
+          {/* Nouvelle préparation */}
+          <Button onClick={() => router.push('/preparations/new')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nouvelle préparation
           </Button>
         </div>
       </div>
 
-      {/* Cartes statistiques */}
-      {statsCards && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {statsCards.map((stat, index) => {
-            const IconComponent = stat.icon;
-            return (
-              <Card key={index}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    {stat.title}
-                  </CardTitle>
-                  <IconComponent className={`h-4 w-4 ${stat.color}`} />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stat.value}</div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Statistiques avancées */}
-      {globalStats && (
+      {/* Cartes de statistiques */}
+      {stats && (
         <PreparationStatsCards 
-          stats={globalStats.global}
-          statusStats={globalStats.byStatus}
-          isLoading={isLoadingStats}
+          stats={stats.global || stats} 
+          statusStats={stats.byStatus}
+          isLoading={isLoadingStats} 
         />
       )}
 
       {/* Filtres et recherche */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filtres et recherche</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtres et recherche
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Barre de recherche */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex gap-3">
+            <div className="flex-1">
               <Input
                 placeholder="Rechercher par plaque, modèle ou notes..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="pl-10"
+                onKeyPress={handleKeyPress}
+                className="w-full"
               />
             </div>
-            <Button onClick={handleSearch} disabled={isLoading}>
-              <Search className="h-4 w-4" />
+            <Button onClick={handleSearch} disabled={isLoadingPreparations}>
+              <Search className="h-4 w-4 mr-2" />
+              Rechercher
             </Button>
           </div>
 
@@ -256,49 +249,70 @@ export default function PreparationsPage() {
           <PreparationFiltersComponent
             filters={filters}
             onFiltersChange={handleFiltersChange}
+            users={users.map(user => ({
+              id: user.id,
+              name: user.firstName,
+              email: user.email,
+              phone: user.phone
+            }))}
             agencies={agencies}
-            users={users}
-            isLoading={isLoading}
+            isLoading={isLoadingPreparations}
           />
         </CardContent>
       </Card>
 
       {/* Table des préparations */}
       <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>Liste des préparations</CardTitle>
-              <CardDescription>
-                {pagination && `${pagination.total} préparation(s) trouvée(s)`}
-              </CardDescription>
-            </div>
-            
-            {filters.search && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSearchInput('');
-                  handleFiltersChange({ search: '', page: 1 });
-                }}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Effacer recherche
-              </Button>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">
+              Liste des préparations
+              {pagination && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  ({pagination.total} au total)
+                </span>
+              )}
+            </CardTitle>
+
+            {selectedPreparations.length > 0 && (
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>{selectedPreparations.length} élément(s) sélectionné(s)</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedPreparations([])}
+                >
+                  Désélectionner tout
+                </Button>
+              </div>
             )}
           </div>
         </CardHeader>
-        
         <CardContent>
-          {preparationsError ? (
-            <div className="text-center py-8">
-              <div className="text-red-500 mb-2">
-                Erreur lors du chargement des préparations
+          {isLoadingPreparations ? (
+            <div className="flex items-center justify-center h-64">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : preparations.length === 0 ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Aucune préparation trouvée
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {filters.search || filters.status !== 'all' || filters.agency || filters.user
+                    ? 'Essayez de modifier vos filtres de recherche'
+                    : 'Commencez par créer une nouvelle préparation'
+                  }
+                </p>
+                {!(filters.search || filters.status !== 'all' || filters.agency || filters.user) && (
+                  <Button onClick={() => router.push('/preparations/new')}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Créer une préparation
+                  </Button>
+                )}
               </div>
-              <Button variant="outline" onClick={handleRefresh}>
-                Réessayer
-              </Button>
             </div>
           ) : (
             <PreparationsTable
@@ -308,7 +322,9 @@ export default function PreparationsPage() {
               onFiltersChange={handleFiltersChange}
               onPreparationSelect={handlePreparationSelect}
               agencies={agencies}
-              isLoading={isLoading}
+              isLoading={isLoadingPreparations}
+              selectedPreparations={selectedPreparations}
+              onSelectionChange={handleSelectionChange}
             />
           )}
         </CardContent>

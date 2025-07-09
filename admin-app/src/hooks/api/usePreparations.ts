@@ -199,32 +199,53 @@ export function useUpdatePreparationSteps() {
 }
 
 /**
- * Hook pour exporter les préparations
+ * Hook pour exporter les préparations - VERSION CORRIGÉE
  */
 export function useExportPreparations() {
   return useMutation({
     mutationFn: async (filters: PreparationFilters): Promise<Blob> => {
-      const params = new URLSearchParams();
-      
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          params.append(key, String(value));
+      // ✅ TRANSFORMATION DES FILTRES VERS LE FORMAT ATTENDU PAR LE BACKEND
+      const exportPayload = {
+        type: 'activite', // Type de rapport obligatoire
+        format: 'excel', // Format par défaut
+        period: {
+          start: filters.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 jours par défaut
+          end: filters.endDate || new Date().toISOString().split('T')[0]
+        },
+        filters: {
+          // ✅ Transformation des filtres de préparation
+          agencies: filters.agency ? [filters.agency] : undefined,
+          users: filters.user ? [filters.user] : undefined,
+          status: filters.status && filters.status !== 'all' ? filters.status : undefined,
+          search: filters.search || undefined,
+          includeDetails: true,
+          includeStats: true
+        },
+        delivery: {
+          method: 'download' // Méthode de livraison obligatoire
         }
-      });
+      };
 
-      const response = await apiClient.get(`/admin/preparations/export?${params.toString()}`, {
+      console.log('📤 Payload d\'export envoyé:', exportPayload);
+
+      // ✅ UTILISATION DU BON ENDPOINT ET DE LA BONNE MÉTHODE
+      const response = await apiClient.post('/admin/reports/export', exportPayload, {
         responseType: 'blob',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
       return response.data;
     },
     onSuccess: (blob) => {
+      // ✅ CRÉATION DU FICHIER DE TÉLÉCHARGEMENT
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       
       const today = new Date().toISOString().split('T')[0];
-      const filename = `preparations_${today}.xlsx`;
+      const filename = `preparations_export_${today}.xlsx`;
       link.download = filename;
       
       document.body.appendChild(link);
@@ -236,7 +257,97 @@ export function useExportPreparations() {
       toast.success('Export réalisé avec succès');
     },
     onError: (error: any) => {
-      const message = error?.response?.data?.message || 'Erreur lors de l\'export';
+      console.error('❌ Erreur export:', error);
+      
+      // ✅ GESTION D'ERREUR AMÉLIORÉE
+      let message = 'Erreur lors de l\'export';
+      
+      if (error?.response?.status === 400) {
+        message = error?.response?.data?.message || 'Paramètres d\'export invalides';
+      } else if (error?.response?.status === 401) {
+        message = 'Session expirée, veuillez vous reconnecter';
+      } else if (error?.response?.status === 403) {
+        message = 'Vous n\'avez pas les permissions pour exporter';
+      }
+      
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Hook pour exporter avec options avancées
+ */
+export function useExportPreparationsAdvanced() {
+  return useMutation({
+    mutationFn: async (options: {
+      filters: PreparationFilters;
+      format?: 'excel' | 'csv' | 'pdf';
+      includePhotos?: boolean;
+      includeDetails?: boolean;
+    }): Promise<Blob> => {
+      const { filters, format = 'excel', includePhotos = false, includeDetails = true } = options;
+
+      const exportPayload = {
+        type: 'custom', // Type personnalisé pour préparations
+        format,
+        period: {
+          start: filters.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          end: filters.endDate || new Date().toISOString().split('T')[0]
+        },
+        filters: {
+          agencies: filters.agency ? [filters.agency] : undefined,
+          users: filters.user ? [filters.user] : undefined,
+          status: filters.status && filters.status !== 'all' ? filters.status : undefined,
+          search: filters.search || undefined,
+          includeDetails,
+          includePhotos,
+          includeStats: true,
+          // Paramètres de pagination si nécessaire
+          page: filters.page || 1,
+          limit: 1000 // Limite élevée pour export complet
+        },
+        delivery: {
+          method: 'download'
+        }
+      };
+
+      const response = await apiClient.post('/admin/reports/export', exportPayload, {
+        responseType: 'blob',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      return response.data;
+    },
+    onSuccess: (blob, variables) => {
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const today = new Date().toISOString().split('T')[0];
+      const extension = variables.format === 'csv' ? 'csv' : variables.format === 'pdf' ? 'pdf' : 'xlsx';
+      const filename = `preparations_export_${today}.${extension}`;
+      link.download = filename;
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Export ${variables.format?.toUpperCase()} réalisé avec succès`);
+    },
+    onError: (error: any) => {
+      console.error('❌ Erreur export avancé:', error);
+      
+      let message = 'Erreur lors de l\'export';
+      
+      if (error?.response?.data?.message) {
+        message = error.response.data.message;
+      }
+      
       toast.error(message);
     },
   });
@@ -298,4 +409,92 @@ export function usePreparationCache(id: string) {
       queryClient.setQueryData(preparationKeys.detail(id), data);
     },
   };
+}
+
+/**
+ * Hook pour supprimer une préparation
+ */
+export function useDeletePreparation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (preparationId: string): Promise<{ success: boolean; message: string }> => {
+      console.log('🗑️ Suppression préparation:', preparationId);
+      
+      const response = await apiClient.delete(`/admin/preparations/${preparationId}`);
+      return response.data;
+    },
+    onSuccess: (data, preparationId) => {
+      // Invalider les caches pour rafraîchir les listes
+      queryClient.invalidateQueries({ queryKey: preparationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: preparationKeys.stats() });
+      
+      // Supprimer les données en cache pour cette préparation spécifique
+      queryClient.removeQueries({ queryKey: preparationKeys.detail(preparationId) });
+      
+      toast.success(data.message || 'Préparation supprimée avec succès');
+    },
+    onError: (error: any) => {
+      console.error('❌ Erreur suppression:', error);
+      
+      let message = 'Erreur lors de la suppression';
+      
+      if (error?.response?.status === 404) {
+        message = 'Préparation non trouvée';
+      } else if (error?.response?.status === 403) {
+        message = 'Vous n\'avez pas les permissions pour supprimer cette préparation';
+      } else if (error?.response?.data?.message) {
+        message = error.response.data.message;
+      }
+      
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Hook pour supprimer plusieurs préparations
+ */
+export function useDeleteMultiplePreparations() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (preparationIds: string[]): Promise<{ 
+      success: boolean; 
+      message: string; 
+      deleted: number;
+      errors?: Array<{ id: string; error: string }>;
+    }> => {
+      console.log('🗑️ Suppression multiple:', preparationIds.length, 'préparations');
+      
+      const response = await apiClient.post('/admin/preparations/bulk-delete', {
+        preparationIds
+      });
+      return response.data;
+    },
+    onSuccess: (data, preparationIds) => {
+      // Invalider tous les caches
+      queryClient.invalidateQueries({ queryKey: preparationKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: preparationKeys.stats() });
+      
+      // Supprimer les données en cache pour chaque préparation
+      preparationIds.forEach(id => {
+        queryClient.removeQueries({ queryKey: preparationKeys.detail(id) });
+      });
+      
+      toast.success(`${data.deleted} préparation(s) supprimée(s) avec succès`);
+      
+      // Afficher les erreurs s'il y en a
+      if (data.errors && data.errors.length > 0) {
+        data.errors.forEach(error => {
+          toast.error(`Erreur pour ${error.id}: ${error.error}`);
+        });
+      }
+    },
+    onError: (error: any) => {
+      console.error('❌ Erreur suppression multiple:', error);
+      const message = error?.response?.data?.message || 'Erreur lors de la suppression';
+      toast.error(message);
+    },
+  });
 }

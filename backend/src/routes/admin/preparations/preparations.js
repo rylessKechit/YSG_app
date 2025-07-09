@@ -4,15 +4,15 @@ const router = express.Router();
 const Joi = require('joi');
 
 // Models
-const Preparation = require('../../models/Preparation');
-const User = require('../../models/User');
-const Agency = require('../../models/Agency');
-const Vehicle = require('../../models/Vehicle');
+const Preparation = require('../../../models/Preparation');
+const User = require('../../../models/User');
+const Agency = require('../../../models/Agency');
+const Vehicle = require('../../../models/Vehicle');
 
 // Middleware
-const { auth } = require('../../middleware/auth');
-const { adminAuth } = require('../../middleware/adminAuth');
-const { validateQuery, validateBody, validateObjectId } = require('../../middleware/validation');
+const { auth } = require('../../../middleware/auth');
+const { adminAuth } = require('../../../middleware/adminAuth');
+const { validateQuery, validateBody, validateObjectId } = require('../../../middleware/validation');
 
 // Constants
 const { 
@@ -22,7 +22,7 @@ const {
   STEP_ICONS,
   ERROR_MESSAGES,
   SUCCESS_MESSAGES 
-} = require('../../utils/constants');
+} = require('../../../utils/constants');
 
 // ===== SCHÉMAS DE VALIDATION =====
 

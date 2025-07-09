@@ -1,45 +1,46 @@
-// admin-app/src/app/(dashboard)/preparations/[id]/page.tsx
+// admin-app/src/app/(dashboard)/preparations/[id]/page.tsx - MISE À JOUR AVEC SUPPRESSION
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  ArrowLeft,
-  Building2,
-  User,
-  Car,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
+  ArrowLeft, 
+  Edit, 
+  Trash2, 
+  Download, 
+  RefreshCw,
   Camera,
-  History,
-  FileText,
-  Edit3
+  Clock,
+  User,
+  Building2,
+  Car,
+  MoreHorizontal
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 
-import { usePreparation, useUpdatePreparationAgency, useUpdatePreparationSteps } from '@/hooks/api/usePreparations';
-import { useAgencies } from '@/hooks/api/useAgencies';
+import { usePreparation } from '@/hooks/api/usePreparations';
+import { DeletePreparationDialog } from '@/components/preparations/delete-preparation-dialog';
 
 import type { Preparation } from '@/types/preparation';
-import type { Agency as AgencyType } from '@/types/agency';
 import { 
   PREPARATION_STATUS_LABELS,
-  PREPARATION_STEP_LABELS,
-  PREPARATION_STEP_ICONS,
+  PREPARATION_STEP_LABELS, 
   getStatusColor,
-  formatDuration
+  formatDuration 
 } from '@/types/preparation';
-
-import { ChangeAgencyDialog } from '@/components/preparations/change-agency-dialog';
-import { EditStepsDialog } from '@/components/preparations/edit-steps-dialog';
-import { PhotosViewer } from '@/components/preparations/photos-viewer';
 
 interface PreparationDetailPageProps {
   params: {
@@ -49,491 +50,458 @@ interface PreparationDetailPageProps {
 
 export default function PreparationDetailPage({ params }: PreparationDetailPageProps) {
   const router = useRouter();
-  const [showChangeAgencyDialog, setShowChangeAgencyDialog] = useState(false);
-  const [showEditStepsDialog, setShowEditStepsDialog] = useState(false);
-  const [showPhotosViewer, setShowPhotosViewer] = useState(false);
+  const { id } = params;
 
-  const { data: preparationData, isLoading, error } = usePreparation(params.id);
-  const { data: agenciesData } = useAgencies({ status: 'active', limit: 100 });
-  const { mutate: updateAgency, isPending: isUpdatingAgency } = useUpdatePreparationAgency();
-  const { mutate: updateSteps, isPending: isUpdatingSteps } = useUpdatePreparationSteps();
+  const [activeTab, setActiveTab] = useState<'details' | 'steps' | 'photos' | 'history'>('details');
 
-  const preparation = preparationData?.data.preparation;
-  
-  // Conversion des types pour compatibilité
-  const agencies = (agenciesData?.agencies || []).map((agency: AgencyType) => ({
-    id: agency.id,
-    name: agency.name,
-    code: agency.code,
-    client: agency.client || '',
-    address: agency.address
-  }));
+  // Hooks API
+  const { 
+    data: preparationData, 
+    isLoading, 
+    error,
+    refetch 
+  } = usePreparation(id);
 
+  const preparation = preparationData?.data?.preparation;
+
+  // Handlers
   const handleBack = () => {
+    router.back();
+  };
+
+  const handleEdit = () => {
+    router.push(`/preparations/${id}/edit`);
+  };
+
+  const handleDeleteSuccess = () => {
     router.push('/preparations');
   };
 
-  const handleAgencyChange = (agencyId: string, reason?: string) => {
-    if (!preparation) return;
-
-    updateAgency({
-      preparationId: preparation.id,
-      agencyId,
-      reason
-    }, {
-      onSuccess: () => {
-        setShowChangeAgencyDialog(false);
-      }
-    });
+  const handleRefresh = () => {
+    refetch();
   };
 
-  const handleStepsChange = (steps: Array<{
-    step: string;
-    completed: boolean;
-    notes?: string;
-  }>, adminNotes?: string) => {
-    if (!preparation) return;
-
-    updateSteps({
-      preparationId: preparation.id,
-      steps,
-      adminNotes
-    }, {
-      onSuccess: () => {
-        setShowEditStepsDialog(false);
-      }
-    });
-  };
-
-  const handleOpenPhotos = () => {
-    setShowPhotosViewer(true);
-  };
-
-  const handleOpenEditSteps = () => {
-    setShowEditStepsDialog(true);
-  };
-
-  const handleOpenChangeAgency = () => {
-    setShowChangeAgencyDialog(true);
-  };
-
+  // Loading state
   if (isLoading) {
     return (
-      <div className="flex justify-center py-8">
-        <LoadingSpinner />
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-64">
+          <LoadingSpinner size="lg" />
+        </div>
       </div>
     );
   }
 
+  // Error state
   if (error || !preparation) {
     return (
-      <div className="text-center py-8">
-        <div className="text-red-500 mb-4">
-          Erreur lors du chargement de la préparation
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {error ? 'Erreur de chargement' : 'Préparation non trouvée'}
+            </h3>
+            <p className="text-gray-600 mb-4">
+              {error ? 'Impossible de charger les détails de la préparation' : 'Cette préparation n\'existe pas ou a été supprimée'}
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={handleBack}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Retour
+              </Button>
+              {error && (
+                <Button onClick={handleRefresh}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Réessayer
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
-        <Button variant="outline" onClick={handleBack}>
-          Retour à la liste
-        </Button>
       </div>
     );
   }
 
-  const getStepStatusIcon = (step: any) => {
-    if (step.completed) {
-      return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    }
-    return <div className="h-4 w-4 rounded-full border-2 border-gray-300" />;
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto p-6 space-y-6">
       {/* En-tête */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={handleBack}>
-            <ArrowLeft className="h-4 w-4" />
+          <Button variant="ghost" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
             Retour
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Préparation - {preparation.vehicle.licensePlate}
+            <h1 className="text-3xl font-bold text-gray-900">
+              Préparation #{preparation.id.slice(-6)}
             </h1>
-            <p className="text-muted-foreground">
-              {preparation.vehicle.brand} {preparation.vehicle.model}
-            </p>
+            <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                <Car className="h-4 w-4" />
+                {preparation.vehicle?.brand} {preparation.vehicle?.model}
+              </div>
+              <div className="flex items-center gap-1">
+                <Building2 className="h-4 w-4" />
+                {preparation.agency?.name}
+              </div>
+              <div className="flex items-center gap-1">
+                <User className="h-4 w-4" />
+                {preparation.user?.name}
+              </div>
+            </div>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
-          <Badge className={getStatusColor(preparation.status)}>
+          {/* Badge de statut */}
+          <Badge className={`${getStatusColor(preparation.status)} px-3 py-1`}>
             {PREPARATION_STATUS_LABELS[preparation.status]}
           </Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenChangeAgency}
-            disabled={isUpdatingAgency}
-          >
-            <Building2 className="h-4 w-4 mr-2" />
-            Changer d'agence
+
+          {/* Actions rapides */}
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Actualiser
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenEditSteps}
-            disabled={isUpdatingSteps}
-          >
-            <Edit3 className="h-4 w-4 mr-2" />
-            Modifier étapes
+
+          <Button variant="outline" onClick={handleEdit}>
+            <Edit className="h-4 w-4 mr-2" />
+            Modifier
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenPhotos}
-          >
-            <Camera className="h-4 w-4 mr-2" />
-            Voir photos
-          </Button>
+
+          {/* Menu actions */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => window.print()}>
+                <Download className="h-4 w-4 mr-2" />
+                Exporter en PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(window.location.href)}>
+                <Camera className="h-4 w-4 mr-2" />
+                Copier le lien
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DeletePreparationDialog
+                preparation={preparation}
+                onSuccess={handleDeleteSuccess}
+              >
+                <DropdownMenuItem 
+                  className="text-red-600 focus:text-red-600"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </DropdownMenuItem>
+              </DeletePreparationDialog>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      {/* Informations principales */}
-      <div className="grid gap-6 md:grid-cols-3">
-        {/* Véhicule */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Car className="h-5 w-5" />
-              Véhicule
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div>
-              <div className="font-medium">{preparation.vehicle.licensePlate}</div>
-              <div className="text-sm text-muted-foreground">
-                {preparation.vehicle.brand} {preparation.vehicle.model}
-              </div>
-            </div>
-            {preparation.vehicle.year && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">Année:</span> {preparation.vehicle.year}
-              </div>
-            )}
-            {preparation.vehicle.color && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">Couleur:</span> {preparation.vehicle.color}
-              </div>
-            )}
-            {preparation.vehicle.condition && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">État:</span> {preparation.vehicle.condition}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Préparateur */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Préparateur
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div>
-              <div className="font-medium">{preparation.user.name}</div>
-              <div className="text-sm text-muted-foreground">
-                {preparation.user.email}
-              </div>
-            </div>
-            {preparation.user.phone && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">Téléphone:</span> {preparation.user.phone}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Agence */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Agence
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div>
-              <div className="font-medium">{preparation.agency.name}</div>
-              <Badge variant="outline" className="text-xs">
-                {preparation.agency.code}
-              </Badge>
-            </div>
-            <div className="text-sm">
-              <span className="text-muted-foreground">Client:</span> {preparation.agency.client}
-            </div>
-            {preparation.agency.address && (
-              <div className="text-sm">
-                <span className="text-muted-foreground">Adresse:</span> {preparation.agency.address}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Navigation par onglets */}
+      <div className="border-b">
+        <nav className="flex space-x-8">
+          {[
+            { id: 'details', label: 'Détails', icon: Car },
+            { id: 'steps', label: 'Étapes', icon: Clock },
+            { id: 'photos', label: 'Photos', icon: Camera },
+            { id: 'history', label: 'Historique', icon: RefreshCw }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === tab.id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
-      {/* Progression et timing */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Progression */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Progression</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Progression globale</span>
-                <span>{preparation.progress}%</span>
-              </div>
-              <Progress value={preparation.progress} className="h-3" />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="text-muted-foreground">Étapes complétées</div>
-                <div className="font-medium">
-                  {preparation.steps.filter(s => s.completed).length} / {preparation.steps.length}
-                </div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Photos prises</div>
-                <div className="font-medium">
-                  {preparation.steps.reduce((acc, step) => acc + (step.photosCount || 0), 0)}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Timing */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Timing
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="text-muted-foreground">Durée actuelle</div>
-                <div className={`font-medium ${!preparation.isOnTime ? 'text-red-600' : ''}`}>
-                  {preparation.totalTime ? formatDuration(preparation.totalTime) : formatDuration(preparation.duration)}
-                </div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Statut délai</div>
-                <div className={`font-medium ${preparation.isOnTime ? 'text-green-600' : 'text-red-600'}`}>
-                  {preparation.isOnTime ? 'Dans les temps' : 'En retard'}
-                </div>
-              </div>
-            </div>
-
-            {preparation.startTime && (
-              <div className="text-sm">
-                <div className="text-muted-foreground">Démarrée le</div>
+      {/* Contenu des onglets */}
+      <div className="space-y-6">
+        {activeTab === 'details' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Informations du véhicule */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Car className="h-5 w-5" />
+                  Véhicule
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
                 <div>
-                  {new Date(preparation.startTime).toLocaleString('fr-FR')}
+                  <p className="text-sm font-medium text-gray-500">Modèle</p>
+                  <p className="text-lg font-semibold">
+                    {preparation.vehicle?.model}
+                  </p>
                 </div>
-              </div>
-            )}
-
-            {preparation.endTime && (
-              <div className="text-sm">
-                <div className="text-muted-foreground">Terminée le</div>
                 <div>
-                  {new Date(preparation.endTime).toLocaleString('fr-FR')}
+                  <p className="text-sm font-medium text-gray-500">Plaque d'immatriculation</p>
+                  <p className="font-mono text-lg">{preparation.vehicle?.licensePlate}</p>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
 
-      {/* Étapes de préparation */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Étapes de préparation</CardTitle>
-          <CardDescription>
-            Détail des {preparation.steps.length} étapes de préparation
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {preparation.steps.map((step, index) => (
-              <div key={step.step} className="flex gap-4 p-4 border rounded-lg">
-                <div className="flex-shrink-0 mt-1">
-                  {getStepStatusIcon(step)}
+            {/* Informations de la préparation */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Préparation
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Statut</p>
+                  <Badge className={getStatusColor(preparation.status)}>
+                    {PREPARATION_STATUS_LABELS[preparation.status]}
+                  </Badge>
                 </div>
-                
-                <div className="flex-1 space-y-2">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Progression</p>
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{PREPARATION_STEP_ICONS[step.step]}</span>
-                    <span className="font-medium">{PREPARATION_STEP_LABELS[step.step]}</span>
-                    {step.completed && (
-                      <Badge variant="outline" className="text-xs">
-                        Terminée
-                      </Badge>
-                    )}
+                    <div className="flex-1 bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${preparation.progress}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium">{preparation.progress}%</span>
                   </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Durée totale</p>
+                  <p>{formatDuration((preparation.totalTime) || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Heure de début</p>
+                  <p>{preparation.startTime ? new Date(preparation.startTime).toLocaleString('fr-FR') : 'Non démarré'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Heure de fin</p>
+                  <p>{preparation.endTime ? new Date(preparation.endTime).toLocaleString('fr-FR') : 'En cours'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Respect des délais</p>
+                  <Badge className={preparation.isOnTime ? "success" : "destructive"}>
+                    {preparation.isOnTime ? 'Dans les temps' : 'En retard'}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
 
-                  {step.completed && step.completedAt && (
-                    <div className="text-sm text-muted-foreground">
-                      Complétée le {new Date(step.completedAt).toLocaleString('fr-FR')}
-                    </div>
-                  )}
+            {/* Informations utilisateur et agence */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Assignation
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Préparateur</p>
+                  <p className="font-semibold">{preparation.user?.name}</p>
+                  <p className="text-sm text-gray-600">{preparation.user?.email}</p>
+                </div>
+                <Separator />
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Agence</p>
+                  <p className="font-semibold">{preparation.agency?.name}</p>
+                  <p className="text-sm text-gray-600">
+                    {preparation.agency?.code} - {preparation.agency?.client}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Adresse</p>
+                  <p className="text-sm">{preparation.agency?.address}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-                  {step.notes && (
-                    <div className="text-sm">
-                      <div className="text-muted-foreground mb-1">Notes:</div>
-                      <div className="bg-muted/50 p-2 rounded text-sm">
-                        {step.notes}
-                      </div>
+        {activeTab === 'steps' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Étapes de préparation</CardTitle>
+              <CardDescription>
+                Détail de chaque étape et progression
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {preparation.steps?.map((step, index) => (
+                  <div key={step.step} className="flex items-center gap-4 p-4 border rounded-lg">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      step.completed ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {step.completed ? '✓' : index + 1}
                     </div>
-                  )}
+                    <div className="flex-1">
+                      <h4 className="font-medium">{PREPARATION_STEP_LABELS[step.step]}</h4>
+                      {step.notes && (
+                        <p className="text-sm text-gray-600 mt-1">{step.notes}</p>
+                      )}
+                      {step.completedAt && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Terminé le {new Date(step.completedAt).toLocaleString('fr-FR')}
+                        </p>
+                      )}
+                    </div>
+                    <Badge className={step.completed ? "success" : "secondary"}>
+                      {step.completed ? 'Terminé' : 'En attente'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-                  {step.photos && step.photos.length > 0 && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Camera className="h-4 w-4" />
-                      {step.photos.length} photo(s) prise(s)
+        {activeTab === 'photos' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Photos de la préparation</CardTitle>
+              <CardDescription>
+                Photos prises pendant la préparation
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {preparation.steps?.map(step => 
+                  step.photos?.map((photo, index) => (
+                    <div key={`${step.step}-${index}`} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                      <img 
+                        src={photo} 
+                        alt={`Photo ${PREPARATION_STEP_LABELS[step.step]}`}
+                        className="w-full h-full object-cover hover:scale-105 transition-transform cursor-pointer"
+                        onClick={() => window.open(photo, '_blank')}
+                      />
                     </div>
-                  )}
+                  ))
+                )}
+                {!preparation.steps?.some(step => (step.photos?.length || 0) > 0) && (
+                  <div className="col-span-full text-center py-8 text-gray-500">
+                    <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Aucune photo disponible</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === 'history' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Historique des modifications</CardTitle>
+              <CardDescription>
+                Chronologie des changements apportés à cette préparation
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {preparation.agencyHistory?.map((change, index) => (
+                  <div key={index} className="flex gap-4 p-4 border-l-2 border-blue-200">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+                    <div className="flex-1">
+                      <h4 className="font-medium">Changement d'agence</h4>
+                      <p className="text-sm text-gray-600">
+                        De {change.fromAgency?.name} vers {change.toAgency?.name}
+                      </p>
+                      {change.reason && (
+                        <p className="text-sm text-gray-500 mt-1">Raison: {change.reason}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-2">
+                        {new Date(change.changedAt).toLocaleString('fr-FR')} par {change.changedBy?.name}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="flex gap-4 p-4 border-l-2 border-green-200">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                  <div className="flex-1">
+                    <h4 className="font-medium">Préparation créée</h4>
+                    <p className="text-sm text-gray-600">
+                      Préparation assignée à {preparation.user?.name}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(preparation.createdAt).toLocaleString('fr-FR')}
+                    </p>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
-      {/* Historique des changements d'agence */}
-      {preparation.agencyHistory && preparation.agencyHistory.length > 0 && (
+      {/* Notes */}
+      {preparation.notes && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" />
-              Historique des changements d'agence
-            </CardTitle>
+            <CardTitle>Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {preparation.agencyHistory.map((change, index) => (
-                <div key={index} className="flex gap-4 p-3 border rounded-lg">
-                  <Building2 className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline">
-                        {change.fromAgency.name} ({change.fromAgency.code})
-                      </Badge>
-                      <span className="text-muted-foreground">→</span>
-                      <Badge variant="default">
-                        {change.toAgency.name} ({change.toAgency.code})
-                      </Badge>
+            <p className="whitespace-pre-wrap">{preparation.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Problèmes signalés */}
+      {preparation.issues && preparation.issues.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-600">Problèmes signalés</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {preparation.issues.map((issue, index) => (
+                <div key={index} className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-medium text-red-800">{issue.type}</h4>
+                      <p className="text-red-700 mt-1">{issue.description}</p>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      Par {change.changedBy.name} le {new Date(change.changedAt).toLocaleString('fr-FR')}
-                    </div>
-                    {change.reason && (
-                      <div className="text-sm mt-1">
-                        <span className="text-muted-foreground">Raison:</span> {change.reason}
-                      </div>
-                    )}
+                    <Badge variant="destructive">{issue.severity}</Badge>
                   </div>
+                  {issue.photos && issue.photos.length > 0 && (
+                    <div className="flex gap-2 mt-3">
+                      {issue.photos.map((photo, photoIndex) => (
+                        <img
+                          key={photoIndex}
+                          src={photo}
+                          alt={`Problème ${issue.type}`}
+                          className="w-16 h-16 object-cover rounded cursor-pointer"
+                          onClick={() => window.open(photo, '_blank')}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
       )}
-
-      {/* Notes et incidents */}
-      {(preparation.notes || (preparation.issues && preparation.issues.length > 0)) && (
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Notes générales */}
-          {preparation.notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="bg-muted/50 p-3 rounded text-sm">
-                  {preparation.notes}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Incidents */}
-          {preparation.issues && preparation.issues.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5" />
-                  Incidents ({preparation.issues.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {preparation.issues.map((issue, index) => (
-                    <div key={index} className="border rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="destructive">
-                          {issue.type}
-                        </Badge>
-                        <Badge variant="outline">
-                          {issue.severity}
-                        </Badge>
-                      </div>
-                      <div className="text-sm">
-                        {issue.description}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Signalé le {new Date(issue.reportedAt).toLocaleString('fr-FR')}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* Dialogs */}
-      <ChangeAgencyDialog
-        open={showChangeAgencyDialog}
-        onOpenChange={setShowChangeAgencyDialog}
-        preparation={preparation}
-        agencies={agencies}
-        onSubmit={handleAgencyChange}
-        isLoading={isUpdatingAgency}
-      />
-
-      <EditStepsDialog
-        open={showEditStepsDialog}
-        onOpenChange={setShowEditStepsDialog}
-        preparation={preparation}
-        onSubmit={handleStepsChange}
-        isLoading={isUpdatingSteps}
-      />
-
-      <PhotosViewer
-        open={showPhotosViewer}
-        onOpenChange={setShowPhotosViewer}
-        preparation={preparation}
-      />
     </div>
   );
 }
