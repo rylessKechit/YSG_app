@@ -1,7 +1,6 @@
-// preparator-app/src/hooks/usePreparationHistory.ts
-// ✅ Hook pour l'historique des préparations - ERREURS TYPESCRIPT CORRIGÉES
+// ✅ Hook usePreparationHistory optimisé - STOP REFRESH AUTO + SEARCH TRIGGER ONLY
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { preparationApi } from '@/lib/api/preparations';
 import type { 
   PreparationHistory, 
@@ -14,11 +13,9 @@ import type {
 export interface UsePreparationHistoryOptions {
   page?: number;
   limit?: number;
-  startDate?: Date;
-  endDate?: Date;
   agencyId?: string;
   search?: string;
-  autoLoad?: boolean;
+  autoLoad?: boolean; // ✅ DÉSACTIVÉ PAR DÉFAUT
 }
 
 export interface UsePreparationHistoryReturn {
@@ -44,6 +41,7 @@ export interface UsePreparationHistoryReturn {
   loadMore: () => Promise<void>;
   refresh: () => Promise<void>;
   setFilters: (filters: Partial<PreparationFilters>) => void;
+  applyFiltersAndLoad: (filters: Partial<PreparationFilters>) => Promise<void>;
   setPage: (page: number) => void;
   clearError: () => void;
   
@@ -69,7 +67,7 @@ const initialFilters: PreparationFilters = {
   limit: 20
 };
 
-// ===== HOOK PRINCIPAL =====
+// ===== HOOK PRINCIPAL OPTIMISÉ =====
 
 export const usePreparationHistory = (
   options: UsePreparationHistoryOptions = {}
@@ -77,11 +75,9 @@ export const usePreparationHistory = (
   const {
     page = 1,
     limit = 20,
-    startDate,
-    endDate,
     agencyId,
     search,
-    autoLoad = true
+    autoLoad = false // ✅ DÉSACTIVÉ PAR DÉFAUT
   } = options;
 
   // ===== ÉTAT LOCAL =====
@@ -92,8 +88,6 @@ export const usePreparationHistory = (
     ...initialFilters,
     page,
     limit,
-    startDate,
-    endDate,
     agencyId,
     search
   });
@@ -101,57 +95,59 @@ export const usePreparationHistory = (
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ Référence pour éviter les appels multiples
+  const loadingRef = useRef(false);
+
   // ===== ACTIONS =====
 
   /**
-   * Charger l'historique des préparations
+   * ✅ Charger l'historique des préparations - OPTIMISÉ
    */
   const loadHistory = useCallback(async (newOptions?: Partial<UsePreparationHistoryOptions>) => {
-    const loadingType = newOptions?.page && newOptions.page > 1 ? 'loadMore' : 'initial';
+    // ✅ Prévenir les appels multiples simultanés
+    if (loadingRef.current) {
+      console.log('⚠️ Chargement déjà en cours, ignoré');
+      return;
+    }
+
+    loadingRef.current = true;
+    const isLoadingMore = newOptions?.page && newOptions.page > 1;
     
-    if (loadingType === 'initial') {
-      setIsLoading(true);
-    } else {
+    if (isLoadingMore) {
       setIsLoadingMore(true);
+    } else {
+      setIsLoading(true);
     }
     
     setError(null);
 
     try {
-      // ✅ Construire les paramètres API avec les bons types
+      // ✅ Construire les filtres de requête
+      const currentFilters = {
+        ...filters,
+        ...newOptions
+      };
+
+      // ✅ Préparer les paramètres pour l'API
       const apiFilters: Record<string, string> = {};
-      
-      const currentFilters = { ...filters, ...newOptions };
-      
-      if (currentFilters.startDate) {
-        apiFilters.startDate = currentFilters.startDate.toISOString().split('T')[0];
-      }
-      if (currentFilters.endDate) {
-        apiFilters.endDate = currentFilters.endDate.toISOString().split('T')[0];
-      }
-      // ✅ Ne pas envoyer agencyId si c'est "all" ou vide
       if (currentFilters.agencyId && currentFilters.agencyId !== 'all') {
         apiFilters.agencyId = currentFilters.agencyId;
       }
-      if (currentFilters.search) {
-        apiFilters.search = currentFilters.search;
+      if (currentFilters.search && currentFilters.search.trim()) {
+        apiFilters.search = currentFilters.search.trim();
       }
 
-      console.log('🔍 Chargement historique préparations:', {
-        page: currentFilters.page || 1,
-        limit: currentFilters.limit || 20,
-        filters: apiFilters
-      });
+      console.log('🔄 Chargement historique avec filtres:', currentFilters);
 
-      // ✅ Appel API avec la bonne signature
-      const historyData: PreparationHistory = await preparationApi.getPreparationHistory(
+      // ✅ Appel API
+      const historyData = await preparationApi.getPreparationHistory(
         currentFilters.page || 1,
         currentFilters.limit || 20,
         apiFilters
       );
 
-      // ✅ Mise à jour de l'état avec les bonnes données
-      if (loadingType === 'loadMore' && currentFilters.page && currentFilters.page > 1) {
+      // ✅ Mise à jour des données
+      if (isLoadingMore) {
         // Ajouter aux préparations existantes
         setPreparations(prev => [...prev, ...historyData.preparations]);
       } else {
@@ -170,7 +166,8 @@ export const usePreparationHistory = (
 
       console.log('✅ Historique chargé:', {
         preparations: historyData.preparations.length,
-        total: historyData.pagination.totalCount
+        total: historyData.pagination.totalCount,
+        date: new Date().toLocaleDateString('fr-FR')
       });
 
     } catch (err: any) {
@@ -180,11 +177,12 @@ export const usePreparationHistory = (
     } finally {
       setIsLoading(false);
       setIsLoadingMore(false);
+      loadingRef.current = false; // ✅ Libérer le verrou
     }
   }, [filters]);
 
   /**
-   * Charger plus de préparations (pagination)
+   * ✅ Charger plus de préparations (pagination)
    */
   const loadMore = useCallback(async () => {
     if (pagination.hasNextPage && !isLoading && !isLoadingMore) {
@@ -193,32 +191,43 @@ export const usePreparationHistory = (
   }, [pagination.hasNextPage, pagination.page, isLoading, isLoadingMore, loadHistory]);
 
   /**
-   * Rafraîchir les données
+   * ✅ Rafraîchir les données (manuel uniquement)
    */
   const refresh = useCallback(async () => {
+    console.log('🔄 Refresh manuel déclenché');
     await loadHistory({ page: 1 });
   }, [loadHistory]);
 
   /**
-   * Mettre à jour les filtres
+   * ✅ Mettre à jour les filtres - TRIGGER MANUAL
    */
   const setFilters = useCallback((newFilters: Partial<PreparationFilters>) => {
+    console.log('🔍 Mise à jour filtres:', newFilters);
     const updatedFilters = { ...filters, ...newFilters, page: 1 }; // Reset page lors du filtrage
     setFiltersState(updatedFilters);
-    loadHistory(updatedFilters);
+    // ✅ PAS DE CHARGEMENT AUTO - uniquement quand explicitement demandé
+  }, [filters]);
+
+  /**
+   * ✅ Appliquer les filtres et charger (manuel)
+   */
+  const applyFiltersAndLoad = useCallback(async (newFilters: Partial<PreparationFilters>) => {
+    const updatedFilters = { ...filters, ...newFilters, page: 1 };
+    setFiltersState(updatedFilters);
+    await loadHistory(updatedFilters);
   }, [filters, loadHistory]);
 
   /**
-   * Changer de page
+   * ✅ Changer de page
    */
-  const setPage = useCallback((newPage: number) => {
+  const setPage = useCallback(async (newPage: number) => {
     const updatedFilters = { ...filters, page: newPage };
     setFiltersState(updatedFilters);
-    loadHistory(updatedFilters);
+    await loadHistory(updatedFilters);
   }, [filters, loadHistory]);
 
   /**
-   * Effacer l'erreur
+   * ✅ Effacer l'erreur
    */
   const clearError = useCallback(() => {
     setError(null);
@@ -227,13 +236,17 @@ export const usePreparationHistory = (
   // ===== EFFETS =====
 
   /**
-   * Chargement automatique au montage
+   * ✅ Chargement automatique au montage SEULEMENT si autoLoad = true
    */
   useEffect(() => {
     if (autoLoad) {
+      console.log('🚀 Chargement auto au montage');
       loadHistory();
     }
-  }, []); // Dépendance vide pour ne charger qu'une fois
+  }, []); // ✅ Dépendance vide - ne charge qu'UNE SEULE FOIS
+
+  // ✅ SUPPRIMÉ: Plus d'effet qui écoute les changements de filtres
+  // Cela évite les refresh automatiques non désirés
 
   // ===== VALEURS CALCULÉES =====
 
@@ -258,7 +271,8 @@ export const usePreparationHistory = (
     loadHistory,
     loadMore,
     refresh,
-    setFilters,
+    setFilters, // ✅ Ne charge pas automatiquement
+    applyFiltersAndLoad, // ✅ Nouvelle méthode pour appliquer + charger
     setPage,
     clearError,
     
@@ -269,39 +283,5 @@ export const usePreparationHistory = (
   };
 };
 
-// ===== HOOKS DÉRIVÉS =====
-
-/**
- * Hook simplifié pour l'historique avec filtres de base
- */
-export const usePreparationHistorySimple = (agencyId?: string) => {
-  return usePreparationHistory({
-    agencyId,
-    limit: 10,
-    autoLoad: true
-  });
-};
-
-/**
- * Hook pour l'historique avec recherche
- */
-export const usePreparationHistoryWithSearch = () => {
-  const history = usePreparationHistory({ autoLoad: false });
-  
-  const searchPreparations = useCallback((query: string, agencyId?: string) => {
-    history.setFilters({
-      search: query,
-      agencyId,
-      page: 1
-    });
-  }, [history]);
-
-  return {
-    ...history,
-    searchPreparations
-  };
-};
-
 // ===== EXPORTS =====
-
 export default usePreparationHistory;

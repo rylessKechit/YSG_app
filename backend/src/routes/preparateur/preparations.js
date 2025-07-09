@@ -156,44 +156,43 @@ router.get('/current', async (req, res) => {
  */
 router.get('/history', async (req, res) => {
   try {
-    const { page = 1, limit = 20, startDate, endDate, agencyId, search } = req.query;
+    const { page = 1, limit = 50, agencyId, search } = req.query;
     const userId = req.user.userId;
 
-    console.log('📋 Récupération historique préparations:', { 
+    console.log('📋 Récupération historique préparations (jour courant):', { 
       userId, 
       page, 
       limit, 
-      filters: { startDate, endDate, agencyId, search }
+      filters: { agencyId, search }
     });
 
-    // Dates par défaut (30 derniers jours si non spécifiées)
-    const defaultEndDate = endDate ? new Date(endDate) : new Date();
-    const defaultStartDate = startDate ? 
-      new Date(startDate) : 
-      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // ✅ MODIFICATION: Récupérer UNIQUEMENT les préparations du jour courant
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
 
-    // Construction de la requête
+    // Construction de la requête pour le jour courant uniquement
     const query = {
       user: userId,
       createdAt: {
-        $gte: defaultStartDate,
-        $lte: defaultEndDate
+        $gte: startOfDay,
+        $lte: endOfDay
       }
     };
 
     // Filtres optionnels
-    if (agencyId) {
+    if (agencyId && agencyId !== 'all') {
       query.agency = agencyId;
     }
 
-    if (search) {
+    if (search && search.trim()) {
       query.$or = [
-        { 'vehicleInfo.licensePlate': { $regex: search, $options: 'i' } },
-        { 'vehicleInfo.brand': { $regex: search, $options: 'i' } },
-        { 'vehicleInfo.model': { $regex: search, $options: 'i' } },
-        { 'vehicle.licensePlate': { $regex: search, $options: 'i' } },
-        { 'vehicle.brand': { $regex: search, $options: 'i' } },
-        { 'vehicle.model': { $regex: search, $options: 'i' } }
+        { 'vehicleInfo.licensePlate': { $regex: search.trim(), $options: 'i' } },
+        { 'vehicleInfo.brand': { $regex: search.trim(), $options: 'i' } },
+        { 'vehicleInfo.model': { $regex: search.trim(), $options: 'i' } },
+        { 'vehicle.licensePlate': { $regex: search.trim(), $options: 'i' } },
+        { 'vehicle.brand': { $regex: search.trim(), $options: 'i' } },
+        { 'vehicle.model': { $regex: search.trim(), $options: 'i' } }
       ];
     }
 
@@ -207,7 +206,7 @@ router.get('/history', async (req, res) => {
       Preparation.find(query)
         .populate('agency', 'name code client')
         .populate('user', 'firstName lastName')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1 }) // Plus récent en premier
         .skip(skip)
         .limit(limitNum)
         .lean(),
@@ -237,7 +236,8 @@ router.get('/history', async (req, res) => {
     const hasNextPage = pageNum < totalPages;
     const hasPrevPage = pageNum > 1;
 
-    console.log('✅ Historique préparations récupéré:', {
+    console.log('✅ Historique préparations du jour récupéré:', {
+      date: today.toISOString().split('T')[0],
       count: formattedPreparations.length,
       total: totalCount,
       page: pageNum,
@@ -257,8 +257,7 @@ router.get('/history', async (req, res) => {
           hasPrevPage
         },
         filters: {
-          startDate: defaultStartDate,
-          endDate: defaultEndDate,
+          date: today.toISOString().split('T')[0], // Date du jour
           agencyId,
           search
         }
@@ -276,43 +275,61 @@ router.get('/history', async (req, res) => {
 
 /**
  * @route   GET /api/preparations/my-stats
- * @desc    Obtenir les statistiques personnelles de l'utilisateur
+ * @desc    Obtenir les statistiques personnelles détaillées de l'utilisateur
  * @access  Preparateur
  */
 router.get('/my-stats', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { period = '30d' } = req.query;
+    const { period = 'today', agencyId } = req.query;
 
-    console.log('📊 Récupération statistiques utilisateur:', { userId, period });
+    console.log('📊 Récupération statistiques détaillées:', { userId, period, agencyId });
 
     // Définir la période
-    let startDate;
+    let startDate, endDate = new Date();
+    
     switch (period) {
-      case '7d':
-        startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      case 'today':
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
-      case '30d':
-        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      case 'week':
+        startDate = new Date();
+        const dayOfWeek = startDate.getDay();
+        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Lundi = 0
+        startDate.setDate(startDate.getDate() - daysToSubtract);
+        startDate.setHours(0, 0, 0, 0);
         break;
-      case '90d':
-        startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      case 'month':
+        startDate = new Date();
+        startDate.setDate(1);
+        startDate.setHours(0, 0, 0, 0);
         break;
       default:
-        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
     }
 
+    // Construction de la requête avec filtres
     const query = {
       user: userId,
       status: { $in: [PREPARATION_STATUS.COMPLETED, PREPARATION_STATUS.CANCELLED] },
-      createdAt: { $gte: startDate }
+      createdAt: { $gte: startDate, $lte: endDate }
     };
 
-    const preparations = await Preparation.find(query).lean();
+    // Filtre par agence si spécifié
+    if (agencyId && agencyId !== 'all') {
+      query.agency = agencyId;
+    }
+
+    const preparations = await Preparation.find(query)
+      .populate('agency', 'name code')
+      .lean();
     
     const completedPreparations = preparations.filter(p => p.status === PREPARATION_STATUS.COMPLETED);
 
-    // Calcul des statistiques
+    // ===== STATISTIQUES DE BASE =====
     const totalPreparations = preparations.length;
     const completedCount = completedPreparations.length;
     const completionRate = totalPreparations > 0 ? (completedCount / totalPreparations) * 100 : 0;
@@ -329,24 +346,237 @@ router.get('/my-stats', async (req, res) => {
     const worstTime = completedPreparations.length > 0 ?
       Math.max(...completedPreparations.map(prep => prep.totalTime || 0)) : 0;
 
-    console.log('✅ Statistiques calculées:', {
-      totalPreparations,
-      completionRate: Math.round(completionRate),
-      averageTime: Math.round(averageTime),
-      onTimeRate: Math.round(onTimeRate)
+    // ===== STATISTIQUES PAR TYPE DE VÉHICULE =====
+    const particulierPreps = completedPreparations.filter(p => {
+      // Vérifier dans vehicleInfo d'abord (données intégrées)
+      const vehicleType = p.vehicleInfo?.vehicleType || 
+                         p.vehicle?.vehicleType || 
+                         'particulier'; // défaut
+      return vehicleType === 'particulier';
+    });
+    
+    const utilitairePreps = completedPreparations.filter(p => {
+      // Vérifier dans vehicleInfo d'abord (données intégrées)
+      const vehicleType = p.vehicleInfo?.vehicleType || 
+                         p.vehicle?.vehicleType || 
+                         'particulier'; // défaut
+      return vehicleType === 'utilitaire';
+    });
+
+    // Debug pour comprendre la structure des données
+    if (completedPreparations.length > 0) {
+      const samplePrep = completedPreparations[0];
+      console.log('🔍 Sample preparation structure:', {
+        id: samplePrep._id,
+        hasVehicle: !!samplePrep.vehicle,
+        vehicleType: typeof samplePrep.vehicle,
+        hasVehicleInfo: !!samplePrep.vehicleInfo,
+        vehicleInfoType: samplePrep.vehicleInfo?.vehicleType,
+        vehicleVehicleType: samplePrep.vehicle?.vehicleType
+      });
+    }
+
+    console.log('🚗 Types de véhicules:', {
+      total: completedPreparations.length,
+      particulier: particulierPreps.length,
+      utilitaire: utilitairePreps.length
+    });
+
+    const vehicleTypeStats = {
+      particulier: {
+        count: particulierPreps.length,
+        averageTime: particulierPreps.length > 0 ? 
+          Math.round((particulierPreps.reduce((sum, p) => sum + (p.totalTime || 0), 0) / particulierPreps.length) * 10) / 10 : 0,
+        onTimeRate: particulierPreps.length > 0 ? 
+          Math.round(((particulierPreps.filter(p => p.totalTime <= 30).length / particulierPreps.length) * 100) * 10) / 10 : 0
+      },
+      utilitaire: {
+        count: utilitairePreps.length,
+        averageTime: utilitairePreps.length > 0 ? 
+          Math.round((utilitairePreps.reduce((sum, p) => sum + (p.totalTime || 0), 0) / utilitairePreps.length) * 10) / 10 : 0,
+        onTimeRate: utilitairePreps.length > 0 ? 
+          Math.round(((utilitairePreps.filter(p => p.totalTime <= 30).length / utilitairePreps.length) * 100) * 10) / 10 : 0
+      }
+    };
+
+    // ===== ÉVOLUTION HEBDOMADAIRE =====
+    const weeklyStats = [];
+    
+    // Adapter les intervalles selon la période
+    switch (period) {
+      case 'today':
+        // Pour aujourd'hui, montrer les heures (tranches de 4h)
+        for (let hour = 0; hour < 24; hour += 4) {
+          const intervalStart = new Date(startDate);
+          intervalStart.setHours(hour, 0, 0, 0);
+          const intervalEnd = new Date(startDate);
+          intervalEnd.setHours(Math.min(hour + 3, 23), 59, 59, 999);
+
+          const intervalPreps = completedPreparations.filter(p => 
+            p.createdAt >= intervalStart && p.createdAt <= intervalEnd
+          );
+
+          const intervalOnTime = intervalPreps.filter(p => p.totalTime <= 30).length;
+          const avgTime = intervalPreps.length > 0 ? 
+            Math.round(intervalPreps.reduce((sum, p) => sum + (p.totalTime || 0), 0) / intervalPreps.length) : 0;
+
+          weeklyStats.push({
+            date: `${hour}h-${Math.min(hour + 3, 23)}h`,
+            count: intervalPreps.length,
+            averageTime: avgTime,
+            onTimeCount: intervalOnTime
+          });
+        }
+        break;
+        
+      case 'week':
+        // Pour cette semaine, montrer les 7 jours
+        for (let i = 0; i < 7; i++) {
+          const dayStart = new Date(startDate);
+          dayStart.setDate(startDate.getDate() + i);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setHours(23, 59, 59, 999);
+
+          // Vérifier que le jour n'est pas dans le futur
+          if (dayStart > endDate) break;
+
+          const dayPreps = completedPreparations.filter(p => 
+            p.createdAt >= dayStart && p.createdAt <= dayEnd
+          );
+
+          const dayOnTime = dayPreps.filter(p => p.totalTime <= 30).length;
+          const avgTime = dayPreps.length > 0 ? 
+            Math.round(dayPreps.reduce((sum, p) => sum + (p.totalTime || 0), 0) / dayPreps.length) : 0;
+
+          weeklyStats.push({
+            date: dayStart.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }),
+            count: dayPreps.length,
+            averageTime: avgTime,
+            onTimeCount: dayOnTime
+          });
+        }
+        break;
+        
+      case 'month':
+        // Pour ce mois, montrer par semaines
+        const currentDate = new Date(startDate);
+        let weekNumber = 1;
+        
+        while (currentDate <= endDate) {
+          const weekStart = new Date(currentDate);
+          const weekEnd = new Date(currentDate);
+          weekEnd.setDate(weekEnd.getDate() + 6);
+          
+          // Limiter à la fin du mois
+          if (weekEnd > endDate) {
+            weekEnd.setTime(endDate.getTime());
+          }
+
+          const weekPreps = completedPreparations.filter(p => 
+            p.createdAt >= weekStart && p.createdAt <= weekEnd
+          );
+
+          const weekOnTime = weekPreps.filter(p => p.totalTime <= 30).length;
+          const avgTime = weekPreps.length > 0 ? 
+            Math.round(weekPreps.reduce((sum, p) => sum + (p.totalTime || 0), 0) / weekPreps.length) : 0;
+
+          weeklyStats.push({
+            date: `Semaine ${weekNumber}`,
+            count: weekPreps.length,
+            averageTime: avgTime,
+            onTimeCount: weekOnTime
+          });
+
+          currentDate.setDate(currentDate.getDate() + 7);
+          weekNumber++;
+          
+          // Limite de sécurité
+          if (weekNumber > 5) break;
+        }
+        break;
+    }
+
+    // ===== STATISTIQUES PAR ÉTAPE =====
+    const stepDefinitions = [
+      { step: 'exterior', label: 'Extérieur', icon: '🚗' },
+      { step: 'interior', label: 'Intérieur', icon: '🧽' },
+      { step: 'fuel', label: 'Carburant', icon: '⛽' },
+      { step: 'special_wash', label: 'Lavage Spécial', icon: '✨' }
+    ];
+
+    const stepStats = stepDefinitions.map(stepDef => {
+      // Calculer les stats pour cette étape sur toutes les préparations
+      const stepsData = completedPreparations.map(prep => 
+        prep.steps?.find(s => s.step === stepDef.step)
+      ).filter(Boolean);
+
+      const completedSteps = stepsData.filter(s => s.completed);
+      const avgDuration = completedSteps.length > 0 ? 
+        completedSteps.reduce((sum, s) => sum + (s.duration || 5), 0) / completedSteps.length : 5;
+
+      return {
+        stepType: stepDef.step,
+        stepLabel: stepDef.label,
+        averageTime: Math.round(avgDuration),
+        completionRate: stepsData.length > 0 ? (completedSteps.length / stepsData.length) * 100 : 0,
+        icon: stepDef.icon
+      };
+    });
+
+    // ===== TENDANCES =====
+    // Calculer les changements par rapport à la période précédente
+    const previousPeriodStart = new Date(startDate.getTime() - (endDate.getTime() - startDate.getTime()));
+    const previousPreps = await Preparation.find({
+      ...query,
+      createdAt: { $gte: previousPeriodStart, $lt: startDate }
+    }).lean();
+
+    const previousCompleted = previousPreps.filter(p => p.status === PREPARATION_STATUS.COMPLETED);
+    const previousAvgTime = previousCompleted.length > 0 ? 
+      previousCompleted.reduce((sum, p) => sum + (p.totalTime || 0), 0) / previousCompleted.length : 0;
+    const previousOnTimeRate = previousCompleted.length > 0 ? 
+      (previousCompleted.filter(p => p.totalTime <= 30).length / previousCompleted.length) * 100 : 0;
+
+    const trends = {
+      preparationsChange: previousPreps.length > 0 ? 
+        Math.round(((totalPreparations - previousPreps.length) / previousPreps.length) * 100) : 0,
+      timeChange: previousAvgTime > 0 ? 
+        Math.round(((averageTime - previousAvgTime) / previousAvgTime) * 100) : 0,
+      onTimeChange: previousOnTimeRate > 0 ? 
+        Math.round((onTimeRate - previousOnTimeRate) * 10) / 10 : 0
+    };
+
+    console.log('✅ Statistiques détaillées calculées:', {
+      total: totalPreparations,
+      avgTime: Math.round(averageTime),
+      onTimeRate: Math.round(onTimeRate),
+      vehicleTypes: vehicleTypeStats,
+      trends
     });
 
     res.json({
       success: true,
       data: {
+        // Stats de base
         totalPreparations,
-        averageTime: Math.round(averageTime),
-        onTimeRate: Math.round(onTimeRate),
-        completionRate: Math.round(completionRate),
+        averageTime: Math.round(averageTime * 10) / 10,
+        onTimeRate: Math.round(onTimeRate * 10) / 10,
+        completionRate: Math.round(completionRate * 10) / 10,
         bestTime: bestTime || 0,
-        worstTime: worstTime || 0,
-        period,
-        lastCalculated: new Date()
+        worstTime,
+        
+        // Période
+        period: {
+          startDate,
+          endDate
+        },
+        
+        // Stats avancées
+        vehicleTypeStats,
+        weeklyStats,
+        stepStats,
+        trends
       }
     });
 

@@ -1,5 +1,5 @@
 // preparator-app/src/app/(dashboard)/preparations/page.tsx
-// ✅ Page préparations avec lien vers l'historique et navigation bottom
+// ✅ Page préparations avec lien vers les stats
 
 'use client';
 
@@ -11,7 +11,8 @@ import {
   Car,
   ArrowRight,
   History,
-  AlertTriangle
+  AlertTriangle,
+  BarChart3  // ✅ AJOUTÉ pour l'icône des stats
 } from 'lucide-react';
 
 import { usePreparationStore } from '@/lib/stores/preparation';
@@ -58,51 +59,47 @@ const PreparationsPage: React.FC = () => {
 
   // Rediriger vers la préparation en cours si elle existe
   useEffect(() => {
-    if (currentPreparation && currentPreparation.id && !isLoading) {
-      console.log('Redirection vers préparation:', currentPreparation.id);
+    if (currentPreparation && !isLoading) {
+      console.log('📋 Préparation en cours détectée, redirection...');
       router.push(`/preparations/${currentPreparation.id}`);
     }
-  }, [currentPreparation, router, isLoading]);
+  }, [currentPreparation, isLoading, router]);
 
   // Gestionnaires d'événements
   const handleStartNewPreparation = () => {
     router.push('/preparations/new');
   };
 
-  // ✅ Redirection vers l'historique corrigée
   const handleViewHistory = () => {
     router.push('/preparations/history');
   };
 
+  // Rendu en cas de chargement
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center pb-20">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Chargement...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Vérification des préparations en cours...</p>
         </div>
-        <BottomNavigation />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">Préparations</h1>
-          <p className="text-gray-600 mt-1">Gérez vos préparations de véhicules</p>
+    <div className="min-h-screen bg-gray-50">
+      <main className="max-w-md mx-auto p-4 space-y-6">
+        {/* Header */}
+        <div className="text-center py-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Préparations</h1>
+          <p className="text-gray-600">Gérez vos préparations de véhicules</p>
         </div>
-      </header>
 
-      {/* Contenu principal */}
-      <main className="p-4 space-y-6">
         {/* Affichage des erreurs */}
         {error && (
           <Card className="border-red-200 bg-red-50">
             <CardContent className="p-4">
-              <div className="flex items-center">
+              <div className="flex items-center text-red-600">
                 <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
                 <p className="text-red-700">{error}</p>
               </div>
@@ -159,18 +156,23 @@ const PreparationsPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Statistiques rapides - placeholder */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-green-600" />
+          {/* ✅ MODIFIÉ: Lien vers les statistiques au lieu de "Bientôt" */}
+          <Card className="cursor-pointer hover:bg-gray-50 transition-colors">
+            <CardContent 
+              className="p-4"
+              onClick={() => router.push('/stats')}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                    <BarChart3 className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900">Mes statistiques</h3>
+                    <p className="text-sm text-gray-600">Performance et analyses détaillées</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">Performance</h3>
-                  <p className="text-sm text-gray-600">Vos statistiques détaillées</p>
-                </div>
-                <Badge variant="outline">Bientôt</Badge>
+                <ArrowRight className="h-5 w-5 text-gray-400" />
               </div>
             </CardContent>
           </Card>

@@ -258,7 +258,7 @@ export default function DashboardPage() {
           </button>
           
           <button
-            onClick={() => router.push('/preparations')}
+            onClick={() => router.push('/preparations/new')}
             className="w-full flex items-center justify-center p-4 bg-green-600 text-white rounded-lg shadow-sm hover:bg-green-700 transition-colors"
           >
             <Plus className="w-5 h-5 mr-3" />
