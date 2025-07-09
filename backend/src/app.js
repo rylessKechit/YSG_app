@@ -117,6 +117,8 @@ try {
 
 // ===== ROUTES ADMIN =====
 
+app.use('/api/admin/preparations', require('./routes/admin/preparations'));
+
 try {
   // Users - ✅ CORRIGÉ: Utilise le nouveau fichier index.js
   app.use('/api/admin/users', require('./routes/admin/users/index'));

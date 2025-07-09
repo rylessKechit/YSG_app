@@ -11,9 +11,11 @@ import {
   Calendar, 
   Clock,  // ✅ AJOUTÉ pour Timesheets
   BarChart3, 
+  Wrench,
   Settings,
   LogOut,
   ChevronDown,
+  Building2,
   ChevronRight
 } from 'lucide-react';
 
@@ -29,7 +31,7 @@ interface NavItem {
 }
 
 // ✅ NAVIGATION MISE À JOUR avec Timesheets
-const navigation: NavItem[] = [
+const navigationItems = [
   {
     title: 'Dashboard',
     href: '/dashboard',
@@ -41,19 +43,20 @@ const navigation: NavItem[] = [
     icon: Users,
   },
   {
-    title: 'Agences',
-    href: '/agencies',
-    icon: Building,
-  },
-  {
-    title: 'Planification',
+    title: 'Plannings',
     href: '/schedules',
     icon: Calendar,
   },
+  // ✅ NOUVEAU MENU
   {
-    title: 'Pointages',  // ✅ NOUVEAU
-    href: '/timesheets',
-    icon: Clock,
+    title: 'Préparations',
+    href: '/preparations',
+    icon: Wrench,
+  },
+  {
+    title: 'Agences',
+    href: '/agencies',
+    icon: Building2,
   },
   {
     title: 'Rapports',
@@ -149,7 +152,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {navigation.map(item => renderNavItem(item))}
+        {navigationItems.map(item => renderNavItem(item))}
       </nav>
 
       {/* User section */}
