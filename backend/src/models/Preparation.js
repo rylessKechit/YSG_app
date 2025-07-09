@@ -53,8 +53,9 @@ const vehicleInfoSchema = new mongoose.Schema({
   },
   brand: {
     type: String,
-    required: true,
-    trim: true
+    required: false,
+    trim: true,
+    default: ''
   },
   model: {
     type: String,

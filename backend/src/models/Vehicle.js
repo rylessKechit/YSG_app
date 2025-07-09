@@ -18,9 +18,10 @@ const vehicleSchema = new mongoose.Schema({
 
   brand: {
     type: String,
-    required: [true, 'La marque est requise'],
+    required: false,
     trim: true,
-    maxlength: [50, 'La marque ne peut pas dépasser 50 caractères']
+    maxlength: [50, 'La marque ne peut pas dépasser 50 caractères'],
+    default: ''
   },
 
   model: {

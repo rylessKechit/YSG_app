@@ -171,7 +171,11 @@ const preparationSchemas = {
       .messages({
         'string.pattern.base': 'Format de plaque d\'immatriculation invalide'
       }),
-    brand: Joi.string().required().trim().min(1).max(50),
+    brand: Joi.string() // ✅ SUPPRIMÉ : .required()
+      .trim()
+      .max(50)
+      .allow('') // ✅ AJOUTÉ : permet les chaînes vides
+      .optional(),
     model: Joi.string().required().trim().min(1).max(50),
     notes: Joi.string().optional().trim().max(500).allow('')
   }),
@@ -343,10 +347,11 @@ const vehicleSchemas = {
       .messages({
         'string.pattern.base': 'Format de plaque invalide'
       }),
-    brand: Joi.string()
-      .required()
+    brand: Joi.string() // ✅ SUPPRIMÉ : .required()
       .trim()
-      .max(50),
+      .max(50)
+      .allow('') // ✅ AJOUTÉ : permet les chaînes vides
+      .optional(),
     model: Joi.string()
       .required()
       .trim()

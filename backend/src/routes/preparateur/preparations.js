@@ -588,7 +588,7 @@ router.post('/start',
       // ✅ Créer l'objet véhicule avec vos données
       const vehicleData = {
         licensePlate: licensePlate.toUpperCase().trim(),
-        brand: brand.trim(),
+        brand: '',
         model: model.trim(),
         vehicleType: vehicleType, // ✅ NOUVEAU : Type de véhicule pour facturation
         year: year || null,

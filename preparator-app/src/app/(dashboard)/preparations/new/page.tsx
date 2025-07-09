@@ -64,7 +64,6 @@ const vehicleSchema = z.object({
     .min(1, 'Plaque d\'immatriculation requise')
     .regex(/^[A-Z0-9\-\s]+$/i, 'Format de plaque invalide')
     .transform(val => val.toUpperCase().replace(/\s+/g, '')),
-  brand: z.string().min(1, 'Marque requise'),
   model: z.string().min(1, 'Modèle requis'),
   vehicleType: z.enum(['particulier', 'utilitaire'], {
     required_error: 'Type de véhicule requis',
@@ -82,21 +81,6 @@ const vehicleSchema = z.object({
   notes: z.string().max(500, 'Notes trop longues (max 500 caractères)').optional()
 }) satisfies z.ZodType<VehicleFormData>;
 
-// ===== CONSTANTES =====
-
-const VEHICLE_BRANDS = [
-  'Audi', 'BMW', 'Mercedes-Benz', 'Volkswagen', 'Renault', 'Peugeot', 
-  'Citroën', 'Ford', 'Opel', 'Toyota', 'Honda', 'Nissan', 'Hyundai',
-  'Kia', 'Seat', 'Skoda', 'Fiat', 'Alfa Romeo', 'Volvo', 'Mini',
-  'Dacia', 'Suzuki', 'Mitsubishi', 'Mazda', 'Subaru', 'Jeep',
-  'Land Rover', 'Jaguar', 'Porsche', 'Tesla', 'Autre'
-];
-
-const VEHICLE_COLORS = [
-  'Noir', 'Blanc', 'Gris', 'Argent', 'Bleu', 'Rouge', 'Vert', 
-  'Jaune', 'Orange', 'Violet', 'Marron', 'Beige', 'Rose', 'Autre'
-];
-
 // ===== COMPOSANT PRINCIPAL =====
 
 const NewPreparationPage: React.FC = () => {
@@ -113,8 +97,6 @@ const NewPreparationPage: React.FC = () => {
   } = usePreparationStore();
 
   // États locaux
-  const [customBrand, setCustomBrand] = useState<string>('');
-  const [showCustomBrand, setShowCustomBrand] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Formulaire
@@ -189,18 +171,6 @@ const NewPreparationPage: React.FC = () => {
     form.setValue('licensePlate', value, { shouldValidate: true });
   };
 
-  // Gérer le changement de marque
-  const handleBrandChange = (value: string) => {
-    if (value === 'Autre') {
-      setShowCustomBrand(true);
-      form.setValue('brand', '', { shouldValidate: true });
-    } else {
-      setShowCustomBrand(false);
-      setCustomBrand('');
-      form.setValue('brand', value, { shouldValidate: true });
-    }
-  };
-
   // Formater la plaque finale
   const formatLicensePlate = (plate: string): string => {
     return plate.replace(/\s+/g, '').toUpperCase();
@@ -217,7 +187,6 @@ const NewPreparationPage: React.FC = () => {
       const vehicleData: VehicleFormData = {
         agencyId: data.agencyId,
         licensePlate: formatLicensePlate(data.licensePlate),
-        brand: showCustomBrand ? customBrand.trim() : data.brand,
         model: data.model.trim(),
         vehicleType: data.vehicleType,
         color: data.color?.trim() || '',
@@ -410,60 +379,6 @@ const NewPreparationPage: React.FC = () => {
                       <div className="text-xs text-gray-600 mt-1">
                         💡 Ce choix influence la tarification de la préparation
                       </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Marque du véhicule */}
-                <FormField
-                  control={form.control}
-                  name="brand"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Marque du véhicule *</FormLabel>
-                      {!showCustomBrand ? (
-                        <Select onValueChange={handleBrandChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="h-12">
-                              <SelectValue placeholder="Sélectionnez une marque" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="max-h-60">
-                            {VEHICLE_BRANDS.map(brand => (
-                              <SelectItem key={brand} value={brand}>
-                                {brand}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <div className="space-y-2">
-                          <FormControl>
-                            <Input
-                              placeholder="Saisissez la marque"
-                              value={customBrand}
-                              onChange={(e) => {
-                                setCustomBrand(e.target.value);
-                                field.onChange(e.target.value);
-                              }}
-                              className="h-12"
-                            />
-                          </FormControl>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setShowCustomBrand(false);
-                              setCustomBrand('');
-                              field.onChange('');
-                            }}
-                          >
-                            Choisir dans la liste
-                          </Button>
-                        </div>
-                      )}
                       <FormMessage />
                     </FormItem>
                   )}

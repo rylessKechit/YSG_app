@@ -140,7 +140,7 @@ export interface Preparation {
 export interface VehicleFormData {
   agencyId: string;
   licensePlate: string;
-  brand: string;
+  brand?: string;
   model: string;
   vehicleType: VehicleType;
   color?: string;

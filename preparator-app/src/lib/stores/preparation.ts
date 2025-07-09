@@ -211,7 +211,7 @@ export const usePreparationStore = create<PreparationStore>()(
         try {
           const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
             `/preparations/${preparationId}/complete`,
-            { notes }
+            notes && notes.trim() ? notes.trim() : undefined
           );
           
           if (response.data.success && response.data.data) {

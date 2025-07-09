@@ -169,7 +169,7 @@ const PreparationWorkflowPage = () => {
 
     setIsCompletingPreparation(true);
     try {
-      await completePreparation(currentPreparation.id, finalNotes);
+      await completePreparation(currentPreparation.id, finalNotes.trim() || undefined);
       
       toast({
         title: "🎉 Préparation terminée !",

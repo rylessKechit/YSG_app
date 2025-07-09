@@ -75,7 +75,7 @@ export class PreparationAPI {
   async completePreparation(preparationId: string, notes?: string): Promise<{ preparation: Preparation }> {
     const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
       `/preparations/${preparationId}/complete`,
-      { notes: notes || '' }
+      notes && notes.trim() ? { notes: notes.trim() } : {}
     );
     
     return response.data.data!;

@@ -16,7 +16,7 @@ export type IssueType = 'damage' | 'cleanliness' | 'missing_item' | 'mechanical'
 export interface VehicleInfo {
   id?: string;
   licensePlate: string;
-  brand: string;
+  brand?: string;
   model: string;
   vehicleType: VehicleType; // ✅ NOUVEAU : Type de véhicule pour facturation
   year?: number;
@@ -171,7 +171,7 @@ export type BackendPreparation = Preparation;
 export interface VehicleFormData {
   agencyId: string;
   licensePlate: string;
-  brand: string;
+  brand?: string;
   model: string;
   vehicleType: VehicleType; // ✅ NOUVEAU : Type de véhicule requis
   color?: string;
