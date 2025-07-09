@@ -8,6 +8,7 @@ const { preparateurAuth } = require('../../middleware/adminAuth');
 const { validateQuery } = require('../../middleware/validation');
 const { querySchemas } = require('../../middleware/validation');
 const { ERROR_MESSAGES } = require('../../utils/constants');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
@@ -22,224 +23,189 @@ router.use(auth, preparateurAuth);
 router.get('/dashboard', async (req, res) => {
   try {
     const userId = req.user.userId;
+    
+    // Vérifier que l'userId est valide
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID utilisateur invalide'
+      });
+    }
+
+    // Dates pour aujourd'hui
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    console.log('🔍 Recherche planning pour:', {
-      userId,
-      date: today.toISOString().split('T')[0]
-    });
-
-    // ✅ FIX: Supprimer le filtre status strict et ajouter des logs
-    const todaySchedule = await Schedule.findOne({
-      user: userId,
-      date: {
-        $gte: today,
-        $lt: tomorrow
-      }
-      // ✅ SUPPRIMÉ: status: 'active' - peut ne pas exister ou être différent
-    })
-    .populate('agency', 'name code client')
-    .sort({ createdAt: -1 }); // Prendre le plus récent en cas de multiples
-
-    // ✅ LOG: Debug pour voir ce qui est trouvé
-    if (todaySchedule) {
-      console.log('✅ Planning trouvé:', {
-        id: todaySchedule._id,
-        agency: todaySchedule.agency?.name,
-        horaires: `${todaySchedule.startTime} - ${todaySchedule.endTime}`,
-        status: todaySchedule.status || 'undefined',
-        date: todaySchedule.date
-      });
-    } else {
-      console.log('❌ Aucun planning trouvé pour aujourd\'hui');
-      
-      // ✅ DEBUG: Chercher tous les plannings de l'utilisateur pour debug
-      const allUserSchedules = await Schedule.find({ user: userId })
-        .sort({ date: -1 })
-        .limit(5)
-        .populate('agency', 'name');
-        
-      console.log('📋 Derniers plannings utilisateur:', allUserSchedules.map(s => ({
-        date: s.date.toISOString().split('T')[0],
-        agency: s.agency?.name,
-        status: s.status || 'undefined',
-        horaires: `${s.startTime} - ${s.endTime}`
-      })));
-    }
-
-    // Récupérer les autres données en parallèle
-    const [
-      user,
-      todayTimesheet,
-      currentPreparation,
-      weekStats,
-      recentPreparations
-    ] = await Promise.all([
+    // Récupération de toutes les données en parallèle
+    const [user, todaySchedule, todayTimesheet, currentPreparation] = await Promise.all([
       // Utilisateur avec ses agences
       User.findById(userId).populate('agencies', 'name code client'),
-
-      // Pointage d'aujourd'hui
-      Timesheet.findOne({
-        user: userId,
-        date: {
-          $gte: today,
-          $lt: tomorrow
-        }
+      
+      // Planning d'aujourd'hui
+      Schedule.findOne({
+        user: new mongoose.Types.ObjectId(userId),
+        date: { $gte: today, $lt: tomorrow }
       }).populate('agency', 'name code client'),
-
+      
+      // Timesheet d'aujourd'hui
+      Timesheet.findOne({
+        user: new mongoose.Types.ObjectId(userId),
+        $or: [
+          { date: today },
+          { date: { $gte: today, $lt: tomorrow } },
+          { createdAt: { $gte: today, $lt: tomorrow } }
+        ]
+      }).populate('agency', 'name code client').sort({ createdAt: -1 }),
+      
       // Préparation en cours
       Preparation.findOne({
-        user: userId,
+        user: new mongoose.Types.ObjectId(userId),
         status: 'in_progress'
-      })
-      .populate('vehicle', 'licensePlate brand model')
-      .populate('agency', 'name code'),
-
-      // Statistiques de la semaine
-      Promise.all([
-        Preparation.countDocuments({
-          user: userId,
-          status: 'completed',
-          createdAt: { $gte: getWeekStart(today), $lte: getWeekEnd(today) }
-        }),
-        Preparation.countDocuments({
-          user: userId,
-          status: 'completed',
-          isOnTime: true,
-          createdAt: { $gte: getWeekStart(today), $lte: getWeekEnd(today) }
-        }),
-        // Compter les jours ponctuel cette semaine
-        Timesheet.countDocuments({
-          user: userId,
-          date: { $gte: getWeekStart(today), $lte: getWeekEnd(today) },
-          isLate: false,
-          clockInTime: { $exists: true }
-        })
-      ]),
-
-      // Préparations récentes
-      Preparation.find({
-        user: userId,
-        status: { $in: ['completed', 'cancelled'] }
-      })
-      .populate('vehicle', 'licensePlate brand model')
-      .populate('agency', 'name code')
-      .sort({ createdAt: -1 })
-      .limit(5)
+      }).populate('vehicle agency', 'licensePlate brand model name code')
     ]);
 
-    const [weekPreparations, weekOnTime, weekPunctual] = weekStats;
+    // Vérifier que l'utilisateur existe
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Utilisateur non trouvé'
+      });
+    }
 
-    // Calculer le statut actuel
-    const currentStatus = {
-      isClockedIn: !!todayTimesheet?.clockInTime && !todayTimesheet?.clockOutTime,
-      isClockedOut: !!todayTimesheet?.clockOutTime,
-      isOnBreak: !!todayTimesheet?.breaks?.some(b => b.startTime && !b.endTime),
-      hasActivePreparation: !!currentPreparation
+    // Calcul des statistiques utilisateur
+    const userStatsPromise = Preparation.aggregate([
+      { $match: { user: new mongoose.Types.ObjectId(userId) } },
+      {
+        $group: {
+          _id: null,
+          totalPreparations: { $sum: 1 },
+          completedPreparations: { 
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          averageTime: { 
+            $avg: { 
+              $cond: [
+                { $and: [{ $ne: ['$totalTime', null] }, { $gt: ['$totalTime', 0] }] },
+                '$totalTime',
+                null
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    // Calcul du taux de ponctualité
+    const punctualityStatsPromise = Timesheet.aggregate([
+      { $match: { user: new mongoose.Types.ObjectId(userId) } },
+      {
+        $group: {
+          _id: null,
+          totalTimesheets: { $sum: 1 },
+          onTimeCount: {
+            $sum: {
+              $cond: [
+                { $lte: [{ $ifNull: ['$delays.startDelay', 0] }, 5] },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const [userStatsResult, punctualityStatsResult] = await Promise.all([
+      userStatsPromise,
+      punctualityStatsPromise
+    ]);
+
+    // Extraction des statistiques
+    const userStats = userStatsResult[0] || {
+      totalPreparations: 0,
+      completedPreparations: 0,
+      averageTime: 0
     };
 
-    // ✅ FIX: Construction de la réponse avec planning corrigé
-    const response = {
-      success: true,
-      data: {
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          role: user.role,
-          agencies: user.agencies.map(agency => ({
-            id: agency._id,
-            name: agency.name,
-            code: agency.code,
-            client: agency.client,
-            isDefault: agency.isDefault || false
-          }))
-        },
-        today: {
-          date: today,
-          // ✅ FIX: Retourner le planning même sans status 'active'
-          schedule: todaySchedule ? {
-            id: todaySchedule._id,
-            agency: {
-              id: todaySchedule.agency._id,
-              name: todaySchedule.agency.name,
-              code: todaySchedule.agency.code,
-              client: todaySchedule.agency.client
-            },
-            startTime: todaySchedule.startTime,
-            endTime: todaySchedule.endTime,
-            breakStart: todaySchedule.breakStart,
-            breakEnd: todaySchedule.breakEnd,
-            workingDuration: todaySchedule.workingDuration,
-            timeRange: `${todaySchedule.startTime} - ${todaySchedule.endTime}`,
-            // ✅ Inclure le status même s'il est undefined
-            status: todaySchedule.status || 'active'
-          } : null,
-          timesheet: todayTimesheet ? {
-            id: todayTimesheet._id,
-            agency: todayTimesheet.agency,
-            clockInTime: todayTimesheet.clockInTime,
-            clockOutTime: todayTimesheet.clockOutTime,
-            breaks: todayTimesheet.breaks,
-            totalWorkTime: todayTimesheet.totalWorkTime,
-            isLate: todayTimesheet.isLate,
-            lateMinutes: todayTimesheet.lateMinutes,
-            status: todayTimesheet.status
-          } : null,
-          currentPreparation: currentPreparation ? {
-            id: currentPreparation._id,
-            vehicle: currentPreparation.vehicle,
-            agency: currentPreparation.agency,
-            startTime: currentPreparation.startTime,
-            currentDuration: Math.floor((new Date() - currentPreparation.startTime) / (1000 * 60)),
-            progress: Math.round((currentPreparation.steps.filter(s => s.completed).length / currentPreparation.steps.length) * 100)
-          } : null,
-          currentStatus
-        },
-        weekStats: {
-          period: { 
-            start: getWeekStart(today), 
-            end: getWeekEnd(today) 
+    const punctualityStats = punctualityStatsResult[0];
+    const onTimeRate = punctualityStats && punctualityStats.totalTimesheets > 0 
+      ? Math.round((punctualityStats.onTimeCount / punctualityStats.totalTimesheets) * 100)
+      : 0;
+
+    // Construction de la réponse
+    const dashboardData = {
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        agencies: user.agencies || [],
+        stats: {
+          totalPreparations: userStats.totalPreparations,
+          averageTime: Math.round(userStats.averageTime || 0),
+          onTimeRate: onTimeRate
+        }
+      },
+      today: {
+        schedule: todaySchedule ? {
+          id: todaySchedule._id,
+          startTime: todaySchedule.startTime,
+          endTime: todaySchedule.endTime,
+          breakStart: todaySchedule.breakStart,
+          breakEnd: todaySchedule.breakEnd,
+          agency: {
+            id: todaySchedule.agency._id,
+            name: todaySchedule.agency.name,
+            code: todaySchedule.agency.code,
+            client: todaySchedule.agency.client
+          }
+        } : null,
+        
+        timesheet: todayTimesheet ? {
+          id: todayTimesheet._id,
+          startTime: todayTimesheet.startTime,
+          endTime: todayTimesheet.endTime,
+          breakStart: todayTimesheet.breakStart,
+          breakEnd: todayTimesheet.breakEnd,
+          status: todayTimesheet.status,
+          totalWorkedMinutes: todayTimesheet.totalWorkedMinutes || 0,
+          agency: todayTimesheet.agency ? {
+            id: todayTimesheet.agency._id,
+            name: todayTimesheet.agency.name,
+            code: todayTimesheet.agency.code
+          } : null
+        } : null,
+        
+        currentPreparation: currentPreparation ? {
+          id: currentPreparation._id,
+          status: currentPreparation.status,
+          vehicle: {
+            licensePlate: currentPreparation.vehicle.licensePlate,
+            brand: currentPreparation.vehicle.brand,
+            model: currentPreparation.vehicle.model
           },
-          preparations: weekPreparations,
-          onTimePreparations: weekOnTime,
-          punctualDays: weekPunctual,
-          onTimeRate: weekPreparations > 0 ? Math.round((weekOnTime / weekPreparations) * 100) : 0,
-          punctualityRate: 7 > 0 ? Math.round((weekPunctual / 7) * 100) : 0
-        },
-        recentActivity: recentPreparations.map(prep => ({
-          id: prep._id,
-          vehicle: prep.vehicle,
-          agency: prep.agency,
-          date: prep.createdAt,
-          duration: prep.totalTime,
-          isOnTime: prep.isOnTime,
-          status: prep.status,
-          completedSteps: prep.steps?.filter(s => s.completed).length || 0,
-          totalSteps: prep.steps?.length || 6
-        }))
+          agency: {
+            name: currentPreparation.agency.name,
+            code: currentPreparation.agency.code
+          }
+        } : null
       }
     };
 
-    console.log('📊 Réponse dashboard:', {
-      hasSchedule: !!response.data.today.schedule,
-      hasTimesheet: !!response.data.today.timesheet,
-      hasPreparation: !!response.data.today.currentPreparation
+    res.json({
+      success: true,
+      data: dashboardData
     });
 
-    res.json(response);
-
   } catch (error) {
-    console.error('❌ Erreur dashboard préparateur:', error);
+    console.log(error)
     res.status(500).json({
       success: false,
-      message: 'Erreur serveur',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Erreur lors du chargement du dashboard',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne du serveur'
     });
   }
 });

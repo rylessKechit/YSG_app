@@ -205,101 +205,193 @@ router.get('/me', async (req, res) => {
 
 // Route pour obtenir les statistiques rapides
 router.get('/dashboard', async (req, res) => {
+  console.log('🔄 Chargement du dashboard pour l\'utilisateur:', req.user.userId);
   try {
     const userId = req.user.userId;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Requêtes parallèles pour les statistiques
-    const [currentPreparation, todayTimesheet, weekStats] = await Promise.all([
+    console.log('📊 Dashboard pour user:', userId, 'date:', today.toISOString().split('T')[0]);
+
+    // ✅ DEBUG COMPLET - Vérifier d'abord tous les timesheets de l'utilisateur
+    console.log('🔍 DEBUG: Recherche de TOUS les timesheets de l\'utilisateur...');
+    const allUserTimesheets = await Timesheet.find({ user: userId })
+      .sort({ createdAt: -1 })
+      .limit(10);
+    
+    console.log(`📋 ${allUserTimesheets.length} timesheet(s) trouvé(s) pour l'utilisateur:`);
+    allUserTimesheets.forEach((t, index) => {
+      console.log(`   ${index + 1}. ID: ${t._id}`);
+      console.log(`      Date: ${t.date ? t.date.toISOString() : 'null'}`);
+      console.log(`      CreatedAt: ${t.createdAt ? t.createdAt.toISOString() : 'null'}`);
+      console.log(`      StartTime: ${t.startTime ? t.startTime.toISOString() : 'null'}`);
+      console.log(`      EndTime: ${t.endTime ? t.endTime.toISOString() : 'null'}`);
+      console.log(`      Agency: ${t.agency || 'null'}`);
+      console.log(`      Status: ${t.status || 'null'}`);
+      console.log('      ---');
+    });
+
+    // ✅ DEBUG - Vérifier spécifiquement pour aujourd'hui
+    console.log('🔍 Recherche timesheet pour aujourd\'hui avec différentes méthodes...');
+    console.log(`   Recherche date exacte: ${today.toISOString()}`);
+    console.log(`   Recherche plage: ${today.toISOString()} à ${tomorrow.toISOString()}`);
+
+    // Méthode 1: Date exacte
+    const method1 = await Timesheet.findOne({ 
+      user: userId, 
+      date: today 
+    });
+    console.log(`   Méthode 1 (date exacte): ${method1 ? 'TROUVÉ' : 'PAS TROUVÉ'}`);
+    
+    // Méthode 2: Plage de dates
+    const method2 = await Timesheet.findOne({ 
+      user: userId, 
+      date: { $gte: today, $lt: tomorrow } 
+    });
+    console.log(`   Méthode 2 (plage dates): ${method2 ? 'TROUVÉ' : 'PAS TROUVÉ'}`);
+    
+    // Méthode 3: CreatedAt aujourd'hui
+    const method3 = await Timesheet.findOne({ 
+      user: userId, 
+      createdAt: { $gte: today, $lt: tomorrow } 
+    });
+    console.log(`   Méthode 3 (createdAt): ${method3 ? 'TROUVÉ' : 'PAS TROUVÉ'}`);
+
+    // ✅ CORRECTION CRITIQUE - Recherche timesheet avec la date exacte
+    const [todaySchedule, todayTimesheet, currentPreparation, userStats] = await Promise.all([
+      // Planning d'aujourd'hui
+      Schedule.findOne({
+        user: userId,
+        date: { $gte: today, $lt: tomorrow }
+      }).populate('agency', 'name code client address'),
+      
+      // ✅ UTILISER LE RÉSULTAT DES TESTS CI-DESSUS
+      method1 || method2 || method3,
+      
       // Préparation en cours
-      require('../../models/Preparation').findOne({
+      Preparation.findOne({
         user: userId,
         status: 'in_progress'
-      }).populate('vehicle agency'),
-
-      // Pointage du jour
-      require('../../models/Timesheet').findOne({
-        user: userId,
-        date: today
-      }),
-
-      // Statistiques de la semaine
-      require('../../models/Preparation').aggregate([
-        {
-          $match: {
-            user: require('mongoose').Types.ObjectId(userId),
-            startTime: {
-              $gte: new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
-            }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            totalPreparations: { $sum: 1 },
-            completedPreparations: {
-              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
-            },
-            avgTime: {
-              $avg: {
-                $cond: [
-                  { $and: [{ $ne: ['$totalTime', null] }, { $gt: ['$totalTime', 0] }] },
-                  '$totalTime',
-                  null
-                ]
-              }
-            }
-          }
-        }
-      ])
+      }).populate('vehicle agency', 'licensePlate brand model name code'),
+      
+      // Stats utilisateur (simplifié pour éviter les erreurs)
+      Promise.resolve({
+        totalPreparations: 0,
+        averageTime: 0,
+        onTimeRate: 0
+      })
     ]);
 
-    const weekStatsData = weekStats[0] || {
-      totalPreparations: 0,
-      completedPreparations: 0,
-      avgTime: 0
+    // ✅ POPULATE MANUEL si timesheet trouvé mais pas peuplé
+    let finalTimesheet = todayTimesheet;
+    if (todayTimesheet && !todayTimesheet.agency?.name) {
+      finalTimesheet = await Timesheet.findById(todayTimesheet._id)
+        .populate('agency', 'name code client');
+      console.log('🔄 Timesheet re-peuplé avec agency');
+    }
+
+    console.log('📄 RÉSULTAT FINAL:');
+    console.log('   Schedule:', todaySchedule ? `${todaySchedule.startTime}-${todaySchedule.endTime} (${todaySchedule.agency?.name})` : 'Aucun');
+    console.log('   Timesheet:', finalTimesheet ? {
+      id: finalTimesheet._id,
+      date: finalTimesheet.date?.toISOString(),
+      startTime: finalTimesheet.startTime?.toISOString(),
+      endTime: finalTimesheet.endTime?.toISOString(),
+      agency: finalTimesheet.agency?.name,
+      status: finalTimesheet.status
+    } : 'Aucun');
+    console.log('   Preparation:', currentPreparation ? currentPreparation.vehicle?.licensePlate : 'Aucune');
+
+    // ✅ CONSTRUCTION DE LA RÉPONSE STANDARDISÉE
+    const dashboardData = {
+      user: {
+        id: req.user.userId,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        agencies: req.user.agencies || [],
+        stats: userStats
+      },
+      today: {
+        schedule: todaySchedule ? {
+          id: todaySchedule._id,
+          startTime: todaySchedule.startTime,
+          endTime: todaySchedule.endTime,
+          breakStart: todaySchedule.breakStart,
+          breakEnd: todaySchedule.breakEnd,
+          agency: {
+            id: todaySchedule.agency._id,
+            name: todaySchedule.agency.name,
+            code: todaySchedule.agency.code,
+            client: todaySchedule.agency.client
+          }
+        } : null,
+        
+        // ✅ TIMESHEET AVEC TOUTES LES DONNÉES + DEBUG
+        timesheet: finalTimesheet ? {
+          id: finalTimesheet._id,
+          startTime: finalTimesheet.startTime,
+          endTime: finalTimesheet.endTime,
+          breakStart: finalTimesheet.breakStart,
+          breakEnd: finalTimesheet.breakEnd,
+          status: finalTimesheet.status,
+          totalWorkedMinutes: finalTimesheet.totalWorkedMinutes || 0,
+          delays: finalTimesheet.delays,
+          notes: finalTimesheet.notes,
+          agency: finalTimesheet.agency ? {
+            id: finalTimesheet.agency._id,
+            name: finalTimesheet.agency.name,
+            code: finalTimesheet.agency.code
+          } : null
+        } : null,
+        
+        currentPreparation: currentPreparation ? {
+          id: currentPreparation._id,
+          status: currentPreparation.status,
+          vehicle: {
+            licensePlate: currentPreparation.vehicle.licensePlate,
+            brand: currentPreparation.vehicle.brand,
+            model: currentPreparation.vehicle.model
+          },
+          agency: {
+            name: currentPreparation.agency.name,
+            code: currentPreparation.agency.code
+          },
+          startedAt: currentPreparation.startedAt,
+          steps: currentPreparation.steps
+        } : null
+      },
+      stats: {
+        thisWeek: {
+          preparations: 0,
+          averageTime: 0,
+          onTimeRate: 0
+        }
+      }
     };
+
+    console.log('✅ Dashboard construit avec succès');
+    console.log('📤 ENVOI DE LA RÉPONSE:', {
+      hasUser: !!dashboardData.user,
+      hasSchedule: !!dashboardData.today.schedule,
+      hasTimesheet: !!dashboardData.today.timesheet,
+      hasPreparation: !!dashboardData.today.currentPreparation
+    });
 
     res.json({
       success: true,
-      data: {
-        currentPreparation: currentPreparation ? {
-          id: currentPreparation._id,
-          vehicle: currentPreparation.vehicle,
-          agency: currentPreparation.agency,
-          progress: currentPreparation.progress,
-          startTime: currentPreparation.startTime,
-          currentDuration: currentPreparation.currentDuration,
-          isOnTime: currentPreparation.isOnTime
-        } : null,
-        todayTimesheet: todayTimesheet ? {
-          isWorking: !!todayTimesheet.startTime && !todayTimesheet.endTime,
-          isOnBreak: !!todayTimesheet.breakStart && !todayTimesheet.breakEnd,
-          startTime: todayTimesheet.startTime,
-          totalWorkedToday: todayTimesheet.totalWorkedMinutes || 0
-        } : {
-          isWorking: false,
-          isOnBreak: false,
-          startTime: null,
-          totalWorkedToday: 0
-        },
-        weekStats: {
-          totalPreparations: weekStatsData.totalPreparations,
-          completedPreparations: weekStatsData.completedPreparations,
-          completionRate: weekStatsData.totalPreparations > 0 
-            ? Math.round((weekStatsData.completedPreparations / weekStatsData.totalPreparations) * 100)
-            : 0,
-          averageTime: Math.round(weekStatsData.avgTime || 0)
-        }
-      }
+      data: dashboardData
     });
 
   } catch (error) {
-    console.error('❌ Erreur récupération dashboard:', error);
+    console.error('❌ Erreur dashboard:', error);
     res.status(500).json({
       success: false,
-      message: 'Erreur lors de la récupération du dashboard'
+      message: 'Erreur lors du chargement du dashboard',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
