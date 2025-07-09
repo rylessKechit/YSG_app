@@ -299,22 +299,10 @@ export const PREPARATION_STEPS: readonly StepDefinition[] = [
     icon: '⛽'
   },
   {
-    step: 'tires_fluids',
-    label: 'Pneus & Fluides',
-    description: 'Pression pneus, niveaux huile/liquides',
-    icon: '🔧'
-  },
-  {
     step: 'special_wash',
     label: 'Lavage Spécial',
     description: 'Traitement anti-bactérien, parfums',
     icon: '✨'
-  },
-  {
-    step: 'parking',
-    label: 'Stationnement',
-    description: 'Positionnement final, vérification clés',
-    icon: '🅿️'
   }
 ] as const;
 
