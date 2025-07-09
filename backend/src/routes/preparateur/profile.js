@@ -291,7 +291,8 @@ router.get('/schedule/week', async (req, res) => {
 
     // Calculer les totaux de la semaine
     const weekTotals = schedules.reduce((totals, schedule) => {
-      const duration = schedule.getTotalWorkingMinutes();
+      // Utiliser le virtual workDuration du modèle Schedule
+      const duration = schedule.workDuration || 0;
       return {
         totalDays: totals.totalDays + 1,
         totalMinutes: totals.totalMinutes + duration,
