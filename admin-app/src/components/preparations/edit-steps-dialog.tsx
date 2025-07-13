@@ -1,20 +1,18 @@
-// admin-app/src/app/(dashboard)/preparations/components/edit-steps-dialog.tsx
-'use client';
+// admin-app/src/components/preparations/edit-steps-dialog.tsx - CORRIGÉ
 
-import { useState, useEffect } from 'react';
-import { Plus, X, Edit3, AlertTriangle, Camera } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, AlertTriangle, Save } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -24,19 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
 
-import type { Preparation, PreparationStepData, PreparationStep } from '@/types/preparation';
-import { 
-  PREPARATION_STEP_LABELS,
-  PREPARATION_STEP_ICONS,
-  PreparationStep as PreparationStepEnum
-} from '@/types/preparation';
+import type { Preparation, PreparationStepData } from '@/types/preparation';
+import { PREPARATION_STEP_LABELS, PREPARATION_STEP_ICONS } from '@/types/preparation';
 
 interface EditStepsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  preparation: Preparation | null;
+  preparation?: Preparation;
   onSubmit: (steps: Array<{
     step: string;
     completed: boolean;
@@ -61,14 +54,15 @@ export function EditStepsDialog({
   }>>([]);
   const [adminNotes, setAdminNotes] = useState('');
 
-  // Initialiser les étapes quand le dialog s'ouvre
+  // ✅ CORRECTION : Initialiser les étapes quand le dialog s'ouvre
   useEffect(() => {
     if (open && preparation) {
       const initialSteps = preparation.steps.map(step => ({
         step: step.step,
         completed: step.completed,
         notes: step.notes || '',
-        hasPhotos: (step.photosCount || 0) > 0,
+        // ✅ FIX : Vérifier si l'étape a des photos en utilisant step.photos au lieu de photosCount
+        hasPhotos: step.photos ? step.photos.length > 0 : false,
         isOriginal: true
       }));
       setSteps(initialSteps);
@@ -104,6 +98,12 @@ export function EditStepsDialog({
   };
 
   const handleRemoveStep = (index: number) => {
+    // ✅ SÉCURITÉ : Ne pas supprimer les étapes avec des photos
+    if (steps[index].hasPhotos) {
+      alert('Impossible de supprimer une étape contenant des photos');
+      return;
+    }
+
     const newSteps = steps.filter((_, i) => i !== index);
     setSteps(newSteps);
   };
@@ -120,21 +120,16 @@ export function EditStepsDialog({
     onSubmit(stepsData, adminNotes.trim() || undefined);
   };
 
-  // Étapes disponibles pour ajout
+  // ✅ AMÉLIORATION : Étapes disponibles pour ajout
   const availableSteps = Object.entries(PREPARATION_STEP_LABELS).filter(
     ([stepValue]) => !steps.find(s => s.step === stepValue)
   );
 
-  const hasChanges = preparation ? (
-    steps.length !== preparation.steps.length ||
-    steps.some((step, index) => {
-      const original = preparation.steps[index];
-      return !original || 
-             step.step !== original.step ||
-             step.completed !== original.completed ||
-             step.notes !== (original.notes || '');
-    })
-  ) : false;
+  // ✅ AMÉLIORATION : Vérifier s'il y a des changements
+  const hasChanges = preparation ? 
+    JSON.stringify(steps.map(s => ({ step: s.step, completed: s.completed, notes: s.notes }))) !== 
+    JSON.stringify(preparation.steps.map(s => ({ step: s.step, completed: s.completed, notes: s.notes || '' }))) ||
+    adminNotes.trim() !== '' : false;
 
   if (!preparation) return null;
 
@@ -143,163 +138,186 @@ export function EditStepsDialog({
       <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Edit3 className="h-5 w-5" />
-            Modifier les étapes
+            <AlertTriangle className="h-5 w-5 text-orange-500" />
+            Modifier les étapes - {preparation.vehicle.licensePlate}
           </DialogTitle>
           <DialogDescription>
-            Modifier les étapes de préparation pour {preparation.vehicle.licensePlate}
+            Attention : Cette action modifiera l'historique de la préparation. 
+            Utilisez cette fonctionnalité avec précaution.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Avertissement */}
-          <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-            <div className="flex items-center gap-2 text-yellow-800">
-              <AlertTriangle className="h-4 w-4" />
-              <div className="text-sm">
-                <strong>Attention:</strong> Les étapes ajoutées après coup n'auront pas de photos. 
-                Seules les étapes effectuées par le préparateur ont des photos.
-              </div>
-            </div>
-          </div>
-
-          {/* Liste des étapes */}
-          <div className="space-y-3">
+        <div className="space-y-6">
+          {/* ✅ LISTE DES ÉTAPES EXISTANTES */}
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">Étapes ({steps.length})</Label>
-              {availableSteps.length > 0 && (
-                <Select onValueChange={handleAddStep}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Ajouter une étape" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSteps.map(([stepValue, stepLabel]) => (
-                      <SelectItem key={stepValue} value={stepValue}>
-                        <div className="flex items-center gap-2">
-                          <span>{PREPARATION_STEP_ICONS[stepValue as PreparationStep]}</span>
-                          <span>{stepLabel}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <h3 className="font-medium">Étapes de la préparation</h3>
+              <Badge variant="outline">
+                {steps.filter(s => s.completed).length}/{steps.length} complétées
+              </Badge>
             </div>
 
-            {steps.map((step, index) => (
-              <div key={step.step} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      checked={step.completed}
-                      onCheckedChange={() => handleStepToggle(index)}
-                    />
-                    <span className="text-lg">{PREPARATION_STEP_ICONS[step.step as PreparationStep]}</span>
-                    <span className="font-medium">{PREPARATION_STEP_LABELS[step.step as PreparationStep]}</span>
-                    
-                    {step.hasPhotos && (
-                      <Badge variant="outline" className="text-xs">
-                        <Camera className="h-3 w-3 mr-1" />
-                        Photos
-                      </Badge>
-                    )}
-                    
-                    {!step.isOriginal && (
-                      <Badge variant="secondary" className="text-xs">
-                        Ajoutée
-                      </Badge>
-                    )}
-                  </div>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveStep(index)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Notes</Label>
-                  <Textarea
-                    value={step.notes}
-                    onChange={(e) => handleStepNotesChange(index, e.target.value)}
-                    placeholder="Notes pour cette étape..."
-                    rows={2}
-                    maxLength={200}
-                  />
-                  <div className="text-xs text-muted-foreground text-right">
-                    {step.notes.length}/200 caractères
-                  </div>
-                </div>
+            {steps.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8">
+                Aucune étape définie
               </div>
-            ))}
+            ) : (
+              <div className="space-y-3">
+                {steps.map((step, index) => (
+                  <div
+                    key={`${step.step}-${index}`}
+                    className={`border rounded-lg p-4 transition-colors ${
+                      step.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* ✅ CHECKBOX DE COMPLETION */}
+                      <Checkbox
+                        checked={step.completed}
+                        onCheckedChange={() => handleStepToggle(index)}
+                        className="mt-1"
+                      />
+
+                      <div className="flex-1 space-y-3">
+                        {/* ✅ HEADER DE L'ÉTAPE */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">
+                              {PREPARATION_STEP_ICONS[step.step as keyof typeof PREPARATION_STEP_ICONS] || '📋'}
+                            </span>
+                            <span className="font-medium">
+                              {PREPARATION_STEP_LABELS[step.step as keyof typeof PREPARATION_STEP_LABELS] || step.step}
+                            </span>
+                            {step.hasPhotos && (
+                              <Badge variant="secondary" className="text-xs">
+                                📷 Photos
+                              </Badge>
+                            )}
+                            {!step.isOriginal && (
+                              <Badge variant="outline" className="text-xs">
+                                Ajoutée
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* ✅ BOUTON SUPPRIMER (seulement pour les étapes ajoutées sans photos) */}
+                          {!step.isOriginal && !step.hasPhotos && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveStep(index)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* ✅ ZONE DE NOTES */}
+                        <div className="space-y-2">
+                          <Label htmlFor={`notes-${index}`} className="text-sm">
+                            Notes de l'étape
+                          </Label>
+                          <Textarea
+                            id={`notes-${index}`}
+                            value={step.notes}
+                            onChange={(e) => handleStepNotesChange(index, e.target.value)}
+                            placeholder="Notes pour cette étape..."
+                            className="min-h-[60px] text-sm"
+                          />
+                        </div>
+
+                        {/* ✅ AVERTISSEMENT POUR LES ÉTAPES AVEC PHOTOS */}
+                        {step.hasPhotos && (
+                          <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                            ⚠️ Cette étape contient des photos et ne peut pas être supprimée
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Notes admin */}
-          <div className="space-y-2">
-            <Label htmlFor="adminNotes">Notes administrateur</Label>
+          {/* ✅ AJOUTER UNE NOUVELLE ÉTAPE */}
+          {availableSteps.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-medium">Ajouter une étape</h3>
+              <Select onValueChange={handleAddStep}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Sélectionner une étape à ajouter..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSteps.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {/* ✅ FIX : Utiliser seulement du texte, pas de div avec flex */}
+                      {`${PREPARATION_STEP_ICONS[value as keyof typeof PREPARATION_STEP_ICONS] || '📋'} ${label}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* ✅ NOTES ADMINISTRATEUR */}
+          <div className="space-y-3">
+            <Label htmlFor="admin-notes">Notes administrateur (obligatoire)</Label>
             <Textarea
-              id="adminNotes"
-              placeholder="Raison de la modification, commentaires..."
+              id="admin-notes"
               value={adminNotes}
               onChange={(e) => setAdminNotes(e.target.value)}
-              rows={3}
-              maxLength={500}
+              placeholder="Expliquez pourquoi vous modifiez ces étapes..."
+              className="min-h-[80px]"
+              required
             />
-            <div className="text-xs text-muted-foreground text-right">
-              {adminNotes.length}/500 caractères
+            <div className="text-xs text-muted-foreground">
+              Ces notes seront enregistrées dans l'historique de modifications
             </div>
           </div>
 
-          {/* Résumé des changements */}
+          {/* ✅ ACTIONS */}
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isLoading}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isLoading || !hasChanges || !adminNotes.trim()}
+              className="gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Enregistrement...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Enregistrer les modifications
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* ✅ AVERTISSEMENT FINAL */}
           {hasChanges && (
-            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-              <div className="text-sm font-medium text-blue-900 mb-1">
-                Modifications détectées
-              </div>
-              <div className="text-sm text-blue-700">
-                {steps.filter(s => !s.isOriginal).length > 0 && (
-                  <div>• {steps.filter(s => !s.isOriginal).length} étape(s) ajoutée(s)</div>
-                )}
-                {preparation.steps.length > steps.length && (
-                  <div>• {preparation.steps.length - steps.length} étape(s) supprimée(s)</div>
-                )}
-                {steps.filter((s, i) => {
-                  const original = preparation.steps.find(os => os.step === s.step);
-                  return original && (original.completed !== s.completed || (original.notes || '') !== s.notes);
-                }).length > 0 && (
-                  <div>• Statut ou notes modifiés pour certaines étapes</div>
-                )}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                <div className="text-sm text-yellow-800">
+                  <strong>Attention :</strong> Cette modification sera enregistrée dans l'historique 
+                  et sera visible par tous les administrateurs.
+                </div>
               </div>
             </div>
           )}
         </div>
-
-        <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isLoading}
-          >
-            Annuler
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!hasChanges || isLoading || steps.length === 0}
-          >
-            {isLoading ? (
-              <>
-                <LoadingSpinner className="mr-2" />
-                Modification...
-              </>
-            ) : (
-              'Confirmer les modifications'
-            )}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
