@@ -1,4 +1,4 @@
-// admin-app/src/components/preparations/photos-viewer.tsx
+// admin-app/src/components/preparations/photos-viewer.tsx - FICHIER COMPLET CORRIGÉ
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -32,7 +32,7 @@ interface PhotoData {
   stepIcon: string;
   photoUrl: string;
   photoIndex: number;
-  completedAt: string;
+  completedAt?: string;
   notes?: string;
   description?: string;
 }
@@ -52,7 +52,7 @@ export function PhotosViewer({
 
   const photos = photosData?.data?.photos || [];
 
-  // ✅ AJOUT : Debug des données reçues
+  // ✅ Debug des données reçues
   useEffect(() => {
     if (photosData && !isLoading) {
       // Debug des URLs de photos
@@ -67,38 +67,53 @@ export function PhotosViewer({
     }
   }, [photosData, isLoading, photos]);
 
+  // ✅ CORRIGÉ : Gestionnaire de clic photo avec vérification
   const handlePhotoClick = (photo: PhotoData, index: number) => {
     setSelectedPhoto(photo);
     setCurrentPhotoIndex(index);
   };
 
+  // ✅ CORRIGÉ : Navigation photo suivante avec vérifications
   const handleNextPhoto = () => {
     if (currentPhotoIndex < photos.length - 1) {
       const nextIndex = currentPhotoIndex + 1;
-      setCurrentPhotoIndex(nextIndex);
-      setSelectedPhoto(photos[nextIndex]);
+      const nextPhoto = photos[nextIndex];
+      if (nextPhoto) {
+        setCurrentPhotoIndex(nextIndex);
+        setSelectedPhoto(nextPhoto);
+      }
     }
   };
 
+  // ✅ CORRIGÉ : Navigation photo précédente avec vérifications
   const handlePrevPhoto = () => {
     if (currentPhotoIndex > 0) {
       const prevIndex = currentPhotoIndex - 1;
-      setCurrentPhotoIndex(prevIndex);
-      setSelectedPhoto(photos[prevIndex]);
+      const prevPhoto = photos[prevIndex];
+      if (prevPhoto) {
+        setCurrentPhotoIndex(prevIndex);
+        setSelectedPhoto(prevPhoto);
+      }
     }
   };
 
+  // ✅ Gestionnaire de téléchargement
   const handleDownload = (photoUrl: string, fileName: string) => {
-    const link = document.createElement('a');
-    link.href = photoUrl;
-    link.download = fileName;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const link = document.createElement('a');
+      link.href = photoUrl;
+      link.download = fileName;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('❌ Erreur téléchargement:', error);
+    }
   };
 
-  // ✅ AJOUT : Gestion des erreurs d'image
+  // ✅ Gestion des erreurs d'image
   const handleImageError = (photoUrl: string) => {
     console.error('❌ Erreur de chargement image:', photoUrl);
     setImageErrors(prev => new Set([...prev, photoUrl]));
@@ -148,27 +163,35 @@ export function PhotosViewer({
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Résumé */}
+              {/* ✅ RÉSUMÉ CORRIGÉ - Utilise les vraies propriétés du backend */}
               <div className="grid grid-cols-4 gap-4 text-center">
                 <div className="space-y-1">
                   <div className="text-2xl font-bold">{photos.length}</div>
                   <div className="text-sm text-muted-foreground">Total photos</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-2xl font-bold">{photosData?.data?.completedSteps || 0}</div>
+                  <div className="text-2xl font-bold">
+                    {photosData?.data?.stats?.stepsWithPhotos || 0}
+                  </div>
                   <div className="text-sm text-muted-foreground">Étapes avec photos</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-2xl font-bold">{photosData?.data?.totalSteps || 0}</div>
+                  <div className="text-2xl font-bold">
+                    {photosData?.data?.stats?.completedSteps || 0}
+                  </div>
                   <div className="text-sm text-muted-foreground">Étapes terminées</div>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-2xl font-bold">{photosData?.data?.progress || 0}%</div>
+                  <div className="text-2xl font-bold">
+                    {photosData?.data?.stats?.totalSteps && photosData?.data?.stats?.completedSteps 
+                      ? Math.round((photosData.data.stats.completedSteps / photosData.data.stats.totalSteps) * 100)
+                      : preparation?.progress || 0}%
+                  </div>
                   <div className="text-sm text-muted-foreground">Progression</div>
                 </div>
               </div>
 
-              {/* ✅ AJOUT : Alerte si des images n'ont pas pu charger */}
+              {/* ✅ Alerte si des images n'ont pas pu charger */}
               {imageErrors.size > 0 && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -178,7 +201,7 @@ export function PhotosViewer({
                 </Alert>
               )}
 
-              {/* Galerie par étapes */}
+              {/* ✅ Galerie par étapes */}
               <div className="space-y-4">
                 {Object.entries(
                   photos.reduce((acc, photo) => {
@@ -189,8 +212,13 @@ export function PhotosViewer({
                 ).map(([stepType, stepPhotos]) => (
                   <div key={stepType} className="border rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="text-lg">{PREPARATION_STEP_ICONS[stepType as PreparationStep]}</span>
-                      <span className="font-medium">{PREPARATION_STEP_LABELS[stepType as PreparationStep]}</span>
+                      {/* ✅ CORRIGÉ : Cast TypeScript correct */}
+                      <span className="text-lg">
+                        {PREPARATION_STEP_ICONS[stepType as keyof typeof PREPARATION_STEP_ICONS] || '📋'}
+                      </span>
+                      <span className="font-medium">
+                        {PREPARATION_STEP_LABELS[stepType as keyof typeof PREPARATION_STEP_LABELS] || stepType}
+                      </span>
                       <Badge variant="outline" className="text-xs">
                         {stepPhotos.length} photo(s)
                       </Badge>
@@ -201,10 +229,16 @@ export function PhotosViewer({
                         <div
                           key={`${photo.stepType}-${photo.photoIndex}`}
                           className="relative group cursor-pointer"
-                          onClick={() => handlePhotoClick(photo, photos.findIndex(p => p === photo))}
+                          onClick={() => {
+                            // ✅ CORRIGÉ : Vérification de l'index avant utilisation
+                            const photoIndex = photos.findIndex(p => p === photo);
+                            if (photoIndex !== -1) {
+                              handlePhotoClick(photo, photoIndex);
+                            }
+                          }}
                         >
                           {imageErrors.has(photo.photoUrl) ? (
-                            // ✅ AJOUT : Placeholder pour les images en erreur
+                            // ✅ Placeholder pour les images en erreur
                             <div className="w-full h-24 bg-gray-100 border border-red-300 rounded-lg flex items-center justify-center">
                               <div className="text-center">
                                 <AlertCircle className="h-6 w-6 text-red-500 mx-auto mb-1" />
@@ -218,6 +252,7 @@ export function PhotosViewer({
                               className="w-full h-24 object-cover rounded-lg border hover:border-primary transition-colors"
                               onError={() => handleImageError(photo.photoUrl)}
                               onLoad={() => handleImageLoad(photo.photoUrl)}
+                              loading="lazy"
                             />
                           )}
                           
@@ -244,7 +279,7 @@ export function PhotosViewer({
         </DialogContent>
       </Dialog>
 
-      {/* Dialog photo en grand */}
+      {/* ✅ Dialog photo en grand */}
       <Dialog open={!!selectedPhoto} onOpenChange={(open) => !open && setSelectedPhoto(null)}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
@@ -253,7 +288,11 @@ export function PhotosViewer({
               {selectedPhoto?.stepLabel} - Photo {(currentPhotoIndex + 1)} sur {photos.length}
             </DialogTitle>
             <DialogDescription>
-              {selectedPhoto?.description || `Photo prise le ${selectedPhoto?.completedAt ? new Date(selectedPhoto.completedAt).toLocaleDateString() : 'Date inconnue'}`}
+              {selectedPhoto?.description || `Photo prise le ${
+                selectedPhoto?.completedAt 
+                  ? new Date(selectedPhoto.completedAt).toLocaleDateString() 
+                  : 'Date inconnue'
+              }`}
             </DialogDescription>
           </DialogHeader>
 
@@ -268,7 +307,7 @@ export function PhotosViewer({
               />
             )}
 
-            {/* Navigation */}
+            {/* ✅ Navigation entre photos */}
             {photos.length > 1 && (
               <>
                 <Button
@@ -293,13 +332,16 @@ export function PhotosViewer({
             )}
           </div>
 
+          {/* ✅ Actions et métadonnées */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Badge variant="outline">
                 {selectedPhoto?.stepType}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                {selectedPhoto?.completedAt ? new Date(selectedPhoto.completedAt).toLocaleString() : 'Date inconnue'}
+                {selectedPhoto?.completedAt 
+                  ? new Date(selectedPhoto.completedAt).toLocaleString() 
+                  : 'Date inconnue'}
               </span>
             </div>
             
@@ -316,6 +358,7 @@ export function PhotosViewer({
             </Button>
           </div>
 
+          {/* ✅ Notes de la photo */}
           {selectedPhoto?.notes && (
             <div className="bg-muted p-3 rounded-lg">
               <strong>Notes:</strong> {selectedPhoto.notes}

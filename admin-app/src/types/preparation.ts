@@ -261,29 +261,49 @@ export interface PreparationStatsResponse {
 export interface PreparationPhotosResponse {
   success: boolean;
   data: {
-    preparation: {
-      id: string;
-      vehicle: {
-        licensePlate: string;
-        model: string;
-        brand: string;
-      };
-      user: {
-        name: string;
-        email: string;
-      };
-      totalPhotos: number;
-      photosByStep: Record<string, number>;
+    preparationId: string;
+    vehicle?: {
+      licensePlate: string;
+      model: string;
+      brand: string;
     };
+    user?: {
+      name: string;
+      email: string;
+    };
+    photosByStep: Record<string, Array<{
+      stepType: string;
+      stepLabel: string;
+      stepIcon: string;
+      photoUrl: string;
+      photoIndex: number;
+      completedAt?: string;
+      notes?: string;
+      description?: string;
+    }>>;
     photos: Array<{
       stepType: string;
       stepLabel: string;
       stepIcon: string;
       photoUrl: string;
       photoIndex: number;
-      completedAt: string;
+      completedAt?: string;
       notes?: string;
+      description?: string;
     }>;
+    stats: {
+      totalPhotos: number;
+      totalSteps: number;
+      completedSteps: number;
+      stepsWithPhotos: number;
+      // ✅ PAS de propriété "progress" car elle n'existe pas dans votre API
+    };
+    metadata?: {
+      generatedAt: string;
+      version?: string;
+      environment?: string;
+      error?: string;
+    };
   };
 }
 
