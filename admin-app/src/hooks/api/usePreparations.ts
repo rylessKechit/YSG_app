@@ -24,7 +24,7 @@ export const preparationKeys = {
   list: (filters: PreparationFilters) => [...preparationKeys.lists(), filters] as const,
   details: () => [...preparationKeys.all, 'detail'] as const,
   detail: (id: string) => [...preparationKeys.details(), id] as const,
-  stats: (filters?: { startDate?: string; endDate?: string; agency?: string }) => 
+  stats: (filters?: { startDate?: string; endDate?: string; agency?: string; user?: string }) => 
     [...preparationKeys.all, 'stats', filters] as const,
 };
 
@@ -69,12 +69,13 @@ export function usePreparation(id: string) {
 }
 
 /**
- * Hook pour récupérer les statistiques des préparations
+ * Hook pour récupérer les statistiques des préparations - VERSION CORRIGÉE
  */
 export function usePreparationsStats(filters?: {
   startDate?: string;
   endDate?: string;
   agency?: string;
+  user?: string;  // ✅ AJOUTÉ !
 }) {
   return useQuery({
     queryKey: preparationKeys.stats(filters),
@@ -88,6 +89,8 @@ export function usePreparationsStats(filters?: {
           }
         });
       }
+
+      console.log('📊 [usePreparationsStats] Appel API avec params:', params.toString());
 
       const response = await apiClient.get(`/admin/preparations/stats?${params.toString()}`);
       return response.data;

@@ -1,4 +1,5 @@
-// admin-app/src/app/(dashboard)/preparations/page.tsx - VERSION MISE À JOUR
+// admin-app/src/app/(dashboard)/preparations/page.tsx - CORRIGER LE HOOK STATS
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -66,13 +67,15 @@ export default function PreparationsPage() {
     error: preparationsError
   } = usePreparations(filters);
 
+  // ✅ CORRECTION 1 : Ajouter le filtre user aux stats
   const { 
     data: statsData, 
     isLoading: isLoadingStats 
   } = usePreparationsStats({
     startDate: filters.startDate,
     endDate: filters.endDate,
-    agency: filters.agency
+    agency: filters.agency,
+    user: filters.user  // ← AJOUTÉ !
   });
 
   const { data: usersData } = useUsers({ 
@@ -100,11 +103,12 @@ export default function PreparationsPage() {
 
   // Handlers
   const handleFiltersChange = (newFilters: Partial<PreparationFilters>) => {
-    setFilters(prev => ({ ...prev, ...newFilters }));
+    console.log('🔄 Changement de filtres:', newFilters);
+    setFilters(prev => ({ ...prev, ...newFilters, page: 1 })); // Reset page à 1
   };
 
   const handleSearch = () => {
-    handleFiltersChange({ search: searchInput, page: 1 });
+    handleFiltersChange({ search: searchInput.trim() });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -117,88 +121,38 @@ export default function PreparationsPage() {
     router.push(`/preparations/${preparationId}`);
   };
 
-  const handleRefresh = () => {
-    refetchPreparations();
-  };
-
   const handleSelectionChange = (preparationIds: string[]) => {
     setSelectedPreparations(preparationIds);
   };
 
-  const handleDeleteSuccess = () => {
-    setSelectedPreparations([]);
+  const handleRefresh = () => {
     refetchPreparations();
   };
 
   // États de chargement et d'erreur
-  if (preparationsError) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Erreur de chargement
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Impossible de charger les préparations
-            </p>
-            <Button onClick={handleRefresh} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Réessayer
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const isLoading = isLoadingPreparations;
+  const hasError = !!preparationsError;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       {/* En-tête */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Préparations</h1>
-          <p className="text-gray-600 mt-1">
-            Gestion et suivi des préparations de véhicules
+          <h1 className="text-3xl font-bold tracking-tight">Préparations</h1>
+          <p className="text-muted-foreground">
+            Gérez et suivez toutes les préparations de véhicules
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Actions de sélection multiple */}
-          {selectedPreparations.length > 0 && (
-            <>
-              <Badge variant="secondary" className="px-3 py-1">
-                {selectedPreparations.length} sélectionnée(s)
-              </Badge>
-              
-              <DeletePreparationDialog
-                preparations={selectedPreparationsData}
-                onSuccess={handleDeleteSuccess}
-              >
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Supprimer ({selectedPreparations.length})
-                </Button>
-              </DeletePreparationDialog>
-            </>
-          )}
-
-          {/* Export */}
-          <ExportDialog currentFilters={filters}>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Exporter
-            </Button>
-          </ExportDialog>
 
           {/* Actualiser */}
-          <Button
-            variant="outline"
+          <Button 
+            variant="outline" 
             onClick={handleRefresh}
-            disabled={isLoadingPreparations}
+            disabled={isLoading}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingPreparations ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Actualiser
           </Button>
 

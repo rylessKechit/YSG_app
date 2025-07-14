@@ -39,6 +39,14 @@ const preparationQuerySchema = Joi.object({
   order: Joi.string().valid('asc', 'desc').default('desc')
 }).unknown(true);
 
+// ✅ AJOUT : Schéma de validation pour les statistiques
+const statsQuerySchema = Joi.object({
+  startDate: Joi.date().iso().optional(),
+  endDate: Joi.date().iso().optional(),
+  agency: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  user: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional()  // ✅ AJOUTÉ
+});
+
 const updateAgencySchema = Joi.object({
   agencyId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
   reason: Joi.string().max(500).optional()
@@ -60,21 +68,113 @@ router.use(auth, adminAuth);
 
 /**
  * @route   GET /api/admin/preparations/stats
- * @desc    Statistiques globales des préparations
+ * @desc    Statistiques globales des préparations - VERSION CORRIGÉE POUR USER
  * @access  Admin
  */
-router.get('/stats', async (req, res) => {
+router.get('/stats', validateQuery(statsQuerySchema), async (req, res) => {
   try {
-    const { startDate, endDate, agency } = req.query;
+    console.log('📊 Requête stats reçue:', req.query);
 
+    const { startDate, endDate, agency, user } = req.query;
+
+    // ✅ CONSTRUCTION DES FILTRES AMÉLIORÉE
     const filters = {};
+    
+    // Filtre de dates - CONVERSION EXPLICITE
     if (startDate || endDate) {
       filters.createdAt = {};
-      if (startDate) filters.createdAt.$gte = new Date(startDate);
-      if (endDate) filters.createdAt.$lte = new Date(endDate);
+      if (startDate) {
+        const startDateObj = new Date(startDate);
+        filters.createdAt.$gte = startDateObj;
+        console.log('📅 Filtre startDate appliqué (Date object):', startDateObj);
+      }
+      if (endDate) {
+        const endDateObj = new Date(endDate);
+        filters.createdAt.$lte = endDateObj;
+        console.log('📅 Filtre endDate appliqué (Date object):', endDateObj);
+      }
     }
-    if (agency) filters.agency = agency;
+    
+    // ✅ FILTRE AGENCE - CONVERSION EN OBJECTID
+    if (agency) {
+      const mongoose = require('mongoose');
+      try {
+        filters.agency = new mongoose.Types.ObjectId(agency);
+        console.log('🏢 Filtre agency appliqué (ObjectId):', filters.agency);
+      } catch (error) {
+        filters.agency = agency; // Fallback en string
+        console.log('🏢 Filtre agency appliqué (string):', agency);
+      }
+    }
+    
+    // ✅ FILTRE USER - GÉRER LES DEUX CHAMPS user ET preparateur
+    if (user) {
+      const mongoose = require('mongoose');
+      try {
+        const userObjectId = new mongoose.Types.ObjectId(user);
+        // Chercher dans les deux champs user ET preparateur
+        filters.$or = filters.$or || [];
+        filters.$or.push(
+          { user: userObjectId },
+          { preparateur: userObjectId },
+          { user: user }, // Fallback string
+          { preparateur: user } // Fallback string
+        );
+        console.log('👤 Filtre user/preparateur appliqué (hybride):', user);
+      } catch (error) {
+        // Si ObjectId invalide, utiliser seulement string
+        filters.$or = filters.$or || [];
+        filters.$or.push(
+          { user: user },
+          { preparateur: user }
+        );
+        console.log('👤 Filtre user/preparateur appliqué (string):', user);
+      }
+    }
 
+    console.log('🎯 Filtres MongoDB finaux:', JSON.stringify(filters, null, 2));
+
+    // Compter d'abord combien de documents matchent
+    const matchingCount = await Preparation.countDocuments(filters);
+    console.log('📈 Préparations trouvées avec filtres:', matchingCount);
+
+    // Si aucune préparation trouvée, retourner des stats vides
+    if (matchingCount === 0) {
+      console.log('⚠️ Aucune préparation trouvée, retour de stats vides');
+      
+      const emptyStats = {
+        global: {
+          totalPreparations: 0,
+          averageTime: 0,
+          onTimeRate: 0,
+          completionRate: 0
+        },
+        byStatus: {}
+      };
+
+      return res.json({
+        success: true,
+        data: { 
+          stats: emptyStats, 
+          period: { 
+            startDate: startDate ? new Date(startDate) : null, 
+            endDate: endDate ? new Date(endDate) : null 
+          } 
+        }
+      });
+    }
+
+    // 🧪 Debug des constantes
+    console.log('🔧 PREPARATION_STATUS.COMPLETED:', PREPARATION_STATUS.COMPLETED);
+    
+    // Test simple de comptage par statut d'abord
+    const statusCounts = await Preparation.aggregate([
+      { $match: filters },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+    console.log('📊 Statuts réels dans la base avec ces filtres:', statusCounts);
+
+    // ✅ AGRÉGATIONS CORRIGÉES AVEC GESTION DES CHAMPS NULL
     const [globalStats, statusStats] = await Promise.all([
       Preparation.aggregate([
         { $match: filters },
@@ -82,9 +182,47 @@ router.get('/stats', async (req, res) => {
           $group: {
             _id: null,
             totalPreparations: { $sum: 1 },
-            averageTime: { $avg: '$totalTime' },
-            onTimeCount: { $sum: { $cond: [{ $lte: ['$totalTime', 30] }, 1, 0] } },
-            completedCount: { $sum: { $cond: [{ $eq: ['$status', PREPARATION_STATUS.COMPLETED] }, 1, 0] } }
+            // ✅ Utiliser $ifNull pour gérer les totalTime null/undefined
+            averageTime: { 
+              $avg: { 
+                $ifNull: ['$totalTime', 0] 
+              } 
+            },
+            // ✅ Compter ceux avec totalTime <= 30 (en gérant les null)
+            onTimeCount: { 
+              $sum: { 
+                $cond: [
+                  { 
+                    $and: [
+                      { $ne: ['$totalTime', null] },
+                      { $lte: ['$totalTime', 30] }
+                    ]
+                  }, 
+                  1, 
+                  0
+                ] 
+              } 
+            },
+            // ✅ Utiliser la valeur littérale "completed"
+            completedCount: { 
+              $sum: { 
+                $cond: [
+                  { $eq: ['$status', 'completed'] },
+                  1, 
+                  0
+                ] 
+              } 
+            },
+            // 🧪 Debug : Compter les docs avec totalTime valide
+            validTimeCount: {
+              $sum: {
+                $cond: [
+                  { $ne: ['$totalTime', null] },
+                  1,
+                  0
+                ]
+              }
+            }
           }
         }
       ]),
@@ -94,28 +232,59 @@ router.get('/stats', async (req, res) => {
       ])
     ]);
 
-    const global = globalStats[0] || { totalPreparations: 0, averageTime: 0, onTimeCount: 0, completedCount: 0 };
+    console.log('📊 Stats globales brutes (corrigées):', globalStats);
+    console.log('📊 Stats par statut brutes:', statusStats);
+
+    const global = globalStats[0] || { 
+      totalPreparations: 0, 
+      averageTime: 0, 
+      onTimeCount: 0, 
+      completedCount: 0,
+      validTimeCount: 0
+    };
+
     const stats = {
       global: {
         totalPreparations: global.totalPreparations,
         averageTime: Math.round(global.averageTime || 0),
-        onTimeRate: global.totalPreparations > 0 ? Math.round((global.onTimeCount / global.totalPreparations) * 100) : 0,
-        completionRate: global.totalPreparations > 0 ? Math.round((global.completedCount / global.totalPreparations) * 100) : 0
+        onTimeRate: global.totalPreparations > 0 ? 
+          Math.round((global.onTimeCount / global.totalPreparations) * 100) : 0,
+        completionRate: global.totalPreparations > 0 ? 
+          Math.round((global.completedCount / global.totalPreparations) * 100) : 0
       },
       byStatus: statusStats.reduce((acc, stat) => {
         acc[stat._id] = stat.count;
         return acc;
-      }, {})
+      }, {}),
+      // 🧪 Debug info
+      debug: {
+        matchingCount,
+        validTimeCount: global.validTimeCount,
+        filters: filters
+      }
     };
+
+    console.log('✅ Stats finales calculées:', stats);
 
     res.json({
       success: true,
-      data: { stats, period: { startDate: startDate ? new Date(startDate) : null, endDate: endDate ? new Date(endDate) : null } }
+      data: { 
+        stats, 
+        period: { 
+          startDate: startDate ? new Date(startDate) : null, 
+          endDate: endDate ? new Date(endDate) : null 
+        } 
+      }
     });
 
   } catch (error) {
-    console.error('❌ Erreur statistiques:', error);
-    res.status(500).json({ success: false, message: ERROR_MESSAGES.SERVER_ERROR });
+    console.error('❌ Erreur statistiques complète:', error);
+    console.error('❌ Stack trace:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: ERROR_MESSAGES.SERVER_ERROR,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -126,9 +295,14 @@ router.get('/stats', async (req, res) => {
  */
 router.get('/', validateQuery(preparationQuerySchema), async (req, res) => {
   try {
+    console.log('📋 Requête préparations reçue:', req.query);
+
     const { page, limit, search, user, agency, status, startDate, endDate, sort, order } = req.query;
 
+    // Construire les filtres MongoDB
     const filters = {};
+    
+    // Filtre de recherche textuelle
     if (search?.trim()) {
       const searchRegex = new RegExp(search.trim(), 'i');
       filters.$or = [
@@ -136,15 +310,56 @@ router.get('/', validateQuery(preparationQuerySchema), async (req, res) => {
         { 'vehicle.model': searchRegex },
         { notes: searchRegex }
       ];
+      console.log('🔍 Filtre de recherche appliqué:', search.trim());
     }
-    if (user) filters.user = user;
-    if (agency) filters.agency = agency;
-    if (status && status !== 'all') filters.status = status;
+    
+    // Filtre utilisateur - GÉRER LES DEUX CHAMPS
+    if (user) {
+      // Si on a déjà un $or pour la recherche, on l'étend
+      if (filters.$or) {
+        // Créer un $and pour combiner recherche textuelle ET filtre user
+        const searchOr = filters.$or;
+        delete filters.$or;
+        filters.$and = [
+          { $or: searchOr },
+          { $or: [{ user: user }, { preparateur: user }] }
+        ];
+      } else {
+        // Pas de recherche textuelle, simple $or pour user/preparateur
+        filters.$or = [
+          { user: user },
+          { preparateur: user }
+        ];
+      }
+      console.log('👤 Filtre user/preparateur appliqué:', user);
+    }
+    
+    // Filtre agence
+    if (agency) {
+      filters.agency = agency;
+      console.log('🏢 Filtre agency appliqué:', agency);
+    }
+    
+    // Filtre statut
+    if (status && status !== 'all') {
+      filters.status = status;
+      console.log('📊 Filtre status appliqué:', status);
+    }
+    
+    // Filtre de dates
     if (startDate || endDate) {
       filters.createdAt = {};
-      if (startDate) filters.createdAt.$gte = new Date(startDate);
-      if (endDate) filters.createdAt.$lte = new Date(endDate);
+      if (startDate) {
+        filters.createdAt.$gte = new Date(startDate);
+        console.log('📅 Filtre startDate appliqué:', new Date(startDate));
+      }
+      if (endDate) {
+        filters.createdAt.$lte = new Date(endDate);
+        console.log('📅 Filtre endDate appliqué:', new Date(endDate));
+      }
     }
+
+    console.log('🎯 Filtres MongoDB pour préparations:', JSON.stringify(filters, null, 2));
 
     const skip = (page - 1) * limit;
     const sortObj = { [sort]: order === 'asc' ? 1 : -1 };
@@ -159,6 +374,8 @@ router.get('/', validateQuery(preparationQuerySchema), async (req, res) => {
         .limit(parseInt(limit)),
       Preparation.countDocuments(filters)
     ]);
+
+    console.log('📋 Préparations trouvées:', preparations.length, 'sur un total de', total);
 
     const formattedPreparations = preparations.map(prep => ({
       id: prep._id,
@@ -199,6 +416,7 @@ router.get('/', validateQuery(preparationQuerySchema), async (req, res) => {
       updatedAt: prep.updatedAt
     }));
 
+    // Calculer les stats avec les mêmes filtres
     const stats = {
       total,
       pending: await Preparation.countDocuments({ ...filters, status: PREPARATION_STATUS.PENDING }),
@@ -206,6 +424,8 @@ router.get('/', validateQuery(preparationQuerySchema), async (req, res) => {
       completed: await Preparation.countDocuments({ ...filters, status: PREPARATION_STATUS.COMPLETED }),
       cancelled: await Preparation.countDocuments({ ...filters, status: PREPARATION_STATUS.CANCELLED })
     };
+
+    console.log('📊 Stats par statut calculées:', stats);
 
     res.json({
       success: true,
@@ -225,8 +445,13 @@ router.get('/', validateQuery(preparationQuerySchema), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Erreur récupération préparations:', error);
-    res.status(500).json({ success: false, message: ERROR_MESSAGES.SERVER_ERROR });
+    console.error('❌ Erreur récupération préparations complète:', error);
+    console.error('❌ Stack trace:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: ERROR_MESSAGES.SERVER_ERROR,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -299,7 +524,6 @@ router.get('/:id', validateObjectId(), async (req, res) => {
   }
 });
 
-// backend/src/routes/admin/preparations.js
 /**
  * @route   GET /api/admin/preparations/:id/photos
  * @desc    Récupérer les photos d'une préparation
