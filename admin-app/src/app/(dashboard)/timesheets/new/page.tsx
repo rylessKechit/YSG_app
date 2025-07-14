@@ -1,20 +1,33 @@
-// admin-app/src/app/(dashboard)/timesheets/new/page.tsx - VERSION CORRIGÉE
+// admin-app/src/app/(dashboard)/timesheets/new/page.tsx - COPIE EXACTE DE EDIT
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Clock, Plus } from 'lucide-react';
+import { ArrowLeft, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
-// ✅ Import correct des types
-import { Timesheet } from '@/types/timesheet';
+// Import du formulaire fonctionnel - EXACTEMENT COMME EDIT
+import { TimesheetForm } from '@/components/timesheets/timesheet-form';
+import { useCreateTimesheet } from '@/hooks/use-timesheets';
+import { toast } from 'sonner';
+
+// ===== PAS DE TYPES LOCAUX - ON UTILISE CEUX DU FORMULAIRE =====
 
 export default function NewTimesheetPage() {
   const router = useRouter();
+  const createTimesheet = useCreateTimesheet();
 
-  const handleSuccess = (newTimesheet: Timesheet) => {
-    console.log('✅ Pointage créé:', newTimesheet);
-    router.push('/timesheets');
+  // ✅ EXACTEMENT LA MÊME SIGNATURE QUE EDIT
+  const handleSuccess = (data: any) => {
+    createTimesheet.mutate(data, {
+      onSuccess: (response) => {
+        toast.success('Pointage créé avec succès !');
+        router.push('/timesheets');
+      },
+      onError: (error: any) => {
+        toast.error(error.response?.data?.message || 'Erreur lors de la création');
+      }
+    });
   };
 
   const handleCancel = () => {
@@ -44,31 +57,20 @@ export default function NewTimesheetPage() {
         </div>
       </div>
 
-      {/* ✅ Formulaire temporaire en attendant TimesheetForm */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Formulaire de création</CardTitle>
-          <CardDescription>
-            Le composant TimesheetForm sera disponible après l'implémentation du chapitre 5
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-center py-8">
-            <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">
-              Formulaire de création de pointage en cours de développement
-            </p>
-            <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={handleCancel}>
-                Retour aux pointages
-              </Button>
-              <Button onClick={() => console.log('Création temporairement désactivée')}>
-                Créer le pointage (Temporaire)
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Info */}
+      <Alert>
+        <AlertDescription>
+          <strong>Nouveau pointage:</strong> Remplissez les informations ci-dessous pour créer un pointage manuel. 
+          Les champs marqués d'un * sont obligatoires.
+        </AlertDescription>
+      </Alert>
+
+      {/* Formulaire - EXACTEMENT COMME EDIT */}
+      <TimesheetForm
+        onSubmit={handleSuccess}
+        onCancel={handleCancel}
+        isLoading={createTimesheet.isPending}
+      />
     </div>
   );
 }

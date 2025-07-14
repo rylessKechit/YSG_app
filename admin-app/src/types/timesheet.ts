@@ -204,6 +204,7 @@ export interface TimesheetCreateData {
   breakEnd?: string;
   notes?: string;
   adminNotes?: string;
+  status?: 'incomplete' | 'complete' | 'validated' | 'disputed';
 }
 
 export interface TimesheetUpdateData {
@@ -216,16 +217,14 @@ export interface TimesheetUpdateData {
   status?: 'incomplete' | 'complete' | 'validated' | 'disputed';
 }
 
-export interface TimesheetFormData {
-  userId: string;
-  agencyId: string;
-  date: Date;
-  startTime: Date | null;
-  endTime: Date | null;
-  breakStart: Date | null;
-  breakEnd: Date | null;
-  notes: string;
-  adminNotes: string;
+export interface TimesheetUpdateData {
+  startTime?: string;
+  endTime?: string;
+  breakStart?: string;
+  breakEnd?: string;
+  notes?: string;
+  adminNotes?: string;
+  status?: 'incomplete' | 'complete' | 'validated' | 'disputed';
 }
 
 // ===== TYPES POUR ACTIONS EN MASSE =====

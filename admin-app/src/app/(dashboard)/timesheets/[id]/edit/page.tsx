@@ -1,17 +1,18 @@
-// admin-app/src/app/(dashboard)/timesheets/[id]/edit/page.tsx - VERSION CORRIGÉE
+// admin-app/src/app/(dashboard)/timesheets/[id]/edit/page.tsx - VERSION MISE À JOUR
 'use client';
 
 import { useRouter } from 'next/navigation';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Edit, AlertCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Edit, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 
-// ✅ Import correct des hooks et types
-import { useTimesheet } from '@/hooks/use-timesheets';
-import { Timesheet } from '@/types/timesheet';
+// Import du formulaire fonctionnel
+import { TimesheetForm } from '@/components/timesheets/timesheet-form';
+import { useTimesheet, useUpdateTimesheet } from '@/hooks/use-timesheets';
+import { TimesheetUpdateData } from '@/types/timesheet';
+import { toast } from 'sonner';
 
 interface EditTimesheetPageProps {
   params: {
@@ -26,9 +27,11 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
   // Data hooks
   const { 
     data: timesheet, 
-    isLoading, 
+    isLoading: isLoadingTimesheet, 
     error 
   } = useTimesheet(id);
+
+  const updateTimesheet = useUpdateTimesheet();
 
   // Redirect si pas trouvé
   if (error?.message?.includes('404') || error?.message?.includes('not found')) {
@@ -36,9 +39,16 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
   }
 
   // Handlers
-  const handleSuccess = (updatedTimesheet: Timesheet) => {
-    console.log('✅ Pointage modifié:', updatedTimesheet);
-    router.push(`/timesheets/${id}`);
+  const handleSuccess = (data: TimesheetUpdateData) => {
+    updateTimesheet.mutate({ id, data }, {
+      onSuccess: (response) => {
+        toast.success('Pointage modifié avec succès !');
+        router.push(`/timesheets/${id}`);
+      },
+      onError: (error: any) => {
+        toast.error(error.response?.data?.message || 'Erreur lors de la modification');
+      }
+    });
   };
 
   const handleCancel = () => {
@@ -54,7 +64,7 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
   };
 
   // Loading state
-  if (isLoading) {
+  if (isLoadingTimesheet) {
     return (
       <div className="space-y-6">
         {/* Header skeleton */}
@@ -70,23 +80,20 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
         </div>
 
         {/* Loading card */}
-        <Card>
-          <CardContent className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <LoadingSpinner size="lg" />
-              <p className="text-gray-600 mt-4">Chargement du pointage...</p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <LoadingSpinner size="lg" />
+            <p className="text-gray-600 mt-4">Chargement du pointage...</p>
+          </div>
+        </div>
       </div>
     );
   }
 
   // Error state
-  if (error || !timesheet) {
+  if (error) {
     return (
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={handleBackToList}>
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -94,159 +101,69 @@ export default function EditTimesheetPage({ params }: EditTimesheetPageProps) {
           </Button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-red-600">
-              Erreur de chargement
+              Erreur
             </h1>
             <p className="text-gray-600 mt-1">
-              Impossible de charger les informations du pointage
+              Impossible de charger ce pointage
             </p>
           </div>
         </div>
 
-        {/* Error card */}
-        <Card>
-          <CardContent className="pt-6">
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {error?.message || 'Pointage non trouvé ou une erreur est survenue lors du chargement.'}
-              </AlertDescription>
-            </Alert>
-            
-            <div className="flex gap-3 mt-4">
-              <Button variant="outline" onClick={handleBackToList}>
-                Retour à la liste
-              </Button>
-              <Button onClick={() => window.location.reload()}>
-                Réessayer
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            {error.message || 'Une erreur est survenue lors du chargement du pointage.'}
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
 
+  // Main render
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={handleViewDetail}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Retour au détail
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Edit className="h-8 w-8" />
-              Modifier le pointage
-            </h1>
-            <p className="text-gray-600 mt-1">
-              {typeof timesheet.user === 'object' 
-                ? `${timesheet.user.firstName} ${timesheet.user.lastName}`
-                : 'Utilisateur'
-              } - {new Date(timesheet.date).toLocaleDateString('fr-FR')}
-            </p>
-          </div>
-        </div>
-
-        <Button variant="outline" onClick={handleViewDetail}>
-          Voir le détail
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" onClick={handleViewDetail}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Retour aux détails
         </Button>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Edit className="h-8 w-8" />
+            Modifier le pointage
+          </h1>
+          <p className="text-gray-600 mt-1">
+            Pointage du {timesheet ? 
+              new Date(timesheet.date).toLocaleDateString('fr-FR', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              }) : 
+              '...'
+            }
+          </p>
+        </div>
       </div>
 
-      {/* Alert pour pointage validé */}
-      {timesheet.status === 'validated' && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Ce pointage a déjà été validé. Les modifications nécessiteront une nouvelle validation.
-          </AlertDescription>
-        </Alert>
+      {/* Info */}
+      <Alert>
+        <AlertDescription>
+          <strong>Modification de pointage:</strong> Les modifications seront enregistrées avec une trace 
+          d'audit. Vérifiez bien les informations avant de valider.
+        </AlertDescription>
+      </Alert>
+
+      {/* Formulaire */}
+      {timesheet && (
+        <TimesheetForm
+          timesheet={timesheet}
+          onSubmit={handleSuccess}
+          onCancel={handleCancel}
+          isLoading={updateTimesheet.isPending}
+        />
       )}
-
-      {/* ✅ Formulaire d'édition temporaire en attendant TimesheetForm */}'
-      <Card>
-        <CardHeader>
-          <CardTitle>Formulaire d'édition</CardTitle>
-          <CardDescription>
-            Le composant TimesheetForm sera disponible après l'implémentation du chapitre 5
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Informations actuelles du timesheet */}
-          <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Utilisateur:</p>
-              <p className="text-lg">
-                {typeof timesheet.user === 'object' 
-                  ? `${timesheet.user.firstName} ${timesheet.user.lastName}`
-                  : 'Utilisateur supprimé'
-                }
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-sm font-medium text-gray-600">Agence:</p>
-              <p className="text-lg">
-                {typeof timesheet.agency === 'object' 
-                  ? timesheet.agency.name 
-                  : 'Agence supprimée'
-                }
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-sm font-medium text-gray-600">Date:</p>
-              <p className="text-lg">{new Date(timesheet.date).toLocaleDateString('fr-FR')}</p>'
-            </div>
-            
-            <div>
-              <p className="text-sm font-medium text-gray-600">Statut:</p>
-              <p className="text-lg">
-                {timesheet.status === 'incomplete' ? 'Incomplet' :
-                 timesheet.status === 'complete' ? 'Complet' :
-                 timesheet.status === 'validated' ? 'Validé' :
-                 'En litige'}
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-sm font-medium text-gray-600">Début:</p>
-              <p className="text-lg">
-                {timesheet.startTime 
-                  ? new Date(timesheet.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                  : 'Non renseigné'
-                }
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-sm font-medium text-gray-600">Fin:</p>
-              <p className="text-lg">
-                {timesheet.endTime 
-                  ? new Date(timesheet.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                  : 'Non renseigné'
-                }
-              </p>
-            </div>
-          </div>
-
-          <div className="text-center py-8">
-            <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">
-              Formulaire d'édition de pointage en cours de développement
-            </p>
-            <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={handleCancel}>
-                Annuler
-              </Button>
-              <Button onClick={() => console.log('Modification temporairement désactivée')}>
-                Enregistrer les modifications (Temporaire)
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
