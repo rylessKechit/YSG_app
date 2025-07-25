@@ -161,6 +161,7 @@ export interface ComparisonSummary {
   earlyLeaveCount: number;
   punctualityRate: number;
   averageDelay: number;
+  orphanCount: number;
   breakdown: {
     on_time: { count: number; percentage: number };
     late: { count: number; percentage: number };

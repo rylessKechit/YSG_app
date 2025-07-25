@@ -1,4 +1,4 @@
-// admin-app/src/components/timesheets/timesheets-list-view-fixed.tsx
+// 🔧 FIX COMPLET - admin-app/src/components/timesheets/timesheets-list-view.tsx
 'use client';
 
 import { useState } from 'react';
@@ -12,7 +12,9 @@ import {
   CheckCircle,
   XCircle,
   MoreHorizontal,
-  Calendar
+  Calendar,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -32,6 +34,9 @@ import { useTimesheets, useDeleteTimesheet, useValidateTimesheet } from '@/hooks
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+
+// ✅ IMPORTATION DU TYPE CORRECT DEPUIS LE FICHIER GLOBAL
+import { TimesheetFilters as GlobalTimesheetFilters } from '@/types/timesheet';
 
 // ===== TYPES COMPATIBLES AVEC LE BACKEND =====
 interface BackendTimesheet {
@@ -83,18 +88,8 @@ interface BackendTimesheetListResponse {
   };
 }
 
-interface TimesheetFilters {
-  page?: number;
-  limit?: number;
-  search?: string;
-  startDate?: string;
-  endDate?: string;
-  userId?: string;
-  agencyId?: string;
-  status?: 'all' | 'incomplete' | 'complete' | 'validated' | 'disputed';
-  sort?: string;
-  order?: 'asc' | 'desc';
-}
+// ✅ SUPPRESSION DE L'INTERFACE LOCALE - UTILISATION DU TYPE GLOBAL
+// interface TimesheetFilters { ... } ❌ SUPPRIMÉ
 
 interface TimesheetsListViewProps {
   dateRange: {
@@ -108,7 +103,8 @@ export function TimesheetsListView({ dateRange, onDateRangeChange }: TimesheetsL
   const router = useRouter();
   
   // ===== ÉTAT LOCAL =====
-  const [filters, setFilters] = useState<TimesheetFilters>({
+  // ✅ UTILISATION DU TYPE GLOBAL CORRECT
+  const [filters, setFilters] = useState<GlobalTimesheetFilters>({
     page: 1,
     limit: 20,
     search: '',
@@ -131,8 +127,9 @@ export function TimesheetsListView({ dateRange, onDateRangeChange }: TimesheetsL
   const pagination = backendData?.pagination;
   const stats = backendData?.stats;
 
-  // ===== HANDLERS =====
-  const handleFiltersChange = (newFilters: Partial<TimesheetFilters>) => {
+  // ===== HANDLERS FIXES =====
+  // ✅ FIX: Typage correct avec le type global
+  const handleFiltersChange = (newFilters: Partial<GlobalTimesheetFilters>) => {
     setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
   };
 
@@ -140,8 +137,18 @@ export function TimesheetsListView({ dateRange, onDateRangeChange }: TimesheetsL
     handleFiltersChange({ search });
   };
 
+  // ✅ FIX: Cast correct vers le type du status global
   const handleStatusChange = (status: string) => {
-    handleFiltersChange({ status: status as TimesheetFilters['status'] });
+    handleFiltersChange({ 
+      status: status as GlobalTimesheetFilters['status'] 
+    });
+  };
+
+  // ✅ FIX: Typage correct pour les champs de date
+  const handleSortChange = (sort: string) => {
+    handleFiltersChange({ 
+      sort: sort as GlobalTimesheetFilters['sort']
+    });
   };
 
   const handleDateChange = (field: 'startDate' | 'endDate', value: string) => {
@@ -263,143 +270,301 @@ export function TimesheetsListView({ dateRange, onDateRangeChange }: TimesheetsL
           {/* Ligne 1: Recherche et statut */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
-              <Input
-                placeholder="Rechercher par nom, email..."
-                value={filters.search}
-                onChange={(e) => handleSearch(e.target.value)}
-                className="w-full"
-              />
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Rechercher par nom, email, agence..."
+                  value={filters.search || ''}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
-            <Select value={filters.status} onValueChange={handleStatusChange}>
-              <SelectTrigger className="w-full sm:w-[200px]">
+            
+            <Select 
+              value={filters.status || 'all'} 
+              onValueChange={handleStatusChange}
+            >
+              <SelectTrigger className="w-48">
                 <SelectValue placeholder="Statut" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les statuts</SelectItem>
-                <SelectItem value="incomplete">Incomplet</SelectItem>
-                <SelectItem value="complete">Complet</SelectItem>
-                <SelectItem value="validated">Validé</SelectItem>
+                <SelectItem value="incomplete">Incomplets</SelectItem>
+                <SelectItem value="complete">Complets</SelectItem>
+                <SelectItem value="validated">Validés</SelectItem>
                 <SelectItem value="disputed">En litige</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {/* Ligne 2: Dates */}
+          {/* Ligne 2: Dates et tri */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-1 block">Date début</label>
+            <div className="flex gap-2">
               <Input
                 type="date"
-                value={dateRange.startDate}
+                value={filters.startDate || ''}
                 onChange={(e) => handleDateChange('startDate', e.target.value)}
+                className="w-40"
               />
-            </div>
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-1 block">Date fin</label>
+              <span className="flex items-center text-gray-500">à</span>
               <Input
                 type="date"
-                value={dateRange.endDate}
+                value={filters.endDate || ''}
                 onChange={(e) => handleDateChange('endDate', e.target.value)}
+                className="w-40"
               />
             </div>
+            
+            <Select 
+              value={filters.sort || 'date'} 
+              onValueChange={handleSortChange}
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Trier par" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">Date</SelectItem>
+                <SelectItem value="user">Employé</SelectItem>
+                <SelectItem value="agency">Agence</SelectItem>
+                <SelectItem value="startTime">Heure d'arrivée</SelectItem>
+                <SelectItem value="delays.startDelay">Retard</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Actions en masse */}
-          {selectedRows.length > 0 && (
-            <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
+      {/* Statistiques rapides */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="flex items-center p-6">
+              <div className="flex items-center space-x-4">
+                <Clock className="h-8 w-8 text-blue-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.totalTimesheets}</p>
+                  <p className="text-sm text-gray-500">Total pointages</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="flex items-center p-6">
+              <div className="flex items-center space-x-4">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.completeTimesheets}</p>
+                  <p className="text-sm text-gray-500">Complets</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="flex items-center p-6">
+              <div className="flex items-center space-x-4">
+                <XCircle className="h-8 w-8 text-orange-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.incompleteTimesheets}</p>
+                  <p className="text-sm text-gray-500">Incomplets</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="flex items-center p-6">
+              <div className="flex items-center space-x-4">
+                <AlertTriangle className="h-8 w-8 text-red-600" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.disputedTimesheets}</p>
+                  <p className="text-sm text-gray-500">En litige</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Actions en masse */}
+      {selectedRows.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
                 {selectedRows.length} pointage(s) sélectionné(s)
               </span>
-              <Button size="sm" onClick={() => handleBulkAction('validate')}>
-                <CheckCircle className="h-4 w-4 mr-1" />
-                Valider
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleBulkAction('dispute')}>
-                <XCircle className="h-4 w-4 mr-1" />
-                Marquer en litige
-              </Button>
-              <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
-                <Trash2 className="h-4 w-4 mr-1" />
-                Supprimer
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => handleBulkAction('validate')}
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Valider
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => handleBulkAction('export')}
+                >
+                  Exporter
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="destructive"
+                  onClick={() => handleBulkAction('delete')}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Supprimer
+                </Button>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tableau des données */}
       <Card>
         <CardHeader>
           <CardTitle>
-            Liste des pointages ({pagination?.total || timesheets.length})
+            Pointages 
+            {pagination && (
+              <span className="text-sm font-normal text-gray-500 ml-2">
+                ({pagination.total} résultats)
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center h-32">
+            <div className="flex justify-center py-8">
               <LoadingSpinner />
             </div>
           ) : error ? (
-            <div className="text-center text-red-600 h-32 flex items-center justify-center">
-              Erreur lors du chargement des pointages
+            <div className="text-center py-8 text-red-600">
+              Erreur lors du chargement des données
             </div>
           ) : timesheets.length === 0 ? (
-            <div className="text-center py-8">
-              <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Aucun pointage trouvé pour cette période</p>
+            <div className="text-center py-8 text-gray-500">
+              Aucun pointage trouvé
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Tableau responsive */}
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-3">Date</th>
-                      <th className="text-left p-3">Employé</th>
-                      <th className="text-left p-3">Agence</th>
-                      <th className="text-left p-3">Horaires</th>
-                      <th className="text-left p-3">Statut</th>
-                      <th className="text-left p-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {timesheets.map((timesheet) => (
-                      <tr key={timesheet._id || timesheet.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3">
-                          <div className="font-medium">
-                            {format(parseISO(timesheet.date), 'dd/MM/yyyy', { locale: fr })}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRows(timesheets.map(t => t._id));
+                          } else {
+                            setSelectedRows([]);
+                          }
+                        }}
+                        checked={selectedRows.length === timesheets.length && timesheets.length > 0}
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Employé
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Agence
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Horaires
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Temps
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Statut
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {timesheets.map((timesheet) => {
+                    const statusBadge = getStatusBadge(timesheet.status);
+                    const isSelected = selectedRows.includes(timesheet._id);
+                    
+                    return (
+                      <tr 
+                        key={timesheet._id}
+                        className={`hover:bg-gray-50 ${isSelected ? 'bg-blue-50' : ''}`}
+                      >
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedRows([...selectedRows, timesheet._id]);
+                              } else {
+                                setSelectedRows(selectedRows.filter(id => id !== timesheet._id));
+                              }
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {format(parseISO(timesheet.date), 'dd MMM yyyy', { locale: fr })}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {getUserName(timesheet.user)}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {getUserEmail(timesheet.user)}
                           </div>
                         </td>
-                        <td className="p-3">
-                          <div>
-                            <div className="font-medium">{getUserName(timesheet.user)}</div>
-                            <div className="text-sm text-gray-500">{getUserEmail(timesheet.user)}</div>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {getAgencyName(timesheet.agency)}
                           </div>
+                          {getAgencyCode(timesheet.agency) && (
+                            <div className="text-sm text-gray-500">
+                              {getAgencyCode(timesheet.agency)}
+                            </div>
+                          )}
                         </td>
-                        <td className="p-3">
-                          <div>
-                            <div className="font-medium">{getAgencyName(timesheet.agency)}</div>
-                            {getAgencyCode(timesheet.agency) && (
-                              <div className="text-sm text-gray-500">{getAgencyCode(timesheet.agency)}</div>
-                            )}
-                          </div>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div>Arrivée: {formatTime(timesheet.startTime)}</div>
+                          <div>Départ: {formatTime(timesheet.endTime)}</div>
                         </td>
-                        <td className="p-3">
-                          <div className="text-sm space-y-1">
-                            <div>Début: {formatTime(timesheet.startTime)}</div>
-                            <div>Fin: {formatTime(timesheet.endTime)}</div>
-                          </div>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {timesheet.totalWorkedMinutes ? (
+                            <div>
+                              {Math.floor(timesheet.totalWorkedMinutes / 60)}h{(timesheet.totalWorkedMinutes % 60).toString().padStart(2, '0')}
+                              {timesheet.delays?.startDelay && timesheet.delays.startDelay > 0 && (
+                                <div className="text-xs text-red-600">
+                                  +{timesheet.delays.startDelay}min retard
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </td>
-                        <td className="p-3">
-                          <Badge variant={getStatusBadge(timesheet.status).variant}>
-                            {getStatusBadge(timesheet.status).label}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <Badge variant={statusBadge.variant}>
+                            {statusBadge.label}
                           </Badge>
                         </td>
-                        <td className="p-3">
+                        <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
+                              <Button variant="ghost" className="h-8 w-8 p-0">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -429,46 +594,53 @@ export function TimesheetsListView({ dateRange, onDateRangeChange }: TimesheetsL
                           </DropdownMenu>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              {pagination && pagination.total > pagination.limit && (
-                <div className="flex items-center justify-between pt-4">
-                  <div className="text-sm text-gray-600">
-                    Affichage de {((pagination.page - 1) * pagination.limit) + 1} à{' '}
-                    {Math.min(pagination.page * pagination.limit, pagination.total)} sur{' '}
-                    {pagination.total} pointages
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pagination.page - 1)}
-                      disabled={pagination.page <= 1}
-                    >
-                      Précédent
-                    </Button>
-                    <span className="text-sm">
-                      Page {pagination.page} sur {pagination.pages || pagination.totalPages || 1}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pagination.page + 1)}
-                      disabled={pagination.page >= (pagination.pages || pagination.totalPages || 1)}
-                    >
-                      Suivant
-                    </Button>
-                  </div>
-                </div>
-              )}
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {pagination && pagination.total > pagination.limit && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                Affichage de {((pagination.page - 1) * pagination.limit) + 1} à{' '}
+                {Math.min(pagination.page * pagination.limit, pagination.total)} sur{' '}
+                {pagination.total} résultats
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page <= 1}
+                >
+                  Précédent
+                </Button>
+                
+                <span className="text-sm">
+                  Page {pagination.page} sur {pagination.totalPages || pagination.pages}
+                </span>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={!pagination.hasNext}
+                >
+                  Suivant
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
