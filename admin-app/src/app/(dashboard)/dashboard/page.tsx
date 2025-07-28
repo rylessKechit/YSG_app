@@ -1,8 +1,8 @@
-// admin-app/src/app/(dashboard)/dashboard/page.tsx - VERSION CORRIGÉE
+// admin-app/src/app/(dashboard)/dashboard/page.tsx - VERSION COMPLÈTE AVEC GRAPHIQUES
 'use client';
 
 import { useState } from 'react';
-import { Users, Clock, Activity, Target, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Users, Clock, Activity, Target, AlertTriangle, RefreshCw } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,22 +11,38 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { KPICard } from '@/components/dashboard/kpi-card';
 
+// Nouveaux composants de graphiques
+import { EvolutionQuotidienneChart } from '@/components/dashboard/charts/evolution-quotidienne-chart';
+import { PerformanceAgencyChart } from '@/components/dashboard/charts/performance-agency-chart';
+import { TimeDistributionChart } from '@/components/dashboard/charts/time-distribution-chart';
+import { RecentAlertsWidget } from '@/components/dashboard/widgets/recent-alerts-widget';
+
+// Hooks
 import { useDashboardData, useDashboardAlerts } from '@/hooks/api/useDashboard';
-import { DashboardFilters } from '@/lib/api/dashboard';
+import { useDashboardChartsPreload, useTimelineData, usePunctualityByAgency, useTimeDistribution } from '@/hooks/api/useDashboardCharts';
+import { DashboardFilters } from '@/types/dashboard';
 
 export default function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
     period: 'today'
   });
 
-  // Récupération des données en temps réel
+  // Récupération des données principales
   const { kpis, overview, charts, alerts, isLoading, isError, error, refetchAll } = useDashboardData(filters);
   const criticalAlerts = useDashboardAlerts({ priority: 'critical', limit: 5 });
 
-  // ✅ CORRECTION : Utiliser les données de overview au lieu de kpis pour les retards
+  // Données spécifiques pour les graphiques
+  const timelineData = useTimelineData({ period: 'week' });
+  const punctualityData = usePunctualityByAgency({ period: 'week' });
+  const timeDistributionData = useTimeDistribution({ period: 'week' });
+
+  // Calculs des données d'affichage
   const currentLateCount = overview.data?.stats?.todayLate || 0;
   const totalScheduled = overview.data?.stats?.todaySchedules || 0;
   const totalPresent = overview.data?.stats?.todayPresent || 0;
+  const todayPreparations = overview.data?.stats?.todayPreparations || 0;
+  const punctualityRate = overview.data?.rates?.punctualityRate || 0;
+  const averageTime = overview.data?.rates?.averagePreparationTime || 0;
 
   // Gestion des erreurs
   if (isError) {
@@ -35,6 +51,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <Button onClick={refetchAll} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
             Actualiser
           </Button>
         </div>
@@ -67,25 +84,38 @@ export default function DashboardPage() {
     };
   };
 
+  // Gestion des actions sur les alertes
+  const handleAlertAction = (alertId: string, action: 'read' | 'dismiss' | 'view') => {
+    console.log(`Action ${action} sur alerte ${alertId}`);
+    // TODO: Implémenter les actions sur les alertes
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-gray-600">
             Vue d'ensemble en temps réel • Dernière mise à jour: {' '}
-            {overview.data?.timestamp ? new Date(overview.data.timestamp).toLocaleTimeString('fr-FR') : '--:--'}
+            {overview.data?.timestamp ?
+              new Date(overview.data.timestamp).toLocaleTimeString('fr-FR') : '--:--'}
           </p>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
           <Button
-            onClick={refetchAll}
+            onClick={() => {
+              refetchAll();
+              timelineData.refetch();
+              punctualityData.refetch();
+              timeDistributionData.refetch();
+            }}
             variant="outline"
             size="sm"
             disabled={isLoading}
           >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             {isLoading ? 'Actualisation...' : 'Actualiser'}
           </Button>
         </div>
@@ -97,7 +127,7 @@ export default function DashboardPage() {
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             <strong>{criticalAlerts.data.length} alerte(s) critique(s)</strong> nécessitent votre attention immédiate.
-            <Button variant="link" className="p-0 h-auto ml-2">
+            <Button variant="link" className="p-0 h-auto ml-2 text-red-600 underline">
               Voir les détails
             </Button>
           </AlertDescription>
@@ -123,20 +153,14 @@ export default function DashboardPage() {
 
         <KPICard
           title="Ponctualité"
-          value={overview.data?.rates?.punctualityRate || 0}
+          value={punctualityRate}
           subtitle="Taux global aujourd'hui"
-          trend={calculateTrend(
-            overview.data?.rates?.punctualityRate || 0,
-            94 // TODO: Récupérer la valeur d'hier'
-          )}
+          trend={calculateTrend(punctualityRate, 94)} // TODO: Récupérer la valeur d'hier
           target={{
             value: 95,
             label: 'Objectif'
           }}
-          status={getKPIStatus(
-            overview.data?.rates?.punctualityRate || 0,
-            95
-          )}
+          status={getKPIStatus(punctualityRate, 95)}
           format="percentage"
           icon={<Clock className="h-4 w-4" />}
           loading={overview.isLoading}
@@ -144,20 +168,14 @@ export default function DashboardPage() {
 
         <KPICard
           title="Préparations"
-          value={overview.data?.stats?.todayPreparations || 0}
+          value={todayPreparations}
           subtitle="Véhicules traités aujourd'hui"
-          trend={calculateTrend(
-            overview.data?.stats?.todayPreparations || 0,
-            42 // TODO: Récupérer la valeur d'hier'
-          )}
+          trend={calculateTrend(todayPreparations, 42)} // TODO: Récupérer la valeur d'hier
           target={{
             value: 50,
             label: 'Objectif jour'
           }}
-          status={getKPIStatus(
-            overview.data?.stats?.todayPreparations || 0,
-            50
-          )}
+          status={getKPIStatus(todayPreparations, 50)}
           format="number"
           icon={<Activity className="h-4 w-4" />}
           loading={overview.isLoading}
@@ -165,28 +183,30 @@ export default function DashboardPage() {
 
         <KPICard
           title="Temps moyen"
-          value={26} // TODO: Récupérer depuis l'API
+          value={averageTime}
           subtitle="Minutes par véhicule"
-          trend={calculateTrend(26, 25)} // TODO: Récupérer la valeur d'hier
+          trend={calculateTrend(averageTime, 28)} // TODO: Récupérer la valeur d'hier
           target={{
-            value: 30,
-            label: 'Max souhaité'
+            value: 25,
+            label: 'Objectif max'
           }}
-          status={getKPIStatus(30, 26)}
+          status={getKPIStatus(25, averageTime)} // Inversé car plus bas = mieux
           format="time"
           icon={<Target className="h-4 w-4" />}
           loading={overview.isLoading}
         />
       </div>
 
-      {/* Alertes et performances */}
+      {/* Section des retards en cours et performance par agence */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* ✅ CORRECTION MAJEURE : Retards en cours */}
+        {/* Retards en cours */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <AlertTriangle className="h-5 w-5 text-orange-500" />
+            <CardTitle className="flex items-center justify-between">
               <span>Retards en cours</span>
+              <Badge variant={currentLateCount > 0 ? "destructive" : "default"}>
+                {currentLateCount}
+              </Badge>
             </CardTitle>
             <CardDescription>
               Préparateurs actuellement en retard
@@ -195,79 +215,30 @@ export default function DashboardPage() {
           <CardContent>
             {overview.isLoading ? (
               <LoadingSpinner size="sm" />
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold text-orange-600">
-                    {currentLateCount}
-                  </span>
-                  <Badge variant="outline" className="bg-orange-50 text-orange-700">
-                    En retard
-                  </Badge>
+            ) : currentLateCount === 0 ? (
+              <div className="text-center py-4">
+                <div className="text-green-600 mb-2">
+                  <svg className="h-8 w-8 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
                 </div>
-                
-                {currentLateCount > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-600">
-                      {currentLateCount} employé(s) en retard sur {totalScheduled} planifié(s)
-                    </p>
-                    <Button variant="outline" size="sm" className="w-full">
-                      Voir détails
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    <p className="text-sm text-gray-600">
-                      ✅ Aucun retard signalé
-                    </p>
-                  </div>
-                )}
+                <p className="text-sm font-medium text-green-800">Aucun retard signalé</p>
+                <p className="text-xs text-green-600 mt-1">Tous les préparateurs sont à l'heure</p>
               </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Préparations actives */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Activity className="h-5 w-5 text-blue-500" />
-              <span>Préparations actives</span>
-            </CardTitle>
-            <CardDescription>
-              Véhicules en cours de préparation
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {overview.isLoading ? (
-              <LoadingSpinner size="sm" />
             ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold text-blue-600">
-                    {overview.data?.stats?.ongoingPreparations || 0}
-                  </span>
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                    En cours
-                  </Badge>
-                </div>
-                
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-600">
-                    • Terminées: {overview.data?.stats?.todayPreparations || 0}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    • En retard: 0
-                  </p>
+              <div className="space-y-3">
+                {/* TODO: Mapper les vrais données de retards */}
+                <div className="text-center text-gray-500">
+                  <p className="text-sm">{currentLateCount} préparateur(s) en retard</p>
+                  <p className="text-xs mt-1">Détails à venir...</p>
                 </div>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Performance par agence */}
-        <Card>
+        {/* Performance par agence - Version mini */}
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Performance par agence</CardTitle>
             <CardDescription>
@@ -275,92 +246,122 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {overview.isLoading ? (
+            {punctualityData.isLoading ? (
               <LoadingSpinner size="sm" />
             ) : (
               <div className="space-y-3">
-                {/* TODO: Mapper les vraies données d'agences */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">SIXT Antony</span>
-                  <span className="text-sm text-red-600">0.0%</span>
-                  <Badge variant="outline" className="text-xs">À améliorer</Badge>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">SIXT Massy TGV</span>
-                  <span className="text-sm text-red-600">0.0%</span>
-                  <Badge variant="outline" className="text-xs">À améliorer</Badge>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">SIXT Melun</span>
-                  <span className="text-sm text-red-600">0.0%</span>
-                  <Badge variant="outline" className="text-xs">À améliorer</Badge>
-                </div>
+                {punctualityData.data && punctualityData.data.length > 0 ? 
+                  punctualityData.data.slice(0, 3).map((agency) => (
+                    <div key={agency.agencyId} className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{agency.agencyName}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-sm ${
+                          agency.punctualityRate >= 95 ? 'text-green-600' :
+                          agency.punctualityRate >= 85 ? 'text-yellow-600' : 'text-red-600'
+                        }`}>
+                          {agency.punctualityRate.toFixed(1)}%
+                        </span>
+                        <Badge 
+                          variant={agency.punctualityRate >= 95 ? "default" : "outline"}
+                          className="text-xs"
+                        >
+                          {agency.punctualityRate >= 95 ? 'Excellent' :
+                           agency.punctualityRate >= 85 ? 'Bon' : 'À améliorer'}
+                        </Badge>
+                      </div>
+                    </div>
+                  )) : (
+                  <div className="space-y-3">
+                    {/* Données de fallback */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">SIXT Antony</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-red-600">0.0%</span>
+                        <Badge variant="outline" className="text-xs">À améliorer</Badge>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">SIXT Massy TGV</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-red-600">0.0%</span>
+                        <Badge variant="outline" className="text-xs">À améliorer</Badge>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">SIXT Melun</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-red-600">0.0%</span>
+                        <Badge variant="outline" className="text-xs">À améliorer</Badge>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Section graphiques et alertes détaillées */}
+      {/* Section des graphiques principales */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Graphique timeline placeholder */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Évolution quotidienne</CardTitle>
-            <CardDescription>
-              Pointages et préparations sur 7 jours
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              Graphique à venir
-            </div>
-          </CardContent>
-        </Card>
+        {/* Graphique Evolution quotidienne */}
+        <EvolutionQuotidienneChart
+          data={timelineData.data || []}
+          isLoading={timelineData.isLoading}
+          period={filters.period}
+        />
 
-        {/* Alertes récentes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Alertes récentes</CardTitle>
-            <CardDescription>
-              Dernières notifications importantes
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {alerts.isLoading ? (
-              <LoadingSpinner size="sm" />
-            ) : alerts.data && alerts.data.length > 0 ? (
-              <div className="space-y-3">
-                {alerts.data.slice(0, 5).map((alert) => (
-                  <div
-                    key={alert.id}
-                    className="flex items-start space-x-3 p-3 rounded-lg bg-gray-50"
-                  >
-                    <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">
-                        {alert.title}
-                      </p>
-                      <p className="text-sm text-gray-600 truncate">
-                        {alert.message}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(alert.timestamp).toLocaleTimeString('fr-FR')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2 text-gray-500">
-                <CheckCircle className="h-4 w-4" />
-                <p className="text-sm">Aucune alerte récente</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Widget Alertes récentes */}
+        <RecentAlertsWidget
+          alerts={alerts.data || []}
+          isLoading={alerts.isLoading}
+          maxAlerts={5}
+          onAlertAction={handleAlertAction}
+          showActions={true}
+        />
+      </div>
+
+      {/* Section des graphiques détaillés */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Performance par agence - Version complète */}
+        <PerformanceAgencyChart
+          data={punctualityData.data || []}
+          isLoading={punctualityData.isLoading}
+          metric="punctuality"
+        />
+
+        {/* Distribution des temps */}
+        <TimeDistributionChart
+          data={timeDistributionData.data || []}
+          isLoading={timeDistributionData.isLoading}
+          chartType="bar"
+        />
+      </div>
+
+      {/* Section des graphiques supplémentaires */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Performance par agence - Préparations */}
+        <PerformanceAgencyChart
+          data={punctualityData.data || []}
+          isLoading={punctualityData.isLoading}
+          metric="preparations"
+        />
+        
+        {/* Performance par agence - Temps moyen */}
+        <PerformanceAgencyChart
+          data={punctualityData.data || []}
+          isLoading={punctualityData.isLoading}
+          metric="averageTime"
+        />
+
+        {/* Distribution des temps - Version secteurs */}
+        <TimeDistributionChart
+          data={timeDistributionData.data || []}
+          isLoading={timeDistributionData.isLoading}
+          chartType="pie"
+        />
       </div>
     </div>
   );

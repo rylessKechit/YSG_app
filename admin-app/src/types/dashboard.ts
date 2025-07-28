@@ -1,4 +1,4 @@
-// src/types/dashboard.ts
+// admin-app/src/types/dashboard.ts - TYPES CORRIGÉS
 
 export interface DashboardStats {
   preparateurs: {
@@ -79,16 +79,18 @@ export interface ChartDataResponse {
   }[];
 }
 
+// TYPE PRINCIPAL CORRIGÉ - Inclut toutes les périodes possibles
 export interface DashboardFilters {
-  period?: 'today' | 'week' | 'month';
+  period?: 'today' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
   agencies?: string[];
   startDate?: string;
   endDate?: string;
 }
 
+// Type étendu pour les graphiques - CORRIGÉ
 export interface ChartFilters extends DashboardFilters {
-  type?: 'all' | 'timeline' | 'ponctualite' | 'temps';
-  granularity?: 'hour' | 'day' | 'week';
+  type?: 'all' | 'timeline' | 'ponctualite' | 'temps' | 'agencies';
+  granularity?: 'hour' | 'day' | 'week' | 'month';
 }
 
 export interface LateEmployee {
