@@ -1,6 +1,7 @@
 // src/hooks/api/useDashboard.ts
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { dashboardApi, DashboardFilters, ChartFilters } from '@/lib/api/dashboard';
+import { dashboardApi, ChartFilters } from '@/lib/api/dashboard';
+import { DashboardFilters } from '@/types/dashboard';
 
 // Query keys pour le cache
 export const dashboardKeys = {
@@ -42,7 +43,7 @@ export function useDashboardOverview() {
 export function useChartsData(filters: ChartFilters = {}) {
   return useQuery({
     queryKey: dashboardKeys.charts(filters),
-    queryFn: () => dashboardApi.getChartsData(filters),
+    queryFn: () => dashboardApi.getCharts(filters),
     refetchInterval: 2 * 60 * 1000, // Refresh toutes les 2 minutes
     staleTime: 60000,
     gcTime: 15 * 60 * 1000,
