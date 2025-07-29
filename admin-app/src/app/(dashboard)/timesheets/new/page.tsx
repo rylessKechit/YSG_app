@@ -1,17 +1,16 @@
-// admin-app/src/app/(dashboard)/timesheets/new/page.tsx - COPIE EXACTE DE EDIT
+// admin-app/src/app/(dashboard)/timesheets/new/page.tsx - CORRECTION OVERFLOW
 'use client';
 
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // Import du formulaire fonctionnel - EXACTEMENT COMME EDIT
 import { TimesheetForm } from '@/components/timesheets/timesheet-form';
 import { useCreateTimesheet } from '@/hooks/use-timesheets';
 import { toast } from 'sonner';
-
-// ===== PAS DE TYPES LOCAUX - ON UTILISE CEUX DU FORMULAIRE =====
 
 export default function NewTimesheetPage() {
   const router = useRouter();
@@ -39,9 +38,9 @@ export default function NewTimesheetPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* ✅ CORRECTION 1: Header fixe avec hauteur définie */}
+      <div className="flex-shrink-0 flex items-center gap-4 p-6 bg-white border-b">
         <Button variant="ghost" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           Retour aux pointages
@@ -57,20 +56,27 @@ export default function NewTimesheetPage() {
         </div>
       </div>
 
-      {/* Info */}
-      <Alert>
-        <AlertDescription>
-          <strong>Nouveau pointage:</strong> Remplissez les informations ci-dessous pour créer un pointage manuel. 
-          Les champs marqués d'un * sont obligatoires.
-        </AlertDescription>
-      </Alert>
+      {/* ✅ CORRECTION 2: Zone scrollable avec hauteur calculée */}
+      <ScrollArea className="flex-1">
+        <div className="p-6 space-y-6">
+          {/* Info */}
+          <Alert>
+            <AlertDescription>
+              <strong>Nouveau pointage:</strong> Remplissez les informations ci-dessous pour créer un pointage manuel. 
+              Les champs marqués d'un * sont obligatoires.
+            </AlertDescription>
+          </Alert>
 
-      {/* Formulaire - EXACTEMENT COMME EDIT */}
-      <TimesheetForm
-        onSubmit={handleSuccess}
-        onCancel={handleCancel}
-        isLoading={createTimesheet.isPending}
-      />
+          {/* ✅ CORRECTION 3: Formulaire dans container avec padding adaptatif */}
+          <div className="max-w-4xl">
+            <TimesheetForm
+              onSubmit={handleSuccess}
+              onCancel={handleCancel}
+              isLoading={createTimesheet.isPending}
+            />
+          </div>
+        </div>
+      </ScrollArea>
     </div>
   );
 }

@@ -1,12 +1,25 @@
-// admin-app/src/components/timesheets/timesheet-form.tsx - FICHIER COMPLET CORRIGÉ
+// admin-app/src/components/timesheets/timesheet-form.tsx - CORRECTION OVERFLOW
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { CalendarIcon, Clock, Save, X, Calculator } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Form,
   FormControl,
@@ -16,88 +29,53 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
-import { Clock, Calendar, User, Building, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
-// ===== TYPES LOCAUX POUR ÉVITER LES ERREURS D'IMPORT =====
+import { useUsers } from '@/hooks/api/useUsers';
+import { useAgencies } from '@/hooks/api/useAgencies';
+import { cn } from '@/lib/utils';
 
-interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-}
-
-interface Agency {
-  id: string;
-  name: string;
-  code?: string;
-}
-
-interface Timesheet {
-  id: string;
-  date: string;
-  startTime?: string;
-  endTime?: string;
-  breakStart?: string;
-  breakEnd?: string;
-  totalWorkedMinutes?: number;
-  notes?: string;
-  adminNotes?: string;
-  status: 'incomplete' | 'complete' | 'validated' | 'disputed';
-  user: User | string;
-  agency: Agency | string;
-}
-
-interface TimesheetCreateData {
+// Types et schemas
+interface TimesheetFormData {
   userId: string;
   agencyId: string;
   date: string;
-  startTime?: string;
-  endTime?: string;
-  breakStart?: string;
-  breakEnd?: string;
-  notes?: string;
-  adminNotes?: string;
-  status?: 'incomplete' | 'complete' | 'validated' | 'disputed';
+  startTime: string;
+  endTime: string;
+  breakStart: string;
+  breakEnd: string;
+  notes: string;
+  adminNotes: string;
+  status: 'incomplete' | 'complete' | 'pending';
 }
 
-interface TimesheetUpdateData {
-  startTime?: string;
-  endTime?: string;
-  breakStart?: string;
-  breakEnd?: string;
-  notes?: string;
-  adminNotes?: string;
-  status?: 'incomplete' | 'complete' | 'validated' | 'disputed';
+interface TimesheetFormProps {
+  timesheet?: any;
+  onSubmit: (data: any) => void;
+  onCancel: () => void;
+  isLoading?: boolean;
 }
 
-// ===== SCHÉMA DE VALIDATION ZOD =====
-const timesheetFormSchema = z.object({
-  userId: z.string().min(1, 'Sélectionnez un employé'),
-  agencyId: z.string().min(1, 'Sélectionnez une agence'),
-  date: z.string().min(1, 'Sélectionnez une date'),
+const timesheetSchema = z.object({
+  userId: z.string().min(1, 'Utilisateur requis'),
+  agencyId: z.string().min(1, 'Agence requise'),
+  date: z.string().min(1, 'Date requise'),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
   breakStart: z.string().optional(),
   breakEnd: z.string().optional(),
   notes: z.string().optional(),
   adminNotes: z.string().optional(),
-  status: z.enum(['incomplete', 'complete', 'validated', 'disputed']).optional(),
+  status: z.enum(['incomplete', 'complete', 'pending']),
 }).refine((data) => {
-  // Validation: heure fin après heure début
   if (data.startTime && data.endTime) {
     const start = new Date(`2000-01-01T${data.startTime}`);
     const end = new Date(`2000-01-01T${data.endTime}`);
@@ -108,72 +86,31 @@ const timesheetFormSchema = z.object({
   message: "L'heure de fin doit être après l'heure de début",
   path: ["endTime"],
 }).refine((data) => {
-  // Validation: pause cohérente
   if (data.breakStart && data.breakEnd) {
-    const breakStartTime = new Date(`2000-01-01T${data.breakStart}`);
-    const breakEndTime = new Date(`2000-01-01T${data.breakEnd}`);
-    return breakEndTime > breakStartTime;
+    const start = new Date(`2000-01-01T${data.breakStart}`);
+    const end = new Date(`2000-01-01T${data.breakEnd}`);
+    return end > start;
   }
   return true;
 }, {
-  message: "L'heure de fin de pause doit être après l'heure de début",
+  message: "La fin de pause doit être après le début de pause",
   path: ["breakEnd"],
-}).refine((data) => {
-  // Validation: pause dans les heures de travail
-  if (data.startTime && data.endTime && data.breakStart && data.breakEnd) {
-    const start = new Date(`2000-01-01T${data.startTime}`);
-    const end = new Date(`2000-01-01T${data.endTime}`);
-    const breakStart = new Date(`2000-01-01T${data.breakStart}`);
-    const breakEnd = new Date(`2000-01-01T${data.breakEnd}`);
-    
-    return breakStart >= start && breakEnd <= end;
-  }
-  return true;
-}, {
-  message: "La pause doit être comprise dans les heures de travail",
-  path: ["breakStart"],
 });
 
-type TimesheetFormData = z.infer<typeof timesheetFormSchema>;
-
-// ===== PROPS DU COMPOSANT =====
-interface TimesheetFormProps {
-  timesheet?: Timesheet;
-  isLoading?: boolean;
-  onSubmit: (data: any) => void;
-  onCancel: () => void;
-}
-
-// ===== MOCK DATA POUR LES TESTS =====
-const mockUsers: User[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', email: 'jean.dupont@example.com' },
-  { id: '2', firstName: 'Marie', lastName: 'Martin', email: 'marie.martin@example.com' },
-  { id: '3', firstName: 'Pierre', lastName: 'Durand', email: 'pierre.durand@example.com' },
-];
-
-const mockAgencies: Agency[] = [
-  { id: '1', name: 'Agence Paris Centre', code: 'PAR01' },
-  { id: '2', name: 'Agence Lyon Part-Dieu', code: 'LYO01' },
-  { id: '3', name: 'Agence Marseille Vieux-Port', code: 'MAR01' },
-];
-
-// ===== COMPOSANT PRINCIPAL =====
-export function TimesheetForm({
-  timesheet,
-  isLoading = false,
-  onSubmit,
-  onCancel,
-}: TimesheetFormProps) {
-  const isEdit = !!timesheet;
+export function TimesheetForm({ timesheet, onSubmit, onCancel, isLoading = false }: TimesheetFormProps) {
   const [calculatedDuration, setCalculatedDuration] = useState<string>('');
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
-  // Utilisation des données mock pour l'instant
-  const users = mockUsers;
-  const agencies = mockAgencies;
+  // Hooks pour les données
+  const { data: usersResponse, isLoading: usersLoading } = useUsers();
+  const { data: agenciesResponse, isLoading: agenciesLoading } = useAgencies();
 
-  // ===== FORMULAIRE =====
+  const users = usersResponse?.data?.users || [];
+  const agencies = agenciesResponse?.agencies || [];
+
+  // Form setup
   const form = useForm<TimesheetFormData>({
-    resolver: zodResolver(timesheetFormSchema),
+    resolver: zodResolver(timesheetSchema),
     defaultValues: {
       userId: '',
       agencyId: '',
@@ -188,12 +125,9 @@ export function TimesheetForm({
     },
   });
 
-  // ===== WATCHERS POUR CALCULS =====
   const watchedFields = form.watch(['startTime', 'endTime', 'breakStart', 'breakEnd']);
 
-  // ===== EFFECTS =====
-  
-  // Populate form when editing
+  // Pré-remplir le formulaire si on édite
   useEffect(() => {
     if (timesheet) {
       const user = typeof timesheet.user === 'object' ? timesheet.user : null;
@@ -253,10 +187,10 @@ export function TimesheetForm({
     const baseDate = data.date;
     
     const formatDateTime = (time?: string) => {
-      return time ? `${baseDate}T${time}:00.000Z` : undefined;
+      return time ? new Date(`${baseDate}T${time}:00.000Z`).toISOString() : null;
     };
 
-    const submitData = {
+    const formattedData = {
       userId: data.userId,
       agencyId: data.agencyId,
       date: data.date,
@@ -264,398 +198,380 @@ export function TimesheetForm({
       endTime: formatDateTime(data.endTime),
       breakStart: formatDateTime(data.breakStart),
       breakEnd: formatDateTime(data.breakEnd),
-      notes: data.notes || '',
-      adminNotes: data.adminNotes || '',
+      notes: data.notes,
+      adminNotes: data.adminNotes,
       status: data.status,
     };
 
-    onSubmit(submitData);
+    onSubmit(formattedData);
   };
 
-  const handleQuickFill = (preset: string) => {
-    switch (preset) {
-      case 'morning':
-        form.setValue('startTime', '08:00');
-        form.setValue('endTime', '12:00');
-        form.setValue('breakStart', '');
-        form.setValue('breakEnd', '');
-        break;
-      case 'afternoon':
-        form.setValue('startTime', '14:00');
-        form.setValue('endTime', '18:00');
-        form.setValue('breakStart', '');
-        form.setValue('breakEnd', '');
-        break;
-      case 'fullday':
-        form.setValue('startTime', '08:00');
-        form.setValue('endTime', '17:00');
-        form.setValue('breakStart', '12:00');
-        form.setValue('breakEnd', '13:00');
-        break;
-    }
-  };
+  const selectedUser = useMemo(() => {
+    const userId = form.watch('userId');
+    return users.find((user: any) => user.id === userId);
+  }, [users, form.watch('userId')]);
 
-  // ===== RENDU =====
+  const selectedAgency = useMemo(() => {
+    const agencyId = form.watch('agencyId');
+    return agencies.find((agency: any) => agency.id === agencyId);
+  }, [agencies, form.watch('agencyId')]);
+
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-        {/* En-tête du formulaire */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              {isEdit ? 'Modifier le pointage' : 'Nouveau pointage'}
-            </CardTitle>
-            {isEdit && timesheet && (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">
-                  ID: {timesheet.id.slice(-8)}
-                </Badge>
-                <Badge variant={
-                  timesheet.status === 'validated' ? 'default' :
-                  timesheet.status === 'complete' ? 'secondary' :
-                  timesheet.status === 'disputed' ? 'destructive' :
-                  'outline'
-                }>
-                  {timesheet.status === 'validated' ? 'Validé' :
-                   timesheet.status === 'complete' ? 'Complet' :
-                   timesheet.status === 'disputed' ? 'En litige' :
-                   'Incomplet'}
-                </Badge>
+    <div className="w-full">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+          {/* ✅ CORRECTION 1: Grid responsive avec overflow contrôlé */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Informations de base */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarIcon className="h-5 w-5" />
+                  Informations de base
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Utilisateur */}
+                <FormField
+                  control={form.control}
+                  name="userId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Employé *</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value}
+                        disabled={usersLoading}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner un employé" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {users.map((user: any) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.firstName} {user.lastName}
+                              <span className="ml-2 text-sm text-gray-500">
+                                ({user.email})
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Agence */}
+                <FormField
+                  control={form.control}
+                  name="agencyId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Agence *</FormLabel>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value}
+                        disabled={agenciesLoading}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner une agence" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {agencies.map((agency: any) => (
+                            <SelectItem key={agency.id} value={agency.id}>
+                              {agency.name}
+                              {agency.code && (
+                                <span className="ml-2 text-sm text-gray-500">
+                                  ({agency.code})
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Date */}
+                <FormField
+                  control={form.control}
+                  name="date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date *</FormLabel>
+                      <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? (
+                                format(new Date(field.value), 'PPP', { locale: fr })
+                              ) : (
+                                <span>Sélectionner une date</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                field.onChange(format(date, 'yyyy-MM-dd'));
+                                setCalendarOpen(false);
+                              }
+                            }}
+                            disabled={(date) =>
+                              date > new Date() || date < new Date("1900-01-01")
+                            }
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Statut */}
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Statut</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="incomplete">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                              Incomplet
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="complete">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500" />
+                              Complet
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="pending">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              En attente
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Horaires */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Horaires
+                  {calculatedDuration && (
+                    <Badge variant="secondary" className="ml-auto">
+                      {calculatedDuration}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Arrivée */}
+                <FormField
+                  control={form.control}
+                  name="startTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Heure d'arrivée</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          {...field}
+                          className="font-mono"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Départ */}
+                <FormField
+                  control={form.control}
+                  name="endTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Heure de départ</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          {...field}
+                          className="font-mono"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Separator />
+
+                {/* Début pause */}
+                <FormField
+                  control={form.control}
+                  name="breakStart"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Début de pause</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          {...field}
+                          className="font-mono"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Fin pause */}
+                <FormField
+                  control={form.control}
+                  name="breakEnd"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fin de pause</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          {...field}
+                          className="font-mono"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Calcul automatique */}
+                {calculatedDuration && (
+                  <Alert>
+                    <Calculator className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Durée calculée:</strong> {calculatedDuration}
+                      {watchedFields[2] && watchedFields[3] && (
+                        <span className="text-sm text-gray-600 block mt-1">
+                          (pauses déduites automatiquement)
+                        </span>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ✅ CORRECTION 2: Section notes avec hauteur contrôlée */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Notes et commentaires</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Notes employé */}
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes de l'employé</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          placeholder="Notes ou commentaires de l'employé..."
+                          className="resize-none h-24"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Notes admin */}
+                <FormField
+                  control={form.control}
+                  name="adminNotes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes administratives</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          placeholder="Notes internes (visibles uniquement par les admins)..."
+                          className="resize-none h-24"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
-            )}
-          </CardHeader>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Informations de base */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Informations de base
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Employé */}
-              <FormField
-                control={form.control}
-                name="userId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Employé *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionnez un employé" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {users.map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            <div className="flex items-center gap-2">
-                              <div>
-                                <div className="font-medium">
-                                  {user.firstName} {user.lastName}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {user.email}
-                                </div>
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Agence */}
-              <FormField
-                control={form.control}
-                name="agencyId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Agence *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionnez une agence" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {agencies.map((agency) => (
-                          <SelectItem key={agency.id} value={agency.id}>
-                            <div className="flex items-center gap-2">
-                              <Building className="h-4 w-4" />
-                              <div>
-                                <div className="font-medium">{agency.name}</div>
-                                {agency.code && (
-                                  <div className="text-xs text-gray-500">
-                                    {agency.code}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Date */}
-            <FormField
-              control={form.control}
-              name="date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date *</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Horaires de travail */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Horaires de travail
-            </CardTitle>
-            <div className="flex flex-wrap gap-2">
-              <Button 
-                type="button" 
-                size="sm" 
-                variant="outline"
-                onClick={() => handleQuickFill('morning')}
-              >
-                Matin (8h-12h)
-              </Button>
-              <Button 
-                type="button" 
-                size="sm" 
-                variant="outline"
-                onClick={() => handleQuickFill('afternoon')}
-              >
-                Après-midi (14h-18h)
-              </Button>
-              <Button 
-                type="button" 
-                size="sm" 
-                variant="outline"
-                onClick={() => handleQuickFill('fullday')}
-              >
-                Journée complète (8h-17h)
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Heures de début/fin */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="startTime"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Heure de début</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="endTime"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Heure de fin</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Pause */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="breakStart"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Début pause</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="breakEnd"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Fin pause</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Durée calculée */}
-            {calculatedDuration && (
-              <Alert>
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Durée de travail calculée:</strong> {calculatedDuration}
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Notes et statut */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Compléments d'information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Notes employé */}
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notes de l'employé</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder="Notes, commentaires, observations..."
-                      rows={3}
-                      {...field} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Notes admin */}
-            <FormField
-              control={form.control}
-              name="adminNotes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notes administratives</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder="Notes internes, validations, modifications..."
-                      rows={3}
-                      {...field} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Statut */}
-            <FormField
-              control={form.control}
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Statut</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="incomplete">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          Incomplet
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="complete">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-4 w-4" />
-                          Complet
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="validated">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                          Validé
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="disputed">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-red-600" />
-                          En litige
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Actions */}
-        <div className="flex items-center gap-3">
-          <Button 
-            type="submit" 
-            disabled={isLoading}
-            className="flex-1 sm:flex-none"
-          >
-            {isLoading ? (
-              <>
-                <LoadingSpinner size="sm" className="mr-2" />
-                {isEdit ? 'Modification...' : 'Création...'}
-              </>
-            ) : (
-              <>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                {isEdit ? 'Modifier le pointage' : 'Créer le pointage'}
-              </>
-            )}
-          </Button>
-          
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={onCancel}
-            disabled={isLoading}
-          >
-            Annuler
-          </Button>
-        </div>
-      </form>
-    </Form>
+          {/* ✅ CORRECTION 3: Footer avec actions collé en bas */}
+          <div className="flex flex-col-reverse sm:flex-row gap-3 pt-6 border-t bg-white">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isLoading}
+              className="w-full sm:w-auto"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Annuler
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full sm:w-auto sm:ml-auto"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isLoading 
+                ? (timesheet ? 'Modification...' : 'Création...') 
+                : (timesheet ? 'Modifier le pointage' : 'Créer le pointage')
+              }
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </div>
   );
 }
