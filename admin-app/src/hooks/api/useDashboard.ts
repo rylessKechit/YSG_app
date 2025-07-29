@@ -1,7 +1,7 @@
-// src/hooks/api/useDashboard.ts
+// admin-app/src/hooks/api/useDashboard.ts - CORRECTION COMPLÈTE
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { dashboardApi, ChartFilters } from '@/lib/api/dashboard';
-import { DashboardFilters } from '@/types/dashboard';
+import { DashboardFilters, DashboardOverviewResponse, DashboardAlert } from '@/types/dashboard';
 
 // Query keys pour le cache
 export const dashboardKeys = {
@@ -26,7 +26,7 @@ export function useKPIsData(filters: DashboardFilters = {}) {
   });
 }
 
-// Hook pour la vue d'ensemble
+// ✅ CORRECTION: Hook pour la vue d'ensemble avec bon type de retour
 export function useDashboardOverview() {
   return useQuery({
     queryKey: dashboardKeys.overview(),
@@ -35,7 +35,7 @@ export function useDashboardOverview() {
     staleTime: 30000,
     gcTime: 10 * 60 * 1000,
     retry: 1,
-    select: (data) => data.data,
+    select: (data): DashboardOverviewResponse => data.data, // ✅ Type explicite
   });
 }
 
@@ -53,9 +53,9 @@ export function useChartsData(filters: ChartFilters = {}) {
   });
 }
 
-// Hook pour les alertes avec refresh fréquent
+// ✅ CORRECTION: Hook pour les alertes avec type correct
 export function useDashboardAlerts(filters: {
-  priority?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical'; // ✅ Type union strict
   limit?: number;
   unreadOnly?: boolean;
 } = {}) {
@@ -66,20 +66,20 @@ export function useDashboardAlerts(filters: {
     staleTime: 5000,
     gcTime: 2 * 60 * 1000,
     retry: 2,
-    select: (data) => data.data,
+    select: (data): DashboardAlert[] => data.data, // ✅ Type explicite
   });
 }
 
-// Hook pour les statistiques hebdomadaires
+// ✅ CORRECTION: Hook pour les statistiques hebdomadaires
 export function useWeeklyOverview(date?: string) {
   return useQuery({
     queryKey: dashboardKeys.weekly(date),
-    queryFn: () => dashboardApi.getWeeklyOverview(date),
+    queryFn: () => dashboardApi.getWeeklyOverview(date), // ✅ Méthode maintenant disponible
     refetchInterval: 5 * 60 * 1000, // Refresh toutes les 5 minutes
     staleTime: 2 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     retry: 1,
-    select: (data) => data.data,
+    select: (data): DashboardOverviewResponse => data.data, // ✅ Type explicite
   });
 }
 
@@ -133,10 +133,10 @@ export function useDashboardCache() {
   };
 }
 
-// Hook combiné pour toutes les données du dashboard
+// ✅ CORRECTION: Hook combiné pour toutes les données du dashboard avec types explicites
 export function useDashboardData(filters: DashboardFilters = {}) {
   const kpis = useKPIsData(filters);
-  const overview = useDashboardOverview();
+  const overview = useDashboardOverview(); // ✅ Maintenant correctement typé
   const charts = useChartsData({ ...filters, type: 'all' });
   const alerts = useDashboardAlerts({ limit: 10, unreadOnly: false });
 
@@ -154,5 +154,49 @@ export function useDashboardData(filters: DashboardFilters = {}) {
       charts.refetch();
       alerts.refetch();
     }
+  };
+}
+
+// ✅ AJOUT: Hooks supplémentaires pour fonctionnalités avancées
+export function useRealtimeStats() {
+  return useQuery({
+    queryKey: [...dashboardKeys.all, 'realtime'],
+    queryFn: () => dashboardApi.getRealtimeStats(),
+    refetchInterval: 5000, // Très fréquent pour temps réel
+    staleTime: 1000,
+    retry: 1,
+    select: (data) => data.data,
+  });
+}
+
+export function useAgencyStats(filters: DashboardFilters = {}) {
+  return useQuery({
+    queryKey: [...dashboardKeys.all, 'agency-stats', filters],
+    queryFn: () => dashboardApi.getAgencyStats(filters),
+    staleTime: 60000,
+    retry: 1,
+    select: (data) => data.data,
+  });
+}
+
+// Hook pour les actions sur les alertes
+export function useAlertActions() {
+  const queryClient = useQueryClient();
+
+  const markAsRead = async (alertId: string) => {
+    await dashboardApi.markAlertAsRead(alertId);
+    // Invalider le cache des alertes
+    queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'alerts'] });
+  };
+
+  const dismiss = async (alertId: string) => {
+    await dashboardApi.dismissAlert(alertId);
+    // Invalider le cache des alertes
+    queryClient.invalidateQueries({ queryKey: [...dashboardKeys.all, 'alerts'] });
+  };
+
+  return {
+    markAsRead,
+    dismiss
   };
 }

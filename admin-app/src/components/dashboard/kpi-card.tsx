@@ -1,4 +1,4 @@
-// src/components/dashboard/kpi-card.tsx
+// admin-app/src/components/dashboard/kpi-card.tsx - VERSION CORRIGÉE
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,16 +42,25 @@ const statusBadgeColors = {
   neutral: 'bg-gray-100 text-gray-800',
 };
 
+// ✅ CORRECTION: Fonction de formatage améliorée
 function formatValue(value: number | string, format: KPICardProps['format']): string {
   if (typeof value === 'string') return value;
   
+  // ✅ Gestion des valeurs nulles/invalides
+  if (value === null || value === undefined || isNaN(value)) {
+    return '--';
+  }
+  
   switch (format) {
     case 'percentage':
-      return `${value.toFixed(1)}%`;
+      return `${Number(value).toFixed(1)}%`;
     case 'time':
+      // ✅ CORRECTION: Meilleur formatage du temps
+      if (value === 0) return '0min';
       if (value < 60) return `${Math.round(value)}min`;
       const hours = Math.floor(value / 60);
       const minutes = Math.round(value % 60);
+      if (minutes === 0) return `${hours}h`;
       return `${hours}h${minutes.toString().padStart(2, '0')}`;
     case 'currency':
       return new Intl.NumberFormat('fr-FR', {
@@ -60,7 +69,15 @@ function formatValue(value: number | string, format: KPICardProps['format']): st
       }).format(value);
     case 'number':
     default:
-      return new Intl.NumberFormat('fr-FR').format(value);
+      // ✅ CORRECTION: Formatage des nombres entiers vs décimaux
+      if (Number.isInteger(value)) {
+        return new Intl.NumberFormat('fr-FR').format(value);
+      } else {
+        return new Intl.NumberFormat('fr-FR', { 
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1 
+        }).format(value);
+      }
   }
 }
 
@@ -71,24 +88,23 @@ function TrendIcon({ trend }: { trend: KPICardProps['trend'] }) {
     return <Minus className="h-4 w-4 text-gray-500" />;
   }
   
-  return trend.isPositive ? (
-    <TrendingUp className="h-4 w-4 text-green-600" />
-  ) : (
-    <TrendingDown className="h-4 w-4 text-red-600" />
-  );
+  return trend.isPositive ?
+    <TrendingUp className="h-4 w-4 text-green-600" /> :
+    <TrendingDown className="h-4 w-4 text-red-600" />;
 }
 
 function LoadingSkeleton({ size }: { size: KPICardProps['size'] }) {
   const sizeClasses = {
-    sm: 'h-16',
-    md: 'h-20',
-    lg: 'h-24',
+    sm: 'h-6',
+    md: 'h-8',
+    lg: 'h-10',
   };
 
   return (
     <div className="animate-pulse">
       <div className="h-4 bg-gray-200 rounded w-2/3 mb-2"></div>
-      <div className={`bg-gray-200 rounded w-1/2 ${sizeClasses[size || 'md']}`}></div>
+      <div className={`bg-gray-200 rounded w-1/2 mb-1 ${sizeClasses[size || 'md']}`}></div>
+      <div className="h-3 bg-gray-200 rounded w-3/4"></div>
     </div>
   );
 }
@@ -126,14 +142,16 @@ export function KPICard({
         <CardTitle className="text-sm font-medium text-gray-700">
           {title}
         </CardTitle>
-        {icon && (
-          <div className="text-gray-400">
-            {icon}
-          </div>
-        )}
-        {status === 'error' && (
-          <AlertTriangle className="h-4 w-4 text-red-500" />
-        )}
+        <div className="flex items-center space-x-2">
+          {icon && (
+            <div className="text-gray-400">
+              {icon}
+            </div>
+          )}
+          {status === 'error' && (
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          )}
+        </div>
       </CardHeader>
       
       <CardContent>
@@ -142,7 +160,7 @@ export function KPICard({
         ) : (
           <div className="space-y-2">
             {/* Valeur principale */}
-            <div className={cn('font-bold', sizeClasses[size])}>
+            <div className={cn('font-bold text-gray-900', sizeClasses[size])}>
               {formatValue(value, format)}
             </div>
             
@@ -171,11 +189,11 @@ export function KPICard({
             
             {/* Objectif */}
             {target && (
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between pt-1 border-t border-gray-100">
                 <span className="text-xs text-gray-500">
                   Objectif: {formatValue(target.value, format)}
                 </span>
-                <Badge variant="outline" className={statusBadgeColors[status]}>
+                <Badge variant="outline" className={cn('text-xs', statusBadgeColors[status])}>
                   {target.label}
                 </Badge>
               </div>
