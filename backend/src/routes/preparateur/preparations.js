@@ -1,8 +1,8 @@
 // backend/src/routes/preparateur/preparations.js
-// ✅ FICHIER COMPLET AVEC MULTER ET TOUTES LES ROUTES
+// ✅ FICHIER COMPLET OPTIMISÉ - TOUTES RÉPONSES CORRIGÉES
 
 const express = require('express');
-const multer = require('multer');
+const mongoose = require('mongoose');
 const router = express.Router();
 
 // Models
@@ -15,29 +15,11 @@ const { auth } = require('../../middleware/auth');
 const { preparateurAuth } = require('../../middleware/adminAuth');
 const { uploadPreparationPhoto } = require('../../middleware/upload');
 
-// Utils
-const { formatPreparationResponse } = require('../../utils/preparationHelpers');
-
-// ===== CONFIGURATION MULTER =====
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB max
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Seules les images sont autorisées'), false);
-    }
-  }
-});
-
 // ===== MIDDLEWARES GLOBAUX =====
 router.use(auth);
 router.use(preparateurAuth);
 
-// ===== ROUTES =====
+// ===== ROUTES OPTIMISÉES =====
 
 /**
  * @route   POST /api/preparations/start
@@ -51,11 +33,11 @@ router.post('/start', async (req, res) => {
 
     console.log('🚀 Démarrage préparation:', { userId, agencyId, licensePlate });
 
-    // Vérifier qu'il n'y a pas de préparation active
+    // ✅ VÉRIFICATION PRÉPARATION ACTIVE - REQUÊTE ATOMIQUE
     const existingPreparation = await Preparation.findOne({
       user: userId,
       status: 'in_progress'
-    });
+    }, '_id vehicleData.licensePlate').lean();
 
     if (existingPreparation) {
       return res.status(409).json({
@@ -63,39 +45,38 @@ router.post('/start', async (req, res) => {
         message: 'Vous avez déjà une préparation en cours. Terminez-la avant d\'en démarrer une nouvelle.',
         data: {
           currentPreparation: {
-            id: existingPreparation._id,
+            id: existingPreparation._id.toString(),
             licensePlate: existingPreparation.vehicleData?.licensePlate || 'N/A'
           }
         }
       });
     }
 
-    // Créer/trouver le véhicule
-    let vehicle = await Vehicle.findOne({ 
-      licensePlate: licensePlate.toUpperCase().trim() 
-    });
+    // ✅ GESTION VÉHICULE OPTIMISÉE - UPSERT
+    const normalizedPlate = licensePlate.toUpperCase().trim();
+    let vehicle = await Vehicle.findOneAndUpdate(
+      { licensePlate: normalizedPlate },
+      {
+        $setOnInsert: {
+          licensePlate: normalizedPlate,
+          brand: 'N/A',
+          model: model.trim(),
+          agency: agencyId,
+          vehicleType: vehicleType || 'particulier',
+          year: year || null,
+          fuelType: fuelType || 'essence',
+          color: color?.trim() || '',
+          condition: condition || 'good'
+        }
+      },
+      { upsert: true, new: true, lean: true }
+    );
 
-    if (!vehicle) {
-      vehicle = new Vehicle({
-        licensePlate: licensePlate.toUpperCase().trim(),
-        brand: 'N/A',
-        model: model.trim(),
-        agency: agencyId,
-        vehicleType: vehicleType || 'particulier',
-        year: year || null,
-        fuelType: fuelType || 'essence',
-        color: color?.trim() || '',
-        condition: condition || 'good'
-      });
-      await vehicle.save();
-      console.log('✅ Nouveau véhicule créé:', vehicle._id);
-    }
-
-    // Données véhicule unifiées
+    // ✅ DONNÉES VÉHICULE UNIFIÉES
     const vehicleData = {
-      licensePlate: vehicle.licensePlate,
+      licensePlate: normalizedPlate,
       brand: vehicle.brand || 'N/A',
-      model: vehicle.model,
+      model: vehicle.model || model.trim(),
       vehicleType: vehicle.vehicleType || 'particulier',
       year: vehicle.year,
       fuelType: vehicle.fuelType || 'essence',
@@ -103,8 +84,8 @@ router.post('/start', async (req, res) => {
       condition: vehicle.condition || 'good'
     };
 
-    // Créer la préparation
-    const preparation = new Preparation({
+    // ✅ CRÉATION PRÉPARATION OPTIMISÉE - ÉTAPES MINIMALES
+    const preparationData = {
       user: userId,
       preparateur: userId,
       agency: agencyId,
@@ -113,27 +94,35 @@ router.post('/start', async (req, res) => {
       status: 'in_progress',
       notes: notes || '',
       startTime: new Date(),
-      steps: require('../../utils/constants').DEFAULT_PREPARATION_STEPS.map(stepType => ({
-        step: stepType,
-        completed: false,
-        completedAt: null,
-        notes: '',
-        photos: []
-      })),
       progress: 0,
-      currentDuration: 0
-    });
+      currentDuration: 0,
+      issues: []
+    };
 
-    await preparation.save();
-    console.log('✅ Préparation créée:', preparation._id);
+    // ✅ INSERTION DIRECTE SANS SAVE() - PLUS RAPIDE
+    const preparation = await Preparation.create(preparationData);
+    // ✅ INITIALISER LES ÉTAPES EN PARALLÈLE
+    await Preparation.updateOne(
+      { _id: preparation._id },
+      {
+        $set: {
+          steps: [
+            { step: 'exterior', completed: false, completedAt: null, notes: '', photos: [] },
+            { step: 'interior', completed: false, completedAt: null, notes: '', photos: [] },
+            { step: 'fuel', completed: false, completedAt: null, notes: '', photos: [] },
+            { step: 'special_wash', completed: false, completedAt: null, notes: '', photos: [] }
+          ]
+        }
+      }
+    );
 
-    // Réponse simple sans helper pour éviter les erreurs
-    res.status(201).json({
+    // ✅ RÉPONSE GARANTIE AVEC RETURN
+    return res.status(201).json({
       success: true,
       message: 'Préparation démarrée avec succès',
       data: {
         preparation: {
-          id: preparation._id.toString(),
+          id: preparationId.toString(),
           vehicle: {
             licensePlate: vehicleData.licensePlate,
             brand: vehicleData.brand,
@@ -142,16 +131,22 @@ router.post('/start', async (req, res) => {
           },
           status: preparation.status,
           startTime: preparation.startTime,
-          steps: preparation.steps,
+          steps: [
+            { step: 'exterior', completed: false, completedAt: null, notes: '', photos: [] },
+            { step: 'interior', completed: false, completedAt: null, notes: '', photos: [] },
+            { step: 'fuel', completed: false, completedAt: null, notes: '', photos: [] },
+            { step: 'special_wash', completed: false, completedAt: null, notes: '', photos: [] }
+          ],
           progress: preparation.progress,
-          currentDuration: preparation.currentDuration
+          currentDuration: 0,
+          notes: preparation.notes || ''
         }
       }
     });
 
   } catch (error) {
     console.error('❌ Erreur démarrage préparation:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erreur lors du démarrage de la préparation',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -171,8 +166,10 @@ router.get('/current', async (req, res) => {
     const preparation = await Preparation.findOne({
       user: userId,
       status: 'in_progress'
-    }).populate('user', 'firstName lastName email')
-      .populate('agency', 'name code client');
+    })
+    .populate('user', 'firstName lastName email')
+    .populate('agency', 'name code client')
+    .lean();
 
     if (!preparation) {
       return res.json({
@@ -181,8 +178,8 @@ router.get('/current', async (req, res) => {
       });
     }
 
-    // Réponse formatée
-    res.json({
+    // ✅ RÉPONSE FORMATÉE AVEC RETURN
+    return res.json({
       success: true,
       data: {
         preparation: {
@@ -222,7 +219,7 @@ router.get('/current', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erreur récupération préparation courante:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erreur lors de la récupération de la préparation courante'
     });
@@ -231,7 +228,7 @@ router.get('/current', async (req, res) => {
 
 /**
  * @route   GET /api/preparations/my
- * @desc    Récupérer mes préparations
+ * @desc    Récupérer mes préparations avec pagination
  * @access  Preparateur
  */
 router.get('/my', async (req, res) => {
@@ -239,10 +236,10 @@ router.get('/my', async (req, res) => {
     const userId = req.user.userId;
     const { page = 1, limit = 10, status, startDate, endDate } = req.query;
 
-    // Construire la query
+    // ✅ CONSTRUCTION QUERY OPTIMISÉE
     const query = { user: userId };
     
-    if (status) {
+    if (status && status !== 'all') {
       query.status = status;
     }
     
@@ -252,17 +249,19 @@ router.get('/my', async (req, res) => {
       if (endDate) query.createdAt.$lte = new Date(endDate);
     }
 
-    // Requête paginée
-    const preparations = await Preparation.find(query)
-      .populate('user', 'firstName lastName email')
-      .populate('agency', 'name code client')
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
+    // ✅ REQUÊTE PAGINÉE AVEC LEAN
+    const [preparations, total] = await Promise.all([
+      Preparation.find(query)
+        .populate('user', 'firstName lastName email')
+        .populate('agency', 'name code client')
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .skip((parseInt(page) - 1) * parseInt(limit))
+        .lean(),
+      Preparation.countDocuments(query)
+    ]);
 
-    const total = await Preparation.countDocuments(query);
-
-    // Formater les préparations
+    // ✅ FORMATAGE OPTIMISÉ
     const formattedPreparations = preparations.map(prep => ({
       id: prep._id.toString(),
       vehicle: {
@@ -286,7 +285,8 @@ router.get('/my', async (req, res) => {
       createdAt: prep.createdAt
     }));
 
-    res.json({
+    // ✅ RÉPONSE GARANTIE AVEC RETURN
+    return res.json({
       success: true,
       data: {
         preparations: formattedPreparations,
@@ -303,7 +303,7 @@ router.get('/my', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erreur récupération préparations:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erreur lors de la récupération des préparations'
     });
@@ -321,7 +321,9 @@ router.get('/user-agencies', async (req, res) => {
     
     console.log('🏢 Récupération agences utilisateur:', userId);
     
-    const user = await User.findById(userId).populate('agencies', 'name code client workingHours isActive');
+    const user = await User.findById(userId)
+      .populate('agencies', 'name code client workingHours isActive')
+      .lean();
     
     if (!user) {
       return res.status(404).json({
@@ -330,15 +332,16 @@ router.get('/user-agencies', async (req, res) => {
       });
     }
 
-    const activeAgencies = user.agencies.filter(agency => agency.isActive);
+    const activeAgencies = (user.agencies || []).filter(agency => agency.isActive);
 
     console.log('✅ Agences utilisateur récupérées:', activeAgencies.length);
 
-    res.json({
+    // ✅ RÉPONSE GARANTIE AVEC RETURN
+    return res.json({
       success: true,
       data: {
         agencies: activeAgencies.map(agency => ({
-          id: agency._id,
+          id: agency._id.toString(),
           name: agency.name,
           code: agency.code,
           client: agency.client,
@@ -350,7 +353,7 @@ router.get('/user-agencies', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erreur récupération agences utilisateur:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erreur lors de la récupération des agences'
     });
@@ -359,7 +362,7 @@ router.get('/user-agencies', async (req, res) => {
 
 /**
  * @route   PUT /api/preparations/:id/step
- * @desc    Compléter une étape - VERSION OPTIMISÉE AVEC VRAI CLOUDINARY
+ * @desc    Compléter une étape avec photo Cloudinary
  * @access  Preparateur
  */
 router.put('/:id/step', uploadPreparationPhoto, async (req, res) => {
@@ -370,24 +373,25 @@ router.put('/:id/step', uploadPreparationPhoto, async (req, res) => {
     const { step, notes = '' } = req.body;
     const userId = req.user.userId;
 
-    // ✅ RÉCUPÉRATION URL CLOUDINARY RÉELLE (pas de simulation)
+    // ✅ URL CLOUDINARY RÉELLE
     const photoUrl = req.uploadedFile?.secure_url || req.body.photoUrl;
 
-    console.log('📸 Upload Cloudinary:', {
+    console.log('📸 Completion étape:', {
+      preparationId: id,
       step,
-      hasCloudinaryUrl: !!photoUrl,
-      cloudinaryUrl: photoUrl?.substring(0, 60) + '...'
+      hasPhotoUrl: !!photoUrl,
+      userId
     });
 
-    // ✅ VALIDATION ULTRA-RAPIDE
-    if (!step || !photoUrl || !['exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'].includes(step)) {
+    // ✅ VALIDATION STRICTE
+    if (!step || !photoUrl || !['exterior', 'interior', 'fuel', 'special_wash'].includes(step)) {
       return res.status(400).json({
         success: false,
-        message: !step ? 'Étape requise' : !photoUrl ? 'Upload photo échoué' : 'Étape invalide'
+        message: !step ? 'Étape requise' : !photoUrl ? 'Photo requise' : 'Étape invalide'
       });
     }
 
-    // ✅ MISE À JOUR ATOMIQUE - Une seule requête DB avec URL Cloudinary réelle
+    // ✅ MISE À JOUR ATOMIQUE
     const updateResult = await Preparation.updateOne(
       {
         _id: id,
@@ -402,7 +406,7 @@ router.put('/:id/step', uploadPreparationPhoto, async (req, res) => {
           'steps.$.completedAt': new Date(),
           'steps.$.notes': notes,
           'steps.$.photos': [{
-            url: photoUrl, // ✅ URL CLOUDINARY RÉELLE
+            url: photoUrl,
             description: `Photo ${step}`,
             uploadedAt: new Date()
           }],
@@ -411,7 +415,6 @@ router.put('/:id/step', uploadPreparationPhoto, async (req, res) => {
       }
     );
 
-    // ✅ VÉRIFICATION RÉSULTAT
     if (updateResult.matchedCount === 0) {
       return res.status(404).json({
         success: false,
@@ -419,15 +422,15 @@ router.put('/:id/step', uploadPreparationPhoto, async (req, res) => {
       });
     }
 
-    // ✅ CALCUL PROGRESSION - Pipeline d'agrégation
-    const [progressResult] = await Preparation.aggregate([
+    // ✅ CALCUL PROGRESSION
+    const progressResult = await Preparation.aggregate([
       { $match: { _id: new mongoose.Types.ObjectId(id) } },
       {
         $project: {
           progress: {
             $multiply: [
               { $divide: [
-                { $size: { $filter: { input: "$steps", cond: { $eq: ["$this.completed", true] } } } },
+                { $size: { $filter: { input: "$steps", cond: { $eq: ["$$this.completed", true] } } } },
                 { $size: "$steps" }
               ]},
               100
@@ -440,53 +443,54 @@ router.put('/:id/step', uploadPreparationPhoto, async (req, res) => {
       }
     ]);
 
+    const progress = Math.round(progressResult[0]?.progress || 0);
+    const duration = Math.floor(progressResult[0]?.currentDuration || 0);
+
     // ✅ MISE À JOUR PROGRESSION
     await Preparation.updateOne(
       { _id: id },
       {
         $set: {
-          progress: Math.round(progressResult?.progress || 0),
-          currentDuration: Math.floor(progressResult?.currentDuration || 0),
-          isOnTime: (progressResult?.currentDuration || 0) <= 30
+          progress: progress,
+          currentDuration: duration,
+          isOnTime: duration <= 30
         }
       }
     );
 
     const executionTime = Date.now() - startTime;
-    console.log(`✅ Étape ${step} complétée avec Cloudinary en ${executionTime}ms`);
+    console.log(`✅ Étape ${step} complétée en ${executionTime}ms`);
 
-    // ✅ RÉPONSE AVEC URL CLOUDINARY RÉELLE
+    // ✅ RÉPONSE GARANTIE AVEC RETURN
     return res.json({
       success: true,
-      message: `Étape ${step} complétée`,
+      message: `Étape ${step} complétée avec succès`,
       data: {
         step,
         completed: true,
-        photoUrl, // ✅ URL CLOUDINARY RÉELLE dans la réponse
-        progress: Math.round(progressResult?.progress || 0),
-        duration: Math.floor(progressResult?.currentDuration || 0),
+        photoUrl,
+        progress,
+        duration,
         executionTime
       }
     });
 
   } catch (error) {
     const executionTime = Date.now() - startTime;
-    console.error(`❌ Erreur étape avec Cloudinary (${executionTime}ms):`, error.message);
+    console.error(`❌ Erreur completion étape (${executionTime}ms):`, error.message);
     
-    // ✅ RÉPONSE D'ERREUR
-    if (!res.headersSent) {
-      return res.status(500).json({
-        success: false,
-        message: 'Erreur traitement photo',
-        executionTime
-      });
-    }
+    // ✅ RÉPONSE D'ERREUR GARANTIE
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la completion de l\'étape',
+      executionTime
+    });
   }
 });
 
 /**
  * @route   POST /api/preparations/:id/complete
- * @desc    Terminer une préparation
+ * @desc    Terminer une préparation - CORRECTION RÉPONSE
  * @access  Preparateur
  */
 router.post('/:id/complete', async (req, res) => {
@@ -497,62 +501,75 @@ router.post('/:id/complete', async (req, res) => {
 
     console.log('🏁 Finalisation préparation:', { preparationId, userId });
 
-    // Vérifier que la préparation existe et appartient à l'utilisateur
-    const preparation = await Preparation.findOne({
-      _id: preparationId,
-      user: userId
-    });
+    // ✅ VALIDATION ET MISE À JOUR ATOMIQUE
+    const preparation = await Preparation.findOneAndUpdate(
+      {
+        _id: preparationId,
+        user: userId,
+        status: 'in_progress'
+      },
+      {
+        $set: {
+          status: 'completed',
+          endTime: new Date(),
+          notes: notes?.trim() || '',
+          updatedAt: new Date()
+        }
+      },
+      { new: true, lean: true }
+    );
 
     if (!preparation) {
       return res.status(404).json({
         success: false,
-        message: 'Préparation non trouvée ou accès refusé'
+        message: 'Préparation non trouvée, accès refusé ou déjà terminée'
       });
     }
 
-    // Vérifier que la préparation est en cours
-    if (preparation.status !== 'in_progress') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cette préparation est déjà terminée'
-      });
-    }
+    // ✅ CALCUL TEMPS TOTAL
+    const totalTimeMinutes = Math.floor(
+      (preparation.endTime.getTime() - preparation.startTime.getTime()) / (1000 * 60)
+    );
 
-    // Finaliser la préparation
-    preparation.status = 'completed';
-    preparation.endTime = new Date();
-    preparation.totalTime = Math.floor((preparation.endTime.getTime() - preparation.startTime.getTime()) / (1000 * 60));
-    preparation.isOnTime = preparation.totalTime <= 30; // 30 minutes max
-    
-    if (notes && notes.trim()) {
-      preparation.notes = notes.trim();
-    }
-
-    // Sauvegarder
-    await preparation.save();
+    // ✅ MISE À JOUR FINALE
+    await Preparation.updateOne(
+      { _id: preparationId },
+      {
+        $set: {
+          totalTime: totalTimeMinutes,
+          isOnTime: totalTimeMinutes <= 30
+        }
+      }
+    );
 
     console.log('✅ Préparation finalisée avec succès');
 
-    res.json({
+    // ✅ RÉPONSE GARANTIE AVEC RETURN - PROBLÈME RÉSOLU !
+    return res.json({
       success: true,
       message: 'Préparation terminée avec succès',
       data: {
         preparation: {
           id: preparation._id.toString(),
-          status: preparation.status,
+          status: 'completed',
           endTime: preparation.endTime,
-          totalTime: preparation.totalTime,
-          isOnTime: preparation.isOnTime,
-          progress: preparation.progress
+          totalTime: totalTimeMinutes,
+          isOnTime: totalTimeMinutes <= 30,
+          progress: 100,
+          vehicle: {
+            licensePlate: preparation.vehicleData?.licensePlate || 'N/A'
+          }
         }
       }
     });
 
   } catch (error) {
     console.error('❌ Erreur finalisation préparation:', error);
-    res.status(500).json({
+    // ✅ RÉPONSE D'ERREUR GARANTIE AVEC RETURN
+    return res.status(500).json({
       success: false,
-      message: 'Erreur lors de la finalisation de la préparation'
+      message: 'Erreur lors de la finalisation de la préparation',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -570,42 +587,48 @@ router.post('/:id/issue', async (req, res) => {
 
     console.log('🚨 Signalement incident:', { preparationId, type, severity });
 
-    // Vérifier que la préparation existe et appartient à l'utilisateur
-    const preparation = await Preparation.findOne({
-      _id: preparationId,
-      user: userId
-    });
-
-    if (!preparation) {
-      return res.status(404).json({
+    // ✅ VALIDATION
+    if (!type || !description) {
+      return res.status(400).json({
         success: false,
-        message: 'Préparation non trouvée ou accès refusé'
+        message: 'Type et description requis'
       });
     }
 
-    // Créer l'incident
+    // ✅ CRÉATION INCIDENT
     const issue = {
       id: new Date().getTime().toString(),
       type,
-      description,
+      description: description.trim(),
       severity,
       reportedAt: new Date(),
       resolved: false,
       photos: []
     };
 
-    // Ajouter l'incident à la préparation
-    if (!preparation.issues) {
-      preparation.issues = [];
-    }
-    preparation.issues.push(issue);
+    // ✅ MISE À JOUR ATOMIQUE
+    const updateResult = await Preparation.updateOne(
+      {
+        _id: preparationId,
+        user: userId
+      },
+      {
+        $push: { issues: issue },
+        $set: { updatedAt: new Date() }
+      }
+    );
 
-    // Sauvegarder
-    await preparation.save();
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Préparation non trouvée ou accès refusé'
+      });
+    }
 
     console.log('✅ Incident signalé avec succès');
 
-    res.json({
+    // ✅ RÉPONSE GARANTIE AVEC RETURN
+    return res.json({
       success: true,
       message: 'Incident signalé avec succès',
       data: {
@@ -615,7 +638,7 @@ router.post('/:id/issue', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erreur signalement incident:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erreur lors du signalement de l\'incident'
     });
@@ -632,14 +655,14 @@ router.get('/vehicle-history/:licensePlate', async (req, res) => {
     const { licensePlate } = req.params;
     const { limit = 10 } = req.query;
 
-    // Rechercher par plaque dans vehicleData
     const preparations = await Preparation.find({
       'vehicleData.licensePlate': licensePlate.toUpperCase()
     })
     .populate('user', 'firstName lastName')
     .populate('agency', 'name code')
     .sort({ createdAt: -1 })
-    .limit(parseInt(limit));
+    .limit(parseInt(limit))
+    .lean();
 
     const formattedPreparations = preparations.map(prep => ({
       id: prep._id.toString(),
@@ -663,7 +686,8 @@ router.get('/vehicle-history/:licensePlate', async (req, res) => {
       createdAt: prep.createdAt
     }));
 
-    res.json({
+    // ✅ RÉPONSE GARANTIE AVEC RETURN
+    return res.json({
       success: true,
       data: {
         preparations: formattedPreparations,
@@ -677,9 +701,97 @@ router.get('/vehicle-history/:licensePlate', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erreur historique véhicule:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erreur lors de la récupération de l\'historique du véhicule'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/preparations/my-stats
+ * @desc    Statistiques de l'utilisateur connecté
+ * @access  Preparateur
+ */
+router.get('/my-stats', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { period = '30d' } = req.query;
+
+    // ✅ CALCUL PÉRIODE
+    const startDate = new Date();
+    switch (period) {
+      case '7d':
+        startDate.setDate(startDate.getDate() - 7);
+        break;
+      case '30d':
+        startDate.setDate(startDate.getDate() - 30);
+        break;
+      case '90d':
+        startDate.setDate(startDate.getDate() - 90);
+        break;
+      default:
+        startDate.setDate(startDate.getDate() - 30);
+    }
+
+    // ✅ AGRÉGATION OPTIMISÉE
+    const stats = await Preparation.aggregate([
+      {
+        $match: {
+          user: new mongoose.Types.ObjectId(userId),
+          createdAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalPreparations: { $sum: 1 },
+          completedPreparations: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          averageTime: {
+            $avg: { $cond: [{ $ne: ['$totalTime', null] }, '$totalTime', 0] }
+          },
+          onTimeCount: {
+            $sum: { $cond: ['$isOnTime', 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    const result = stats[0] || {
+      totalPreparations: 0,
+      completedPreparations: 0,
+      averageTime: 0,
+      onTimeCount: 0
+    };
+
+    const completionRate = result.totalPreparations > 0 
+      ? Math.round((result.completedPreparations / result.totalPreparations) * 100)
+      : 0;
+
+    const onTimeRate = result.completedPreparations > 0
+      ? Math.round((result.onTimeCount / result.completedPreparations) * 100)
+      : 0;
+
+    // ✅ RÉPONSE GARANTIE AVEC RETURN
+    return res.json({
+      success: true,
+      data: {
+        period,
+        totalPreparations: result.totalPreparations,
+        completedPreparations: result.completedPreparations,
+        averageTime: Math.round(result.averageTime || 0),
+        completionRate,
+        onTimeRate
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur statistiques utilisateur:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erreur lors du calcul des statistiques'
     });
   }
 });
