@@ -18,6 +18,7 @@ const { validateQuery, validateBody, validateObjectId, createPreparation, create
 const { 
   PREPARATION_STATUS, 
   PREPARATION_STEPS,
+  DEFAULT_STEPS,
   STEP_LABELS,
   STEP_ICONS,
   ERROR_MESSAGES,

@@ -121,6 +121,13 @@ const PREPARATION_STEPS = {
   SPECIAL_WASH: 'special_wash',
 };
 
+const DEFAULT_STEPS = [
+  'exterior',
+  'interior',
+  'fuel',
+  'special_wash',
+];
+
 /**
  * ✅ LISTE ORDONNÉE DES ÉTAPES (pour validation et initialisation)
  */
@@ -368,6 +375,7 @@ module.exports = {
   
   // ✅ Étapes harmonisées avec le frontend
   PREPARATION_STEPS,
+  DEFAULT_STEPS,
   PREPARATION_STEPS_ORDER,
   STEP_LABELS,
   STEP_DESCRIPTIONS,
@@ -395,29 +403,3 @@ module.exports = {
   isValidPreparationStep,
   getStepInfo
 };
-
-// ===== USAGE EXAMPLES =====
-
-/*
-// ✅ Initialiser une nouvelle préparation avec les bonnes étapes :
-const newPreparation = new Preparation({
-  // ... autres champs
-  steps: getDefaultPreparationSteps()
-});
-
-// ✅ Valider une étape :
-if (isValidPreparationStep('exterior')) {
-  console.log('✅ Étape valide');
-}
-
-// ✅ Obtenir les infos d'une étape :
-const stepInfo = getStepInfo('exterior');
-// Retourne : { step: 'exterior', label: 'Extérieur', description: '...', icon: '🚗' }
-
-// ✅ Utiliser les constantes pour validation :
-const validSteps = PREPARATION_STEPS_ORDER; 
-// ['exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking']
-
-// ✅ Obtenir le label d'une étape :
-const label = STEP_LABELS[PREPARATION_STEPS.EXTERIOR]; // 'Extérieur'
-*/
