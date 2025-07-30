@@ -421,13 +421,26 @@ export function useDeletePreparation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (preparationId: string): Promise<{ success: boolean; message: string }> => {
+    // ✅ CORRECTION : Envoyer les données dans le body avec POST au lieu de DELETE
+    mutationFn: async ({ 
+      preparationId, 
+      reason, 
+      preserveData = false 
+    }: { 
+      preparationId: string; 
+      reason: string; 
+      preserveData?: boolean; 
+    }): Promise<{ success: boolean; message: string }> => {
       console.log('🗑️ Suppression préparation:', preparationId);
       
-      const response = await apiClient.delete(`/admin/preparations/${preparationId}`);
+      // Utiliser POST au lieu de DELETE pour pouvoir envoyer un body
+      const response = await apiClient.post(`/admin/preparations/${preparationId}/delete`, {
+        reason,
+        preserveData
+      });
       return response.data;
     },
-    onSuccess: (data, preparationId) => {
+    onSuccess: (data, { preparationId }) => {
       // Invalider les caches pour rafraîchir les listes
       queryClient.invalidateQueries({ queryKey: preparationKeys.lists() });
       queryClient.invalidateQueries({ queryKey: preparationKeys.stats() });
@@ -446,6 +459,9 @@ export function useDeletePreparation() {
         message = 'Préparation non trouvée';
       } else if (error?.response?.status === 403) {
         message = 'Vous n\'avez pas les permissions pour supprimer cette préparation';
+      } else if (error?.response?.status === 400) {
+        // Erreur de validation
+        message = error?.response?.data?.message || 'Données invalides';
       } else if (error?.response?.data?.message) {
         message = error.response.data.message;
       }
@@ -462,41 +478,55 @@ export function useDeleteMultiplePreparations() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (preparationIds: string[]): Promise<{ 
+    mutationFn: async ({ 
+      preparationIds, 
+      reason, 
+      preserveData = false 
+    }: { 
+      preparationIds: string[]; 
+      reason: string; 
+      preserveData?: boolean; 
+    }): Promise<{ 
       success: boolean; 
       message: string; 
       deleted: number;
-      errors?: Array<{ id: string; error: string }>;
+      errors?: any[];
     }> => {
       console.log('🗑️ Suppression multiple:', preparationIds.length, 'préparations');
       
       const response = await apiClient.post('/admin/preparations/bulk-delete', {
-        preparationIds
+        preparationIds,
+        reason,
+        preserveData
       });
       return response.data;
     },
-    onSuccess: (data, preparationIds) => {
-      // Invalider tous les caches
+    onSuccess: (data) => {
+      // Invalider tous les caches liés aux préparations
       queryClient.invalidateQueries({ queryKey: preparationKeys.lists() });
       queryClient.invalidateQueries({ queryKey: preparationKeys.stats() });
       
-      // Supprimer les données en cache pour chaque préparation
-      preparationIds.forEach(id => {
-        queryClient.removeQueries({ queryKey: preparationKeys.detail(id) });
-      });
+      // Message de succès avec détails
+      const { deleted, errors } = data;
+      let message = `${deleted} préparation(s) supprimée(s) avec succès`;
       
-      toast.success(`${data.deleted} préparation(s) supprimée(s) avec succès`);
-      
-      // Afficher les erreurs s'il y en a
-      if (data.errors && data.errors.length > 0) {
-        data.errors.forEach(error => {
-          toast.error(`Erreur pour ${error.id}: ${error.error}`);
-        });
+      if (errors && errors.length > 0) {
+        message += ` (${errors.length} erreur(s))`;
       }
+      
+      toast.success(message);
     },
     onError: (error: any) => {
       console.error('❌ Erreur suppression multiple:', error);
-      const message = error?.response?.data?.message || 'Erreur lors de la suppression';
+      
+      let message = 'Erreur lors de la suppression';
+      
+      if (error?.response?.status === 400) {
+        message = error?.response?.data?.message || 'Données invalides';
+      } else if (error?.response?.data?.message) {
+        message = error.response.data.message;
+      }
+      
       toast.error(message);
     },
   });

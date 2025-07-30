@@ -30,11 +30,12 @@ const deleteMultipleSchema = Joi.object({
 router.use(auth, adminAuth);
 
 /**
- * @route   DELETE /api/admin/preparations/:id
+ * ✅ CORRECTION : Utiliser POST au lieu de DELETE pour avoir un body
+ * @route   POST /api/admin/preparations/:id/delete
  * @desc    Supprimer une préparation spécifique
  * @access  Admin
  */
-router.delete('/:id',
+router.post('/:id/delete',
   validateObjectId(),
   validateBody(deleteSingleSchema),
   async (req, res) => {
@@ -44,6 +45,7 @@ router.delete('/:id',
       const adminId = req.user.userId;
 
       console.log('🗑️ Suppression préparation:', id, 'Par:', req.user.email);
+      console.log('📝 Reason:', reason, 'PreserveData:', preserveData);
 
       // Vérifier que la préparation existe
       const preparation = await Preparation.findById(id);
@@ -51,6 +53,14 @@ router.delete('/:id',
         return res.status(404).json({
           success: false,
           message: 'Préparation non trouvée'
+        });
+      }
+
+      // Vérifier si déjà supprimée (soft delete)
+      if (preparation.isDeleted) {
+        return res.status(400).json({
+          success: false,
+          message: 'Préparation déjà supprimée'
         });
       }
 
@@ -90,14 +100,6 @@ router.delete('/:id',
         console.log('✅ Préparation supprimée définitivement');
       }
 
-      // Optionnel : Logger l'action pour audit
-      // await createAuditLog({
-      //   action: 'PREPARATION_DELETED',
-      //   userId: adminId,
-      //   targetId: id,
-      //   details: deletionData
-      // });
-
       res.json({
         success: true,
         message: 'Préparation supprimée avec succès',
@@ -110,6 +112,15 @@ router.delete('/:id',
 
     } catch (error) {
       console.error('❌ Erreur suppression préparation:', error);
+      
+      // Gestion des erreurs spécifiques
+      if (error.name === 'CastError') {
+        return res.status(400).json({
+          success: false,
+          message: 'ID de préparation invalide'
+        });
+      }
+      
       res.status(500).json({
         success: false,
         message: ERROR_MESSAGES.SERVER_ERROR
@@ -134,16 +145,14 @@ router.post('/bulk-delete',
 
       // Vérifier que toutes les préparations existent
       const preparations = await Preparation.find({
-        _id: { $in: preparationIds }
+        _id: { $in: preparationIds },
+        isDeleted: { $ne: true } // Exclure celles déjà supprimées
       });
 
-      if (preparations.length !== preparationIds.length) {
-        const foundIds = preparations.map(p => p._id.toString());
-        const missingIds = preparationIds.filter(id => !foundIds.includes(id));
-        
+      if (preparations.length === 0) {
         return res.status(400).json({
           success: false,
-          message: `Préparations non trouvées: ${missingIds.join(', ')}`
+          message: 'Aucune préparation trouvée ou toutes déjà supprimées'
         });
       }
 
@@ -201,13 +210,6 @@ router.post('/bulk-delete',
           });
         }
       }
-
-      // Optionnel : Logger l'action pour audit
-      // await createAuditLog({
-      //   action: 'BULK_PREPARATION_DELETED',
-      //   userId: adminId,
-      //   details: { ...deletionData, stats, errors }
-      // });
 
       console.log(`✅ Suppression terminée: ${deletedCount}/${preparations.length}`);
 

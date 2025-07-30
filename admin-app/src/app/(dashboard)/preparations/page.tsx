@@ -221,9 +221,9 @@ export default function PreparationsPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">
               Liste des préparations
-              {pagination && (
+              {stats && (
                 <span className="text-sm font-normal text-gray-500 ml-2">
-                  ({pagination.total} au total)
+                  ({stats.global.totalPreparations} au total)
                 </span>
               )}
             </CardTitle>
