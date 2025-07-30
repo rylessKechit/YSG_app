@@ -1,52 +1,69 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { Car, Clock, CheckCircle, Camera } from 'lucide-react';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Preparation, getStepDefinition } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Clock, Car, AlertTriangle, CheckCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+
 import { formatWorkTime } from '@/lib/utils';
+import { getSafeVehicleDisplay, getSafeLicensePlate, adaptLegacyPreparation, PREPARATION_STEPS } from '@/lib/types/preparation';
+import type { Preparation } from '@/lib/types/preparation';
 
 interface CurrentPreparationProps {
-  preparation: Preparation;
+  preparation: any; // ✅ Accept any pour compatibilité
 }
 
-export function CurrentPreparation({ preparation }: CurrentPreparationProps) {
+export function CurrentPreparation({ preparation: rawPreparation }: CurrentPreparationProps) {
   const router = useRouter();
-
-  // ✅ Fonction pour enrichir les steps avec les labels
-  const getEnrichedSteps = () => {
-    return preparation.steps.map(step => {
-      const stepDefinition = getStepDefinition(step.step);
-      return {
-        ...step,
-        label: stepDefinition?.label || step.step,
-        icon: stepDefinition?.icon || '📋',
-        description: stepDefinition?.description || ''
-      };
-    });
-  };
-
-  const enrichedSteps = getEnrichedSteps();
-  const completedSteps = enrichedSteps.filter(step => step.completed).length;
-  const totalSteps = enrichedSteps.length;
-  const progressPercent = Math.round((completedSteps / totalSteps) * 100);
-
-  // Déterminer la couleur du chrono selon le temps écoulé
+  
+  // ✅ Adapter la préparation si nécessaire
+  const preparation = adaptLegacyPreparation(rawPreparation);
+  
+  // ✅ Affichage sécurisé du véhicule (fonctionne avec tous les formats)
+  const vehicleDisplay = getSafeVehicleDisplay(preparation.vehicle);
+  const licensePlate = getSafeLicensePlate(preparation.vehicle?.licensePlate);
+  
+  // Calculs de progression
+  const totalSteps = preparation.steps?.length || 0;
+  const completedSteps = preparation.steps?.filter(step => step.completed).length || 0;
+  const progressPercent = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  
+  // Prochaines étapes
+  const nextSteps = preparation.steps?.filter(step => !step.completed).slice(0, 2) || [];
+  
+  // Couleur du temps basée sur la performance
   const getTimeColor = () => {
-    if (preparation.currentDuration > 30) return 'text-red-600';
-    if (preparation.currentDuration > 25) return 'text-orange-600';
+    if (preparation.isOnTime === false) return 'text-red-600';
+    if (preparation.currentDuration > 90) return 'text-yellow-600';
     return 'text-green-600';
   };
 
+  const getStatusBadge = () => {
+    switch (preparation.status) {
+      case 'in_progress':
+        return <Badge variant="default" className="bg-blue-500">En cours</Badge>;
+      case 'completed':
+        return <Badge variant="default" className="bg-green-500">Terminée</Badge>;
+      case 'pending':
+        return <Badge variant="secondary">En attente</Badge>;
+      case 'cancelled':
+        return <Badge variant="destructive">Annulée</Badge>;
+      default:
+        return <Badge variant="outline">Statut inconnu</Badge>;
+    }
+  };
+
   return (
-    <Card className="border-l-4 border-l-blue-500">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+    <Card className="w-full">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center justify-between text-lg">
           <div className="flex items-center space-x-2">
-            <Car className="w-5 h-5" />
+            <Car className="w-5 h-5 text-blue-600" />
             <span>Préparation en cours</span>
+            {getStatusBadge()}
           </div>
           <div className={`flex items-center space-x-1 ${getTimeColor()}`}>
             <Clock className="w-4 h-4" />
@@ -56,17 +73,24 @@ export function CurrentPreparation({ preparation }: CurrentPreparationProps) {
           </div>
         </CardTitle>
       </CardHeader>
+      
       <CardContent className="space-y-4">
-        {/* Informations véhicule */}
+        {/* ✅ Informations véhicule avec affichage sécurisé unifié */}
         <div className="bg-gray-50 rounded-lg p-3">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-gray-900">
-                {preparation.vehicle.licensePlate}
+                {licensePlate}
               </p>
               <p className="text-sm text-gray-600">
-                {preparation.vehicle.brand} {preparation.vehicle.model}
+                {vehicleDisplay.fullName}
               </p>
+              {!vehicleDisplay.hasValidData && (
+                <p className="text-xs text-amber-600 flex items-center mt-1">
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                  Données incomplètes
+                </p>
+              )}
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-500">
@@ -94,58 +118,51 @@ export function CurrentPreparation({ preparation }: CurrentPreparationProps) {
         </div>
 
         {/* Prochaines étapes */}
-        <div className="space-y-2">
-          <h4 className="font-medium text-sm">Prochaines étapes</h4>
-          <div className="space-y-1">
-            {enrichedSteps
-              .filter(step => !step.completed)
-              .slice(0, 2)
-              .map((step, index) => (
-                <div key={step.step} className="flex items-center space-x-2 text-sm">
-                  <div className="w-4 h-4 border border-gray-300 rounded-full flex items-center justify-center">
-                    <span className="text-xs text-gray-500">
-                      {completedSteps + index + 1}
-                    </span>
-                  </div>
-                  <span className="text-gray-700">
-                    {step.icon} {step.label}
+        {nextSteps.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Prochaines étapes</h4>
+            <div className="space-y-1">
+              {nextSteps.map((step, index) => (
+                <div key={step.step} className="flex items-center text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full mr-2" />
+                  <span>
+                    {PREPARATION_STEPS.find(s => s.step === step.step)?.label || step.step}
                   </span>
                 </div>
               ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Actions */}
-        <div className="flex space-x-2 pt-2">
-          <Button
+        <div className="flex space-x-2">
+          <Button 
             onClick={() => router.push(`/preparations/${preparation.id}`)}
-            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex-1"
           >
-            <Camera className="w-4 h-4 mr-2" />
             Continuer
           </Button>
           
-          {completedSteps > 0 && (
-            <Button
+          {preparation.status === 'in_progress' && (
+            <Button 
               variant="outline"
-              onClick={() => router.push(`/preparations/${preparation.id}?action=complete`)}
-              className="px-4 py-2"
+              onClick={() => router.push(`/preparations/${preparation.id}/complete`)}
+              className="flex-1"
             >
-              <CheckCircle className="w-4 h-4" />
+              Terminer
             </Button>
           )}
         </div>
 
-        {/* Indicateur de performance */}
-        {preparation.currentDuration > 25 && (
-          <div className="flex items-center space-x-2 text-xs bg-orange-50 text-orange-700 p-2 rounded">
-            <Clock className="w-3 h-3" />
-            <span>
-              {preparation.currentDuration > 30 
-                ? '⚠️ Temps dépassé - Accélérer le processus'
-                : '⏰ Attention au temps - 5min restantes'
-              }
-            </span>
+        {/* Issues si présentes */}
+        {preparation.issues && preparation.issues.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="flex items-center text-red-700 text-sm">
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              <span className="font-medium">
+                {preparation.issues.length} incident{preparation.issues.length > 1 ? 's' : ''} signalé{preparation.issues.length > 1 ? 's' : ''}
+              </span>
+            </div>
           </div>
         )}
       </CardContent>

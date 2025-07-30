@@ -3,6 +3,7 @@
 // ✅ CORRECTION DE L'API POUR CORRESPONDRE AUX TYPES
 // =====================================================
 
+import { adaptLegacyPreparation, PreparationHistoryData } from '../types/preparation';
 import { apiClient } from './client';
 import type { 
   Preparation,
@@ -27,84 +28,139 @@ export class PreparationAPI {
   }
 
   /**
-   * Démarrer une nouvelle préparation
+   * Démarrer une nouvelle préparation (UNIFIÉ)
    */
-  async startPreparation(data: VehicleFormData): Promise<{ preparation: Preparation }> {
-    const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
+  async startPreparation(vehicleData: VehicleFormData): Promise<Preparation> {
+    const response = await apiClient.post<ApiResponse<{ preparation: any }>>(
       '/preparations/start',
-      data
+      vehicleData
     );
-    return response.data.data!;
+    
+    // ✅ Adapter la réponse si nécessaire
+    const rawPreparation = response.data.data!.preparation;
+    return adaptLegacyPreparation(rawPreparation);
   }
 
   /**
-   * Obtenir la préparation en cours
+   * Récupérer la préparation en cours (UNIFIÉ)
    */
-  async getCurrentPreparation(): Promise<{ preparation: Preparation | null }> {
-    const response = await apiClient.get<ApiResponse<{ preparation: Preparation | null }>>('/preparations/current');
-    return response.data.data!;
+  async getCurrentPreparation(): Promise<Preparation | null> {
+    const response = await apiClient.get<ApiResponse<{ preparation: any | null }>>(
+      '/preparations/current'
+    );
+    
+    const rawPreparation = response.data.data!.preparation;
+    return rawPreparation ? adaptLegacyPreparation(rawPreparation) : null;
   }
 
   /**
-   * Compléter une étape
+   * Récupérer mes préparations (UNIFIÉ)
    */
-  async completeStep(preparationId: string, data: StepCompletionData): Promise<{ preparation: Preparation }> {
-    const formData = new FormData();
-    formData.append('step', data.step);
-    formData.append('photo', data.photo);
-    if (data.notes) {
-      formData.append('notes', data.notes);
+  async getMyPreparations(filters?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<PreparationHistoryData> {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
     }
 
-    const response = await apiClient.put<ApiResponse<{ preparation: Preparation }>>(
-      `/preparations/${preparationId}/step`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+    const response = await apiClient.get<ApiResponse<PreparationHistoryData>>(
+      `/preparations/my?${params}`
+    );
+
+    const data = response.data.data!;
+    
+    // ✅ Adapter toutes les préparations
+    return {
+      ...data,
+      preparations: data.preparations.map(prep => adaptLegacyPreparation(prep))
+    };
+  }
+
+  /**
+   * Signaler un incident (UNIFIÉ)
+   */
+  async reportIssue(preparationId: string, data: IssueReportData): Promise<boolean> {
+    try {
+      const formData = new FormData();
+      formData.append('type', data.type);
+      formData.append('description', data.description);
+      formData.append('severity', data.severity || 'medium');
+      if (data.photo) {
+        formData.append('photo', data.photo);
       }
-    );
-    
-    return response.data.data!;
+
+      await apiClient.post(`/preparations/${preparationId}/issue`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      return true;
+    } catch (error) {
+      console.error('❌ Erreur signalement incident:', error);
+      return false;
+    }
   }
 
   /**
-   * Terminer une préparation
+   * Compléter une étape (UNIFIÉ)
    */
-  async completePreparation(preparationId: string, notes?: string): Promise<{ preparation: Preparation }> {
-    const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
-      `/preparations/${preparationId}/complete`,
-      notes && notes.trim() ? { notes: notes.trim() } : {}
-    );
-    
-    return response.data.data!;
-  }
-
-  /**
-   * Signaler un incident
-   */
-  async reportIssue(preparationId: string, data: IssueReportData): Promise<{ preparation: Preparation }> {
-    const formData = new FormData();
-    formData.append('type', data.type);
-    formData.append('description', data.description);
-    formData.append('severity', data.severity || 'medium');
-    
-    if (data.photo) {
+  async completeStep(preparationId: string, data: StepCompletionData): Promise<boolean> {
+    try {
+      const formData = new FormData();
+      formData.append('step', data.step);
       formData.append('photo', data.photo);
-    }
-
-    const response = await apiClient.post<ApiResponse<{ preparation: Preparation }>>(
-      `/preparations/${preparationId}/issue`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      if (data.notes) {
+        formData.append('notes', data.notes);
       }
+
+      await apiClient.put(`/preparations/${preparationId}/step`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      return true;
+    } catch (error) {
+      console.error('❌ Erreur complétion étape:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Terminer une préparation (UNIFIÉ)
+   */
+  async completePreparation(preparationId: string, notes?: string): Promise<boolean> {
+    try {
+      await apiClient.post(`/preparations/${preparationId}/complete`, {
+        notes: notes || ''
+      });
+      return true;
+    } catch (error) {
+      console.error('❌ Erreur finalisation préparation:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Obtenir le détail d'une préparation (UNIFIÉ)
+   */
+  async getPreparationById(id: string): Promise<Preparation> {
+    const response = await apiClient.get<ApiResponse<{ preparation: any }>>(
+      `/preparations/${id}`
     );
     
-    return response.data.data!;
+    const rawPreparation = response.data.data!.preparation;
+    return adaptLegacyPreparation(rawPreparation);
   }
 
   /**
@@ -149,13 +205,17 @@ export class PreparationAPI {
   }
 
   /**
-   * Obtenir l'historique d'un véhicule par plaque
+   * Obtenir l'historique d'un véhicule par plaque (UNIFIÉ)
    */
   async getVehicleHistory(licensePlate: string): Promise<{ preparations: Preparation[] }> {
-    const response = await apiClient.get<ApiResponse<{ preparations: Preparation[] }>>(
+    const response = await apiClient.get<ApiResponse<{ preparations: any[] }>>(
       `/preparations/vehicle-history/${licensePlate}`
     );
-    return response.data.data!;
+    
+    const data = response.data.data!;
+    return {
+      preparations: data.preparations.map(prep => adaptLegacyPreparation(prep))
+    };
   }
 
   /**
