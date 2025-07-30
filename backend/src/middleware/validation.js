@@ -1,7 +1,8 @@
 // backend/src/middleware/validation.js
-// ✅ Fichier de validation corrigé complet
+// ✅ Fichier de validation corrigé complet avec support Joi + Zod
 
 const Joi = require('joi');
+const { z } = require('zod');
 
 // ===== SCHÉMAS DE BASE =====
 
@@ -11,41 +12,69 @@ const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/, 'valid ObjectId');
 // Schéma pour les heures (format HH:MM)
 const timePattern = Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/);
 
-// ===== MIDDLEWARE DE VALIDATION =====
+// ===== MIDDLEWARE DE VALIDATION HYBRIDE (JOI + ZOD) =====
 
 /**
- * Middleware pour valider le body de la requête
+ * Middleware pour valider le body avec Joi OU Zod
  */
 const validateBody = (schema) => {
   return (req, res, next) => {
     try {
-      const { error, value } = schema.validate(req.body, {
-        abortEarly: false,
-        stripUnknown: true,
-        convert: true,
-        allowUnknown: false
-      });
+      // ✅ DÉTECTION AUTOMATIQUE : Joi ou Zod ?
+      if (schema.validate && typeof schema.validate === 'function') {
+        // ===== VALIDATION JOI =====
+        const { error, value } = schema.validate(req.body, {
+          abortEarly: false,
+          stripUnknown: true,
+          convert: true,
+          allowUnknown: false
+        });
 
-      if (error) {
-        console.log('❌ Erreur validation body:', error.details);
-        
-        const errors = error.details.map(detail => ({
-          field: detail.path.join('.'),
-          message: detail.message,
-          value: detail.context?.value
+        if (error) {
+          console.log('❌ Erreur validation Joi body:', error.details);
+          
+          const errors = error.details.map(detail => ({
+            field: detail.path.join('.'),
+            message: detail.message,
+            value: detail.context?.value
+          }));
+
+          return res.status(400).json({
+            success: false,
+            message: 'Données invalides',
+            errors
+          });
+        }
+
+        req.body = value;
+        next();
+      } else if (schema.parse && typeof schema.parse === 'function') {
+        // ===== VALIDATION ZOD =====
+        const validatedData = schema.parse(req.body);
+        req.body = validatedData; // Remplacer par les données validées et transformées
+        next();
+      } else {
+        throw new Error('Schéma de validation non reconnu (ni Joi ni Zod)');
+      }
+    } catch (error) {
+      console.error('❌ Erreur validation body:', error);
+
+      // ✅ GESTION ERREURS ZOD
+      if (error instanceof z.ZodError) {
+        const errors = error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message,
+          code: err.code
         }));
 
         return res.status(400).json({
           success: false,
-          message: 'Données invalides',
+          message: 'Erreur de validation des données',
           errors
         });
       }
 
-      req.body = value;
-      next();
-    } catch (err) {
-      console.error('❌ Erreur validation body:', err);
+      // Erreur générique
       return res.status(500).json({
         success: false,
         message: 'Erreur lors de la validation des données'
@@ -55,7 +84,7 @@ const validateBody = (schema) => {
 };
 
 /**
- * Middleware pour valider les paramètres de requête (query)
+ * Middleware pour valider les paramètres de requête (query) - JOI SEULEMENT
  */
 const validateQuery = (schema) => {
   return (req, res, next) => {
@@ -155,7 +184,7 @@ const validateMultipleObjectIds = (...paramNames) => {
   };
 };
 
-// ===== SCHÉMAS DE VALIDATION POUR LES PRÉPARATIONS =====
+// ===== SCHÉMAS JOI POUR LES PRÉPARATIONS =====
 
 const preparationSchemas = {
   // ✅ Schéma pour votre payload exact : { agencyId, brand, model, licensePlate, etc. }
@@ -218,7 +247,132 @@ const preparationSchemas = {
   })
 };
 
-// ===== SCHÉMAS DE VALIDATION POUR LES REQUÊTES =====
+// ===== SCHÉMAS ZOD POUR LES NOUVELLES FONCTIONNALITÉS =====
+
+// ✅ Schéma véhicule simplifié (3 champs + étapes)
+const simplifiedVehicleSchema = z.object({
+  licensePlate: z.string()
+    .min(1, 'Plaque d\'immatriculation requise')
+    .max(20, 'Plaque trop longue')
+    .regex(/^[A-Z0-9\-\s]+$/i, 'Format de plaque invalide')
+    .transform(val => val.toUpperCase().replace(/\s+/g, '')),
+  
+  vehicleType: z.enum(['particulier', 'utilitaire'], {
+    invalid_type_error: 'Type de véhicule invalide'
+  }),
+  
+  model: z.string()
+    .min(1, 'Modèle requis')
+    .max(50, 'Modèle trop long')
+    .trim(),
+  
+  // ✅ Étapes déjà complétées
+  completedSteps: z.array(z.enum([
+    'exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'
+  ], {
+    invalid_type_error: 'Étape invalide'
+  })).default([])
+});
+
+// ✅ Schéma pour création en lot (ZOD)
+const createBulkPreparations = z.object({
+  userId: z.string()
+    .min(1, 'ID utilisateur requis')
+    .regex(/^[0-9a-fA-F]{24}$/, 'ID utilisateur invalide'),
+  
+  agencyId: z.string()
+    .min(1, 'ID agence requis')
+    .regex(/^[0-9a-fA-F]{24}$/, 'ID agence invalide'),
+  
+  vehicles: z.array(simplifiedVehicleSchema)
+    .min(1, 'Au moins un véhicule requis')
+    .max(10, 'Maximum 10 véhicules par lot')
+    .refine(
+      (vehicles) => {
+        // Vérifier les doublons de plaques dans le lot
+        const plates = vehicles.map(v => v.licensePlate.toUpperCase());
+        const uniquePlates = new Set(plates);
+        return uniquePlates.size === plates.length;
+      },
+      {
+        message: 'Plaques d\'immatriculation en doublon dans le lot'
+      }
+    ),
+  
+  notes: z.string()
+    .max(1000, 'Notes trop longues')
+    .optional(),
+  
+  priority: z.enum(['low', 'normal', 'high', 'urgent'], {
+    invalid_type_error: 'Priorité invalide'
+  }).default('normal')
+});
+
+// ✅ Schéma pour création simple (ZOD)
+const createPreparation = z.object({
+  userId: z.string()
+    .min(1, 'ID utilisateur requis')
+    .regex(/^[0-9a-fA-F]{24}$/, 'ID utilisateur invalide'),
+  
+  agencyId: z.string()
+    .min(1, 'ID agence requis')
+    .regex(/^[0-9a-fA-F]{24}$/, 'ID agence invalide'),
+  
+  vehicleData: z.object({
+    licensePlate: z.string()
+      .min(1, 'Plaque d\'immatriculation requise')
+      .max(20, 'Plaque trop longue')
+      .transform(val => val.toUpperCase().replace(/\s+/g, '')),
+    
+    brand: z.string()
+      .max(50, 'Marque trop longue')
+      .optional()
+      .default(''),
+    
+    model: z.string()
+      .min(1, 'Modèle requis')
+      .max(50, 'Modèle trop long'),
+    
+    vehicleType: z.enum(['particulier', 'utilitaire'], {
+      invalid_type_error: 'Type de véhicule invalide'
+    }).default('particulier'),
+    
+    year: z.number()
+      .int()
+      .min(1990, 'Année trop ancienne')
+      .max(new Date().getFullYear() + 2, 'Année trop récente')
+      .nullable()
+      .optional(),
+    
+    fuelType: z.enum(['essence', 'diesel', 'electrique', 'hybride'], {
+      invalid_type_error: 'Type de carburant invalide'
+    }).optional(),
+    
+    color: z.string()
+      .max(30, 'Couleur trop longue')
+      .optional(),
+    
+    condition: z.enum(['excellent', 'good', 'fair', 'poor'], {
+      invalid_type_error: 'Condition invalide'
+    }).default('good')
+  }),
+  
+  notes: z.string()
+    .max(1000, 'Notes trop longues')
+    .optional(),
+  
+  assignedSteps: z.array(z.enum([
+    'exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'
+  ], {
+    invalid_type_error: 'Étape invalide'
+  })).optional(),
+  
+  priority: z.enum(['low', 'normal', 'high', 'urgent'], {
+    invalid_type_error: 'Priorité invalide'
+  }).default('normal')
+});
+
+// ===== SCHÉMAS JOI POUR LES AUTRES FONCTIONNALITÉS =====
 
 const querySchemas = {
   pagination: Joi.object({
@@ -241,8 +395,6 @@ const querySchemas = {
     search: Joi.string().optional().trim().max(100)
   })
 };
-
-// ===== SCHÉMAS D'AUTHENTIFICATION =====
 
 const authSchemas = {
   login: Joi.object({
@@ -267,8 +419,6 @@ const authSchemas = {
   })
 };
 
-// ===== SCHÉMAS POUR LES TIMESHEETS =====
-
 const timesheetSchemas = {
   clockIn: Joi.object({
     agencyId: objectId.required()
@@ -283,8 +433,6 @@ const timesheetSchemas = {
     agencyId: objectId.required()
   })
 };
-
-// ===== SCHÉMAS POUR LES UTILISATEURS =====
 
 const userSchemas = {
   createUser: Joi.object({
@@ -305,8 +453,6 @@ const userSchemas = {
     isActive: Joi.boolean().optional()
   })
 };
-
-// ===== SCHÉMAS POUR LES AGENCES =====
 
 const agencySchemas = {
   createAgency: Joi.object({
@@ -335,8 +481,6 @@ const agencySchemas = {
   })
 };
 
-// ===== SCHÉMAS POUR LES VÉHICULES =====
-
 const vehicleSchemas = {
   createVehicle: Joi.object({
     licensePlate: Joi.string()
@@ -347,10 +491,10 @@ const vehicleSchemas = {
       .messages({
         'string.pattern.base': 'Format de plaque invalide'
       }),
-    brand: Joi.string() // ✅ SUPPRIMÉ : .required()
+    brand: Joi.string()
       .trim()
       .max(50)
-      .allow('') // ✅ AJOUTÉ : permet les chaînes vides
+      .allow('')
       .optional(),
     model: Joi.string()
       .required()
@@ -508,6 +652,11 @@ module.exports = {
   userSchemas,
   agencySchemas,
   vehicleSchemas,
+  
+  // ✅ Schémas ZOD pour nouvelles fonctionnalités
+  createBulkPreparations,
+  createPreparation,
+  simplifiedVehicleSchema,
   
   // Middlewares spécialisés
   validatePreparationUpload,

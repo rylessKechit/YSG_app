@@ -118,9 +118,7 @@ const PREPARATION_STEPS = {
   EXTERIOR: 'exterior',
   INTERIOR: 'interior', 
   FUEL: 'fuel',
-  TIRES_FLUIDS: 'tires_fluids',
   SPECIAL_WASH: 'special_wash',
-  PARKING: 'parking'
 };
 
 /**

@@ -47,7 +47,8 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "zod": "^4.0.13"
   },
   "devDependencies": {
     "jest": "^29.7.0",

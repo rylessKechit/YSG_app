@@ -12,7 +12,7 @@ const Vehicle = require('../../../models/Vehicle');
 // Middleware
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
-const { validateQuery, validateBody, validateObjectId } = require('../../../middleware/validation');
+const { validateQuery, validateBody, validateObjectId, createPreparation, createBulkPreparations } = require('../../../middleware/validation');
 
 // Constants
 const { 
@@ -65,6 +65,407 @@ const editStepsSchema = Joi.object({
 
 // Middleware auth pour toutes les routes
 router.use(auth, adminAuth);
+
+/**
+ * @route   POST /api/admin/preparations/new
+ * @desc    Créer une nouvelle préparation depuis l'admin
+ * @access  Admin
+ */
+router.post('/new', 
+  validateBody(createPreparation), 
+  async (req, res) => {
+    try {
+      const {
+        userId,
+        agencyId,
+        vehicleData,
+        notes,
+        assignedSteps,
+        priority
+      } = req.body;
+
+      console.log('🚀 Création préparation admin:', { 
+        userId, 
+        agencyId, 
+        vehicleData: vehicleData?.licensePlate 
+      });
+
+      // Vérifier que l'utilisateur existe et est un préparateur
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'Utilisateur non trouvé'
+        });
+      }
+
+      if (user.role !== 'preparateur') {
+        return res.status(400).json({
+          success: false,
+          message: 'L\'utilisateur doit être un préparateur'
+        });
+      }
+
+      // Vérifier que l'agence existe
+      const agency = await Agency.findById(agencyId);
+      if (!agency) {
+        return res.status(404).json({
+          success: false,
+          message: 'Agence non trouvée'
+        });
+      }
+
+      // Vérifier qu'il n'y a pas déjà une préparation en cours pour cet utilisateur
+      const existingPreparation = await Preparation.findOne({
+        user: userId,
+        status: PREPARATION_STATUS.IN_PROGRESS
+      });
+
+      if (existingPreparation) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cet utilisateur a déjà une préparation en cours'
+        });
+      }
+
+      // Créer ou trouver le véhicule
+      let vehicle = await Vehicle.findOne({ 
+        licensePlate: vehicleData.licensePlate.toUpperCase() 
+      });
+
+      if (!vehicle) {
+        vehicle = new Vehicle({
+          licensePlate: vehicleData.licensePlate.toUpperCase(),
+          brand: vehicleData.brand,
+          model: vehicleData.model,
+          vehicleType: vehicleData.vehicleType || 'particulier',
+          year: vehicleData.year,
+          fuelType: vehicleData.fuelType,
+          color: vehicleData.color,
+          condition: vehicleData.condition || 'good'
+        });
+        await vehicle.save();
+      }
+
+      // Initialiser les étapes
+      const defaultSteps = assignedSteps || PREPARATION_STEPS;
+      const steps = defaultSteps.map(stepType => ({
+        step: stepType,
+        completed: false,
+        completedAt: null,
+        notes: '',
+        photos: []
+      }));
+
+      // Créer la préparation
+      const preparation = new Preparation({
+        user: userId,
+        agency: agencyId,
+        vehicle: vehicle._id,
+        vehicleData: {
+          licensePlate: vehicleData.licensePlate.toUpperCase(),
+          brand: vehicleData.brand,
+          model: vehicleData.model,
+          vehicleType: vehicleData.vehicleType || 'particulier',
+          year: vehicleData.year,
+          fuelType: vehicleData.fuelType,
+          color: vehicleData.color,
+          condition: vehicleData.condition || 'good'
+        },
+        status: PREPARATION_STATUS.PENDING, // ✅ PENDING pour admin (pas IN_PROGRESS)
+        steps: steps,
+        progress: 0,
+        currentDuration: 0,
+        totalTime: null,
+        isOnTime: null,
+        notes: notes || '',
+        priority: priority || 'normal',
+        createdBy: {
+          id: req.user.userId,
+          name: `${req.user.firstName} ${req.user.lastName}`,
+          email: req.user.email,
+          role: 'admin'
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      await preparation.save();
+
+      // Populate pour la réponse
+      await preparation.populate(['user', 'agency', 'vehicle']);
+
+      console.log('✅ Préparation créée par admin:', preparation._id);
+
+      res.status(201).json({
+        success: true,
+        message: 'Préparation créée avec succès',
+        data: {
+          preparation: {
+            id: preparation._id,
+            vehicle: {
+              id: preparation.vehicle._id,
+              licensePlate: preparation.vehicleData.licensePlate,
+              brand: preparation.vehicleData.brand,
+              model: preparation.vehicleData.model,
+              vehicleType: preparation.vehicleData.vehicleType,
+              year: preparation.vehicleData.year,
+              color: preparation.vehicleData.color,
+              condition: preparation.vehicleData.condition
+            },
+            user: {
+              id: preparation.user._id,
+              name: `${preparation.user.firstName} ${preparation.user.lastName}`,
+              email: preparation.user.email
+            },
+            agency: {
+              id: preparation.agency._id,
+              name: preparation.agency.name,
+              code: preparation.agency.code,
+              client: preparation.agency.client
+            },
+            status: preparation.status,
+            steps: preparation.steps,
+            progress: preparation.progress,
+            notes: preparation.notes,
+            priority: preparation.priority,
+            createdAt: preparation.createdAt,
+            createdBy: preparation.createdBy
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Erreur création préparation admin:', error);
+      
+      if (error.name === 'ValidationError') {
+        const errors = Object.keys(error.errors).map(key => ({
+          field: key,
+          message: error.errors[key].message
+        }));
+        
+        return res.status(400).json({
+          success: false,
+          message: 'Erreur de validation',
+          errors
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la création de la préparation'
+      });
+    }
+  }
+);
+
+/**
+ * @route   POST /api/admin/preparations/bulk
+ * @desc    Créer plusieurs préparations en une fois
+ * @access  Admin
+ */
+router.post('/bulk', 
+  validateBody(createBulkPreparations), 
+  async (req, res) => {
+    try {
+      const {
+        userId,
+        agencyId,
+        vehicles, // Array de véhicules simplifiés
+        notes,
+        priority
+      } = req.body;
+
+      console.log('🚀 Création en lot:', { 
+        userId, 
+        agencyId, 
+        vehicleCount: vehicles.length 
+      });
+
+      // Vérifier que l'utilisateur existe et est un préparateur
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'Utilisateur non trouvé'
+        });
+      }
+
+      if (user.role !== 'preparateur') {
+        return res.status(400).json({
+          success: false,
+          message: 'L\'utilisateur doit être un préparateur'
+        });
+      }
+
+      // Vérifier que l'agence existe
+      const agency = await Agency.findById(agencyId);
+      if (!agency) {
+        return res.status(404).json({
+          success: false,
+          message: 'Agence non trouvée'
+        });
+      }
+
+      // Créer les préparations en parallèle
+      const createdPreparations = [];
+      const errors = [];
+
+      for (let i = 0; i < vehicles.length; i++) {
+        const vehicleData = vehicles[i];
+        
+        try {
+          // Créer ou trouver le véhicule
+          let vehicle = await Vehicle.findOne({ 
+            licensePlate: vehicleData.licensePlate.toUpperCase() 
+          });
+
+          if (!vehicle) {
+            vehicle = new Vehicle({
+              licensePlate: vehicleData.licensePlate.toUpperCase(),
+              brand: '', // Pas de marque dans le formulaire simplifié
+              model: vehicleData.model,
+              vehicleType: vehicleData.vehicleType,
+              agency: agencyId
+            });
+            await vehicle.save();
+          }
+
+          // Initialiser les étapes avec les étapes déjà complétées
+          const steps = PREPARATION_STEPS.map(stepType => {
+            const isCompleted = vehicleData.completedSteps?.includes(stepType) || false;
+            return {
+              step: stepType,
+              completed: isCompleted,
+              completedAt: isCompleted ? new Date() : null,
+              notes: isCompleted ? 'Étape pré-complétée lors de la création' : '',
+              photos: []
+            };
+          });
+
+          // Calculer la progression initiale
+          const completedCount = steps.filter(s => s.completed).length;
+          const initialProgress = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
+
+          // Créer la préparation
+          const preparation = new Preparation({
+            user: userId,
+            agency: agencyId,
+            vehicle: vehicle._id,
+            vehicleData: {
+              licensePlate: vehicleData.licensePlate.toUpperCase(),
+              brand: '', // Pas de marque
+              model: vehicleData.model,
+              vehicleType: vehicleData.vehicleType
+            },
+            status: PREPARATION_STATUS.PENDING,
+            steps: steps,
+            progress: initialProgress, // ✅ Progression calculée
+            currentDuration: 0,
+            totalTime: null,
+            isOnTime: null,
+            notes: notes || '',
+            priority: priority || 'normal',
+            createdBy: {
+              id: req.user.userId,
+              name: `${req.user.firstName} ${req.user.lastName}`,
+              email: req.user.email,
+              role: 'admin'
+            },
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+          await preparation.save();
+          
+          // Populate pour la réponse
+          await preparation.populate(['user', 'agency']);
+          
+          createdPreparations.push({
+            id: preparation._id,
+            vehicle: {
+              licensePlate: preparation.vehicleData.licensePlate,
+              model: preparation.vehicleData.model,
+              vehicleType: preparation.vehicleData.vehicleType
+            },
+            status: preparation.status,
+            priority: preparation.priority,
+            progress: preparation.progress, // ✅ Inclure la progression
+            completedSteps: vehicleData.completedSteps || [], // ✅ Inclure les étapes pré-complétées
+            createdAt: preparation.createdAt
+          });
+
+        } catch (error) {
+          console.error(`❌ Erreur création préparation ${i + 1}:`, error);
+          errors.push({
+            vehicleIndex: i + 1,
+            licensePlate: vehicleData.licensePlate,
+            error: error.message
+          });
+        }
+      }
+
+      console.log(`✅ ${createdPreparations.length}/${vehicles.length} préparations créées`);
+
+      // Réponse
+      if (createdPreparations.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Aucune préparation n\'a pu être créée',
+          errors
+        });
+      } else if (errors.length > 0) {
+        return res.status(207).json({ // 207 Multi-Status
+          success: true,
+          message: `${createdPreparations.length} préparation(s) créée(s), ${errors.length} erreur(s)`,
+          data: {
+            createdPreparations,
+            errors,
+            summary: {
+              total: vehicles.length,
+              created: createdPreparations.length,
+              failed: errors.length
+            }
+          }
+        });
+      } else {
+        return res.status(201).json({
+          success: true,
+          message: `${createdPreparations.length} préparation(s) créée(s) avec succès`,
+          data: {
+            createdPreparations,
+            summary: {
+              total: vehicles.length,
+              created: createdPreparations.length,
+              failed: 0
+            }
+          }
+        });
+      }
+
+    } catch (error) {
+      console.error('❌ Erreur création lot préparations:', error);
+      
+      if (error.name === 'ValidationError') {
+        const errors = Object.keys(error.errors).map(key => ({
+          field: key,
+          message: error.errors[key].message
+        }));
+        
+        return res.status(400).json({
+          success: false,
+          message: 'Erreur de validation',
+          errors
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Erreur lors de la création des préparations'
+      });
+    }
+  }
+);
 
 /**
  * @route   GET /api/admin/preparations/stats

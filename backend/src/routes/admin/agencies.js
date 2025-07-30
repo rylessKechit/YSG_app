@@ -78,78 +78,105 @@ router.use(auth, adminAuth);
 
 /**
  * @route   GET /api/admin/agencies
- * @desc    Liste des agences avec filtres et pagination
+ * @desc    Liste toutes les agences avec filtres
  * @access  Admin
  */
 router.get('/', async (req, res) => {
   try {
-    // Validation manuelle pour éviter l'erreur
-    const { error, value } = agencySearchSchema.validate(req.query);
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: 'Paramètres invalides',
-        errors: error.details.map(d => d.message)
-      });
-    }
+    const {
+      page = 1,
+      limit = 50,
+      search = '',
+      status = 'all', // ✅ NOUVEAU: Filtre par statut
+      client = '',
+      sort = 'name',
+      order = 'asc'
+    } = req.query;
 
-    const { page, limit, search, client, status, sort, order } = value;
-
-    // Construire les filtres
+    // Construction des filtres
     const filters = {};
     
-    if (search && search.trim().length > 0) {
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
       filters.$or = [
-        { name: { $regex: search.trim(), $options: 'i' } },
-        { code: { $regex: search.trim(), $options: 'i' } },
-        { client: { $regex: search.trim(), $options: 'i' } },
-        { address: { $regex: search.trim(), $options: 'i' } }
+        { name: searchRegex },
+        { code: searchRegex },
+        { client: searchRegex },
+        { address: searchRegex }
       ];
     }
 
-    if (client && client.trim().length > 0) {
-      filters.client = { $regex: client.trim(), $options: 'i' };
+    // ✅ NOUVEAU: Filtre par statut
+    if (status === 'active') {
+      filters.isActive = true;
+    } else if (status === 'inactive') {
+      filters.isActive = false;
+    }
+    // Si status = 'all', on ne filtre pas
+
+    if (client && client.trim()) {
+      filters.client = new RegExp(client.trim(), 'i');
     }
 
-    if (status && status !== 'all') {
-      filters.isActive = status === 'active';
-    }
+    // Options de pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitNum = parseInt(limit);
 
-    // Pagination
-    const skip = (page - 1) * limit;
-    const sortOptions = { [sort]: order === 'desc' ? -1 : 1 };
+    // Tri
+    const sortOptions = {};
+    sortOptions[sort] = order === 'asc' ? 1 : -1;
 
-    // Requêtes parallèles
-    const [agencies, total] = await Promise.all([
+    // Exécution des requêtes
+    const [agencies, totalCount] = await Promise.all([
       Agency.find(filters)
-        .select('name code client address phone email isActive createdAt')
         .sort(sortOptions)
         .skip(skip)
-        .limit(limit),
+        .limit(limitNum)
+        .lean(),
       Agency.countDocuments(filters)
     ]);
+
+    // Formatage des données
+    const formattedAgencies = agencies.map(agency => ({
+      id: agency._id,
+      name: agency.name,
+      code: agency.code,
+      client: agency.client || '',
+      address: agency.address || '',
+      phone: agency.phone || '',
+      email: agency.email || '',
+      isActive: agency.isActive !== false, // Par défaut true si pas défini
+      settings: agency.settings || {},
+      stats: {
+        totalUsers: agency.users?.length || 0,
+        totalVehicles: 0, // TODO: Calculer si nécessaire
+        totalPreparations: 0 // TODO: Calculer si nécessaire
+      },
+      createdAt: agency.createdAt,
+      updatedAt: agency.updatedAt
+    }));
+
+    // Métadonnées de pagination
+    const totalPages = Math.ceil(totalCount / limitNum);
 
     res.json({
       success: true,
       data: {
-        agencies: agencies.map(agency => ({
-          id: agency._id,
-          name: agency.name,
-          code: agency.code,
-          client: agency.client,
-          address: agency.address,
-          phone: agency.phone,
-          email: agency.email,
-          isActive: agency.isActive,
-          createdAt: agency.createdAt
-        })),
+        agencies: formattedAgencies,
         pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-          hasNext: page < Math.ceil(total / limit),
-          hasPrev: page > 1
+          page: parseInt(page),
+          limit: limitNum,
+          total: totalCount,
+          totalPages,
+          hasNextPage: parseInt(page) < totalPages,
+          hasPrevPage: parseInt(page) > 1
+        },
+        filters: {
+          search,
+          status,
+          client,
+          sort,
+          order
         }
       }
     });
@@ -158,7 +185,7 @@ router.get('/', async (req, res) => {
     console.error('❌ Erreur récupération agences:', error);
     res.status(500).json({
       success: false,
-      message: ERROR_MESSAGES.SERVER_ERROR || 'Erreur serveur'
+      message: 'Erreur lors de la récupération des agences'
     });
   }
 });
