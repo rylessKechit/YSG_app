@@ -692,237 +692,473 @@ router.get('/stats', validateQuery(statsQuerySchema), async (req, res) => {
 
 /**
  * @route   GET /api/admin/preparations
- * @desc    Récupérer les préparations avec filtres
+ * @desc    Liste toutes les préparations (CORRECTION ERREUR OBJECTID)
  * @access  Admin
  */
 router.get('/', validateQuery(preparationQuerySchema), async (req, res) => {
   try {
-    console.log('📋 Requête préparations reçue:', req.query);
+    const { 
+      page = 1, 
+      limit = 20, 
+      status = 'all',
+      agency,
+      vehicleType,
+      search,
+      startDate, 
+      endDate,
+      user,
+      priority,
+      sort = 'createdAt',
+      order = 'desc'
+    } = req.query;
 
-    const { page, limit, search, user, agency, status, startDate, endDate, sort, order } = req.query;
+    console.log('📊 Admin - Récupération préparations avec filtres:', {
+      page, limit, status, agency, vehicleType, search, startDate, endDate, user, priority, sort, order
+    });
 
-    // Construire les filtres MongoDB
-    const filters = {};
+    // ===== CONSTRUCTION DE LA QUERY SÉCURISÉE =====
+    const query = {};
+    const mongoose = require('mongoose');
     
-    // Filtre de recherche textuelle
-    if (search?.trim()) {
+    // ✅ CORRECTION CRITIQUE: Gérer status='all'
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    // ✅ CORRECTION: Validation ObjectId pour agency
+    if (agency) {
+      try {
+        // Vérifier si c'est un ObjectId valide
+        if (mongoose.Types.ObjectId.isValid(agency) && agency.length === 24) {
+          query.agency = new mongoose.Types.ObjectId(agency);
+        } else {
+          console.warn('⚠️ Agency ID invalide:', agency);
+          // Ne pas ajouter le filtre si l'ID est invalide
+        }
+      } catch (error) {
+        console.warn('⚠️ Erreur conversion agency ObjectId:', error.message);
+      }
+    }
+    
+    // ✅ CORRECTION: Validation ObjectId pour user
+    if (user) {
+      try {
+        if (mongoose.Types.ObjectId.isValid(user) && user.length === 24) {
+          const userObjectId = new mongoose.Types.ObjectId(user);
+          query.$or = [
+            { user: userObjectId },
+            { preparateur: userObjectId }
+          ];
+        } else {
+          console.warn('⚠️ User ID invalide:', user);
+        }
+      } catch (error) {
+        console.warn('⚠️ Erreur conversion user ObjectId:', error.message);
+      }
+    }
+    
+    if (priority) {
+      query.priority = priority;
+    }
+    
+    // ✅ FILTRE PAR TYPE VÉHICULE (UNIFIÉ - utilise vehicleData)
+    if (vehicleType) {
+      query['vehicleData.vehicleType'] = vehicleType;
+    }
+    
+    // ✅ RECHERCHE TEXTUELLE (UNIFIÉE - recherche dans vehicleData)
+    if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), 'i');
-      filters.$or = [
-        { 'vehicle.licensePlate': searchRegex },
-        { 'vehicle.model': searchRegex },
+      query.$or = [
+        { 'vehicleData.licensePlate': searchRegex },
+        { 'vehicleData.model': searchRegex },
+        { 'vehicleData.brand': searchRegex },
         { notes: searchRegex }
       ];
-      console.log('🔍 Filtre de recherche appliqué:', search.trim());
     }
     
-    // Filtre utilisateur - GÉRER LES DEUX CHAMPS
-    if (user) {
-      // Si on a déjà un $or pour la recherche, on l'étend
-      if (filters.$or) {
-        // Créer un $and pour combiner recherche textuelle ET filtre user
-        const searchOr = filters.$or;
-        delete filters.$or;
-        filters.$and = [
-          { $or: searchOr },
-          { $or: [{ user: user }, { preparateur: user }] }
-        ];
-      } else {
-        // Pas de recherche textuelle, simple $or pour user/preparateur
-        filters.$or = [
-          { user: user },
-          { preparateur: user }
-        ];
-      }
-      console.log('👤 Filtre user/preparateur appliqué:', user);
-    }
-    
-    // Filtre agence
-    if (agency) {
-      filters.agency = agency;
-      console.log('🏢 Filtre agency appliqué:', agency);
-    }
-    
-    // Filtre statut
-    if (status && status !== 'all') {
-      filters.status = status;
-      console.log('📊 Filtre status appliqué:', status);
-    }
-    
-    // Filtre de dates
+    // Filtre par dates
     if (startDate || endDate) {
-      filters.createdAt = {};
+      query.createdAt = {};
       if (startDate) {
-        filters.createdAt.$gte = new Date(startDate);
-        console.log('📅 Filtre startDate appliqué:', new Date(startDate));
+        query.createdAt.$gte = new Date(startDate);
       }
       if (endDate) {
-        filters.createdAt.$lte = new Date(endDate);
-        console.log('📅 Filtre endDate appliqué:', new Date(endDate));
+        query.createdAt.$lte = new Date(endDate);
       }
     }
 
-    console.log('🎯 Filtres MongoDB pour préparations:', JSON.stringify(filters, null, 2));
+    console.log('🔍 Query MongoDB construite:', JSON.stringify(query, null, 2));
 
-    const skip = (page - 1) * limit;
-    const sortObj = { [sort]: order === 'asc' ? 1 : -1 };
+    // ===== TEST: Compter d'abord les documents =====
+    const totalCount = await Preparation.countDocuments(query).maxTimeMS(10000);
+    console.log(`📊 Nombre total de préparations trouvées: ${totalCount}`);
 
-    const [preparations, total] = await Promise.all([
-      Preparation.find(filters)
-        .populate('user', 'firstName lastName email')
-        .populate('agency', 'name code client')
-        .populate('vehicle', 'licensePlate model brand')
-        .sort(sortObj)
-        .skip(skip)
-        .limit(parseInt(limit)),
-      Preparation.countDocuments(filters)
-    ]);
+    if (totalCount === 0) {
+      console.log('⚠️ Aucune préparation trouvée avec ces filtres');
+      
+      // Diagnostic: compter TOUTES les préparations
+      const allCount = await Preparation.countDocuments({});
+      console.log(`📊 Total de préparations dans la DB: ${allCount}`);
+      
+      // Test sans populate pour éviter les erreurs ObjectId
+      const samples = await Preparation.find({}).limit(3).lean();
+      console.log('📋 Échantillon préparations:', samples.map(s => ({
+        id: s._id,
+        status: s.status,
+        hasVehicleData: !!s.vehicleData,
+        licensePlate: s.vehicleData?.licensePlate || 'N/A',
+        userId: s.user,
+        agencyId: s.agency,
+        vehicleId: s.vehicle // ✅ VOIR SI C'EST UN OBJECTID VALIDE
+      })));
+    }
 
-    console.log('📋 Préparations trouvées:', preparations.length, 'sur un total de', total);
+    // ===== EXÉCUTION DE LA REQUÊTE SÉCURISÉE =====
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // ✅ SORT CONFIGURATION
+    const sortConfig = {};
+    sortConfig[sort] = order === 'desc' ? -1 : 1;
+    
+    // ✅ REQUÊTE SANS POPULATE D'ABORD (pour identifier le problème)
+    console.log('🔍 Exécution requête sans populate...');
+    const preparationsRaw = await Preparation.find(query)
+      .sort(sortConfig)
+      .limit(parseInt(limit))
+      .skip(skip)
+      .maxTimeMS(30000)
+      .lean();
 
-    const formattedPreparations = preparations.map(prep => ({
-      id: prep._id,
-      vehicle: {
-        id: prep.vehicle?._id,
-        licensePlate: prep.vehicle?.licensePlate || 'N/A',
-        model: prep.vehicle?.model || 'N/A',
-        brand: prep.vehicle?.brand || 'N/A'
-      },
-      user: {
-        id: prep.user._id,
-        name: `${prep.user.firstName} ${prep.user.lastName}`,
-        email: prep.user.email
-      },
-      agency: {
-        id: prep.agency._id,
-        name: prep.agency.name,
-        code: prep.agency.code,
-        client: prep.agency.client
-      },
-      status: prep.status,
-      progress: prep.progress,
-      duration: prep.currentDuration,
-      totalTime: prep.totalTime,
-      isOnTime: prep.isOnTime,
-      startTime: prep.startTime,
-      endTime: prep.endTime,
-      steps: prep.steps.map(step => ({
-        step: step.step,
-        completed: step.completed,
-        completedAt: step.completedAt,
-        notes: step.notes,
-        photosCount: step.photos ? step.photos.length : 0
-      })),
-      issues: prep.issues || [],
-      notes: prep.notes,
-      createdAt: prep.createdAt,
-      updatedAt: prep.updatedAt
-    }));
+    console.log(`📈 ${preparationsRaw.length} préparations récupérées sans populate`);
 
-    // Calculer les stats avec les mêmes filtres
-    const stats = {
-      total,
-      pending: await Preparation.countDocuments({ ...filters, status: PREPARATION_STATUS.PENDING }),
-      inProgress: await Preparation.countDocuments({ ...filters, status: PREPARATION_STATUS.IN_PROGRESS }),
-      completed: await Preparation.countDocuments({ ...filters, status: PREPARATION_STATUS.COMPLETED }),
-      cancelled: await Preparation.countDocuments({ ...filters, status: PREPARATION_STATUS.CANCELLED })
+    // ✅ DIAGNOSTIC: Vérifier les références vehicle
+    if (preparationsRaw.length > 0) {
+      const firstPrep = preparationsRaw[0];
+      console.log('🔍 Première préparation - Références:', {
+        id: firstPrep._id,
+        userId: firstPrep.user,
+        agencyId: firstPrep.agency,
+        vehicleId: firstPrep.vehicle,
+        vehicleIsValid: firstPrep.vehicle ? mongoose.Types.ObjectId.isValid(firstPrep.vehicle) : 'NULL',
+        hasVehicleData: !!firstPrep.vehicleData
+      });
+    }
+
+    // ✅ POPULATE SÉCURISÉ (seulement les champs valides)
+    const preparations = [];
+    
+    for (const prep of preparationsRaw) {
+      try {
+        let populatedPrep = { ...prep };
+        
+        // Populate user seulement si valide
+        if (prep.user && mongoose.Types.ObjectId.isValid(prep.user)) {
+          try {
+            const User = require('../../../models/User'); // Ajuster le chemin
+            const user = await User.findById(prep.user, 'firstName lastName email phone').lean();
+            populatedPrep.user = user;
+          } catch (error) {
+            console.warn(`⚠️ Impossible de populate user ${prep.user}:`, error.message);
+            populatedPrep.user = null;
+          }
+        }
+        
+        // Populate agency seulement si valide
+        if (prep.agency && mongoose.Types.ObjectId.isValid(prep.agency)) {
+          try {
+            const Agency = require('../../../models/Agency'); // Ajuster le chemin
+            const agency = await Agency.findById(prep.agency, 'name code client address').lean();
+            populatedPrep.agency = agency;
+          } catch (error) {
+            console.warn(`⚠️ Impossible de populate agency ${prep.agency}:`, error.message);
+            populatedPrep.agency = null;
+          }
+        }
+        
+        // ✅ CORRECTION CRITIQUE: Populate vehicle seulement si c'est un ObjectId valide
+        if (prep.vehicle && mongoose.Types.ObjectId.isValid(prep.vehicle)) {
+          try {
+            const Vehicle = require('../../../models/Vehicle'); // Ajuster le chemin
+            const vehicle = await Vehicle.findById(prep.vehicle, 'licensePlate brand model vehicleType').lean();
+            populatedPrep.vehicle = vehicle;
+          } catch (error) {
+            console.warn(`⚠️ Impossible de populate vehicle ${prep.vehicle}:`, error.message);
+            populatedPrep.vehicle = null;
+          }
+        } else if (prep.vehicle) {
+          console.warn(`⚠️ Vehicle ID invalide pour préparation ${prep._id}:`, prep.vehicle);
+          populatedPrep.vehicle = null;
+        }
+        
+        preparations.push(populatedPrep);
+        
+      } catch (error) {
+        console.error(`❌ Erreur populate préparation ${prep._id}:`, error.message);
+        // Garder la préparation sans populate
+        preparations.push(prep);
+      }
+    }
+
+    console.log(`📈 ${preparations.length} préparations avec populate réussi`);
+
+    // ===== FORMATAGE UNIFIÉ DES RÉPONSES =====
+    const formattedPreparations = preparations.map(prep => {
+      try {
+        // ✅ FORMATAGE COMPATIBLE AVEC SCHEMA UNIFIÉ
+        return {
+          id: prep._id,
+          // ✅ VÉHICULE DEPUIS VEHICLEDATA (source unique de vérité)
+          vehicle: {
+            id: prep.vehicle?._id,
+            licensePlate: prep.vehicleData?.licensePlate || prep.vehicleInfo?.licensePlate || 'N/A',
+            brand: prep.vehicleData?.brand || prep.vehicleInfo?.brand || 'N/A',
+            model: prep.vehicleData?.model || prep.vehicleInfo?.model || 'Véhicule',
+            vehicleType: prep.vehicleData?.vehicleType || prep.vehicleInfo?.vehicleType || 'particulier',
+            year: prep.vehicleData?.year || prep.vehicleInfo?.year,
+            fuelType: prep.vehicleData?.fuelType || prep.vehicleInfo?.fuelType,
+            color: prep.vehicleData?.color || prep.vehicleInfo?.color,
+            condition: prep.vehicleData?.condition || prep.vehicleInfo?.condition
+          },
+          user: prep.user ? {
+            id: prep.user._id,
+            name: `${prep.user.firstName} ${prep.user.lastName}`,
+            email: prep.user.email,
+            phone: prep.user.phone
+          } : null,
+          agency: prep.agency ? {
+            id: prep.agency._id,
+            name: prep.agency.name,
+            code: prep.agency.code,
+            client: prep.agency.client,
+            address: prep.agency.address
+          } : null,
+          status: prep.status,
+          progress: prep.progress || 0,
+          currentDuration: prep.currentDuration || 0,
+          totalTime: prep.totalTime,
+          isOnTime: prep.isOnTime,
+          startTime: prep.startTime,
+          endTime: prep.endTime,
+          steps: (prep.steps || []).map(step => ({
+            step: step.step,
+            completed: step.completed,
+            completedAt: step.completedAt,
+            duration: step.duration,
+            notes: step.notes || '',
+            photos: step.photos || []
+          })),
+          issues: prep.issues || [],
+          notes: prep.notes || '',
+          priority: prep.priority || 'normal',
+          createdBy: prep.createdBy,
+          createdAt: prep.createdAt,
+          updatedAt: prep.updatedAt
+        };
+      } catch (error) {
+        console.error(`❌ Erreur formatage préparation ${prep._id}:`, error.message);
+        return {
+          id: prep._id,
+          vehicle: {
+            licensePlate: prep.vehicleData?.licensePlate || 'N/A',
+            brand: prep.vehicleData?.brand || 'N/A',
+            model: prep.vehicleData?.model || 'Véhicule',
+            vehicleType: prep.vehicleData?.vehicleType || 'particulier'
+          },
+          status: prep.status || 'pending',
+          progress: prep.progress || 0,
+          createdAt: prep.createdAt,
+          error: 'Données partielles'
+        };
+      }
+    });
+
+    // ===== PAGINATION =====
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalCount: totalCount,
+      totalPages: Math.ceil(totalCount / parseInt(limit)),
+      hasNextPage: parseInt(page) * parseInt(limit) < totalCount,
+      hasPrevPage: parseInt(page) > 1
     };
 
-    console.log('📊 Stats par statut calculées:', stats);
+    // ===== STATISTIQUES RAPIDES (SÉCURISÉES) =====
+    const stats = {
+      total: totalCount,
+      byStatus: {},
+      byVehicleType: {},
+      byPriority: {}
+    };
+
+    // Calculer les stats par statut (seulement si on a des résultats)
+    if (totalCount > 0) {
+      try {
+        const [statusStats, vehicleTypeStats, priorityStats] = await Promise.all([
+          Preparation.aggregate([
+            { $match: query },
+            { $group: { _id: '$status', count: { $sum: 1 } } }
+          ]).maxTimeMS(5000),
+          
+          Preparation.aggregate([
+            { $match: query },
+            { $group: { _id: '$vehicleData.vehicleType', count: { $sum: 1 } } }
+          ]).maxTimeMS(5000),
+          
+          Preparation.aggregate([
+            { $match: query },
+            { $group: { _id: '$priority', count: { $sum: 1 } } }
+          ]).maxTimeMS(5000)
+        ]);
+        
+        statusStats.forEach(stat => {
+          stats.byStatus[stat._id] = stat.count;
+        });
+
+        vehicleTypeStats.forEach(stat => {
+          stats.byVehicleType[stat._id || 'non-défini'] = stat.count;
+        });
+
+        priorityStats.forEach(stat => {
+          stats.byPriority[stat._id || 'normal'] = stat.count;
+        });
+
+      } catch (error) {
+        console.warn('⚠️ Impossible de calculer les statistiques:', error.message);
+      }
+    }
+
+    // ===== RÉPONSE FINALE =====
+    console.log(`✅ Admin - Envoi de ${formattedPreparations.length} préparations formatées`);
 
     res.json({
       success: true,
       data: {
         preparations: formattedPreparations,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / limit),
-          hasNext: page * limit < total,
-          hasPrev: page > 1
-        },
-        filters: { search: search || '', user, agency, status, startDate, endDate, sort, order },
-        stats
+        pagination,
+        stats,
+        filters: {
+          status,
+          agency,
+          vehicleType,
+          search,
+          startDate,
+          endDate,
+          user,
+          priority,
+          sort,
+          order
+        }
       }
     });
 
   } catch (error) {
-    console.error('❌ Erreur récupération préparations complète:', error);
-    console.error('❌ Stack trace:', error.stack);
-    res.status(500).json({ 
-      success: false, 
-      message: ERROR_MESSAGES.SERVER_ERROR,
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    console.error('❌ Erreur récupération préparations admin:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des préparations',
+      error: process.env.NODE_ENV === 'development' ? {
+        message: error.message,
+        stack: error.stack?.split('\n')[0]
+      } : undefined
     });
   }
 });
 
 /**
  * @route   GET /api/admin/preparations/:id
- * @desc    Récupérer le détail d'une préparation
+ * @desc    Récupérer le détail d'une préparation (COMPATIBLE SCHEMA UNIFIÉ)
  * @access  Admin
  */
-router.get('/:id', validateObjectId(), async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const preparation = await Preparation.findById(req.params.id)
+    const { id } = req.params;
+    
+    console.log(`🔍 Admin - Récupération détail préparation: ${id}`);
+
+    const preparation = await Preparation.findById(id)
       .populate('user', 'firstName lastName email phone')
       .populate('agency', 'name code client address')
-      .populate('vehicle', 'licensePlate model brand year color condition');
+      .populate('vehicle', 'licensePlate brand model vehicleType')
+      .maxTimeMS(15000);
 
     if (!preparation) {
-      return res.status(404).json({ success: false, message: 'Préparation non trouvée' });
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Préparation non trouvée' 
+      });
     }
 
+    // ✅ FORMATAGE UNIFIÉ DU DÉTAIL
     const formattedPreparation = {
       id: preparation._id,
+      // ✅ VÉHICULE DEPUIS VEHICLEDATA
       vehicle: {
         id: preparation.vehicle?._id,
-        licensePlate: preparation.vehicle?.licensePlate || 'N/A',
-        model: preparation.vehicle?.model || 'N/A',
-        brand: preparation.vehicle?.brand || 'N/A',
-        year: preparation.vehicle?.year,
-        color: preparation.vehicle?.color,
-        condition: preparation.vehicle?.condition
+        licensePlate: preparation.vehicleData?.licensePlate || 'N/A',
+        brand: preparation.vehicleData?.brand || 'N/A',
+        model: preparation.vehicleData?.model || 'Véhicule',
+        vehicleType: preparation.vehicleData?.vehicleType || 'particulier',
+        year: preparation.vehicleData?.year,
+        fuelType: preparation.vehicleData?.fuelType,
+        color: preparation.vehicleData?.color,
+        condition: preparation.vehicleData?.condition
       },
-      user: {
+      user: preparation.user ? {
         id: preparation.user._id,
         name: `${preparation.user.firstName} ${preparation.user.lastName}`,
         email: preparation.user.email,
         phone: preparation.user.phone
-      },
-      agency: {
+      } : null,
+      agency: preparation.agency ? {
         id: preparation.agency._id,
         name: preparation.agency.name,
         code: preparation.agency.code,
         client: preparation.agency.client,
         address: preparation.agency.address
-      },
+      } : null,
       status: preparation.status,
-      progress: preparation.progress,
-      duration: preparation.currentDuration,
+      progress: preparation.progress || 0,
+      currentDuration: preparation.currentDuration || 0,
       totalTime: preparation.totalTime,
       isOnTime: preparation.isOnTime,
       startTime: preparation.startTime,
       endTime: preparation.endTime,
-      steps: preparation.steps.map(step => ({
+      steps: (preparation.steps || []).map(step => ({
         step: step.step,
         completed: step.completed,
         completedAt: step.completedAt,
-        notes: step.notes,
+        duration: step.duration,
+        notes: step.notes || '',
         photos: step.photos || []
       })),
       issues: preparation.issues || [],
-      notes: preparation.notes,
+      notes: preparation.notes || '',
+      priority: preparation.priority || 'normal',
+      createdBy: preparation.createdBy,
       agencyHistory: preparation.agencyHistory || [],
       createdAt: preparation.createdAt,
       updatedAt: preparation.updatedAt
     };
 
-    res.json({ success: true, data: { preparation: formattedPreparation } });
+    console.log(`✅ Admin - Détail préparation envoyé: ${formattedPreparation.vehicle.licensePlate}`);
+
+    res.json({ 
+      success: true, 
+      data: { 
+        preparation: formattedPreparation 
+      } 
+    });
 
   } catch (error) {
-    console.error('❌ Erreur récupération détail:', error);
-    res.status(500).json({ success: false, message: ERROR_MESSAGES.SERVER_ERROR });
+    console.error('❌ Erreur récupération détail préparation:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération du détail de la préparation',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

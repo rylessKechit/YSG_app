@@ -1,6 +1,4 @@
-// backend/src/models/Preparation.js
-// ✅ Modèle Preparation complet avec toutes les modifications
-
+// backend/src/models/Preparation.js - VERSION CORRIGÉE COMPLÈTE
 const mongoose = require('mongoose');
 const { PREPARATION_STATUS, PREPARATION_STEPS, DEFAULT_STEPS, TIME_LIMITS } = require('../utils/constants');
 
@@ -43,7 +41,7 @@ const preparationStepSchema = new mongoose.Schema({
   }]
 }, { _id: true });
 
-// Schéma véhicule intégré (données de travail)
+// ✅ SCHÉMA VÉHICULE UNIFIÉ (remplace vehicleInfo ET vehicleData)
 const vehicleDataSchema = new mongoose.Schema({
   licensePlate: {
     type: String,
@@ -55,14 +53,14 @@ const vehicleDataSchema = new mongoose.Schema({
     type: String,
     required: false,
     trim: true,
-    default: ''
+    default: 'N/A' // ✅ Valeur par défaut pour éviter les chaînes vides
   },
   model: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    default: 'Véhicule'
   },
-  // ✅ NOUVEAU : Type de véhicule pour facturation différenciée
   vehicleType: {
     type: String,
     enum: ['particulier', 'utilitaire'],
@@ -82,7 +80,8 @@ const vehicleDataSchema = new mongoose.Schema({
   color: {
     type: String,
     trim: true,
-    maxlength: 30
+    maxlength: 30,
+    default: ''
   },
   condition: {
     type: String,
@@ -95,115 +94,34 @@ const vehicleDataSchema = new mongoose.Schema({
 const issueSchema = new mongoose.Schema({
   type: {
     type: String,
-    required: true,
-    enum: ['damage', 'missing_item', 'technical', 'cleanliness', 'other']
+    enum: ['damage', 'cleanliness', 'missing_item', 'mechanical', 'other'],
+    required: true
   },
   description: {
     type: String,
     required: true,
+    trim: true,
     maxlength: 500
   },
   severity: {
     type: String,
-    enum: ['low', 'medium', 'high', 'critical'],
+    enum: ['low', 'medium', 'high'],
     default: 'medium'
   },
   reportedAt: {
     type: Date,
     default: Date.now
   },
-  photos: [{
-    type: String // URLs Cloudinary
-  }],
+  photos: [String],
   resolved: {
     type: Boolean,
     default: false
   },
   resolvedAt: Date,
-  resolvedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  resolution: {
-    type: String,
-    maxlength: 500
-  }
+  resolvedBy: String
 }, { _id: true });
 
-// Schéma historique changement d'agence
-const agencyChangeHistorySchema = new mongoose.Schema({
-  fromAgency: {
-    id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Agency',
-      required: true
-    },
-    name: String,
-    code: String
-  },
-  toAgency: {
-    id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Agency',
-      required: true
-    },
-    name: String,
-    code: String
-  },
-  changedBy: {
-    id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    name: String,
-    email: String
-  },
-  reason: String,
-  changedAt: {
-    type: Date,
-    default: Date.now
-  }
-}, { _id: true });
-
-// ✅ NOUVEAU : Schéma modifications admin
-const adminModificationSchema = new mongoose.Schema({
-  modifiedBy: {
-    id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    name: String,
-    email: String
-  },
-  modifiedAt: {
-    type: Date,
-    default: Date.now
-  },
-  type: {
-    type: String,
-    enum: [
-      'steps_modification', 
-      'agency_change', 
-      'status_change', 
-      'priority_change',
-      'notes_update',
-      'assignment_change'
-    ],
-    required: true
-  },
-  previousValue: mongoose.Schema.Types.Mixed,
-  newValue: mongoose.Schema.Types.Mixed,
-  adminNotes: String,
-  changes: {
-    added: [mongoose.Schema.Types.Mixed],
-    removed: [mongoose.Schema.Types.Mixed],
-    modified: [mongoose.Schema.Types.Mixed]
-  }
-}, { _id: true });
-
-// ===== SCHÉMA PRINCIPAL =====
+// ===== SCHÉMA PRINCIPAL UNIFIÉ =====
 
 const preparationSchema = new mongoose.Schema({
   // Référence vers l'utilisateur (préparateur)
@@ -214,7 +132,7 @@ const preparationSchema = new mongoose.Schema({
     index: true
   },
 
-  // ✅ Champ de compatibilité (sera synchronisé avec user)
+  // ✅ COMPATIBILITÉ : Ancien champ préparateur (sera supprimé après migration)
   preparateur: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -229,28 +147,34 @@ const preparationSchema = new mongoose.Schema({
     index: true
   },
 
-  // Référence vers le véhicule (optionnelle, peut être juste les données)
+  // Référence vers le véhicule (optionnelle)
   vehicle: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vehicle',
     required: false
   },
 
-  // ✅ Données véhicule intégrées (toujours présentes)
+  // ✅ DONNÉES VÉHICULE UNIFIÉES (source unique de vérité)
   vehicleData: {
     type: vehicleDataSchema,
     required: true
+  },
+
+  // ✅ COMPATIBILITÉ : Ancien champ vehicleInfo (DEPRECATED - sera supprimé)
+  vehicleInfo: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false
   },
 
   // Statut de la préparation
   status: {
     type: String,
     enum: Object.values(PREPARATION_STATUS),
-    default: PREPARATION_STATUS.PENDING, // ✅ PENDING par défaut pour admin
+    default: PREPARATION_STATUS.PENDING,
     index: true
   },
 
-  // ✅ NOUVEAU : Priorité (pour les admins)
+  // Priorité
   priority: {
     type: String,
     enum: ['low', 'normal', 'high', 'urgent'],
@@ -258,87 +182,62 @@ const preparationSchema = new mongoose.Schema({
     index: true
   },
 
-  // ✅ NOUVEAU : Qui a créé cette préparation
+  // Qui a créé cette préparation
   createdBy: {
     id: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
-      refPath: 'createdBy.role' // Référence dynamique selon le rôle
+      required: false // ✅ Optionnel pour anciennes préparations
     },
     name: {
       type: String,
-      required: true
+      required: false
     },
     email: {
       type: String,
-      required: true
+      required: false
     },
     role: {
       type: String,
       enum: ['admin', 'preparateur'],
-      required: true
+      required: false
     }
   },
 
   // Étapes de préparation
   steps: [preparationStepSchema],
 
-  // ✅ NOUVEAU : Étapes assignées (pour personnalisation admin)  
-  assignedSteps: [{
-    type: String,
-    enum: Object.values(PREPARATION_STEPS)
-  }],
-
-  // Timing
+  // Temps de début
   startTime: {
     type: Date,
-    default: null // ✅ Null par défaut, sera rempli au démarrage
+    default: Date.now
   },
 
+  // Temps de fin
   endTime: Date,
 
+  // Durée totale en minutes
   totalTime: {
-    type: Number, // en minutes
+    type: Number,
     min: 0
   },
 
-  // Durée courante (calculée en temps réel)
+  // Durée actuelle en minutes
   currentDuration: {
     type: Number,
     default: 0,
     min: 0
   },
 
-  // Pourcentage de progression (calculé)
+  // Progression en pourcentage
   progress: {
     type: Number,
-    default: 0,
     min: 0,
-    max: 100
+    max: 100,
+    default: 0
   },
 
-  // Indique si la préparation est dans les temps
-  isOnTime: {
-    type: Boolean,
-    default: null
-  },
-
-  // Contrôle qualité (optionnel)
-  qualityCheck: {
-    passed: {
-      type: Boolean,
-      default: false
-    },
-    checkedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    checkedAt: Date,
-    notes: {
-      type: String,
-      maxlength: 500
-    }
-  },
+  // Dans les temps
+  isOnTime: Boolean,
 
   // Notes générales
   notes: {
@@ -350,377 +249,152 @@ const preparationSchema = new mongoose.Schema({
   // Incidents signalés
   issues: [issueSchema],
 
-  // Historique des changements d'agence
-  agencyHistory: [agencyChangeHistorySchema],
-
-  // ✅ NOUVEAU : Historique des modifications admin
-  adminModifications: [adminModificationSchema]
+  // Historique des agences
+  agencyHistory: [{
+    agency: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Agency'
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now
+    },
+    reason: String
+  }]
 
 }, {
   timestamps: true,
-  toJSON: { 
-    virtuals: true,
-    transform: function(doc, ret) {
-      delete ret.__v;
-      return ret;
-    }
-  }
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// ===== INDEX POUR PERFORMANCE =====
-
+// ===== INDEXES =====
 preparationSchema.index({ user: 1, status: 1 });
-preparationSchema.index({ agency: 1, createdAt: -1 });
+preparationSchema.index({ agency: 1, status: 1 });
 preparationSchema.index({ 'vehicleData.licensePlate': 1 });
-preparationSchema.index({ status: 1, priority: -1, createdAt: -1 });
-preparationSchema.index({ preparateur: 1, status: 1 }); // Pour compatibilité
-preparationSchema.index({ 'createdBy.id': 1, 'createdBy.role': 1 });
+preparationSchema.index({ createdAt: -1 });
+preparationSchema.index({ status: 1, createdAt: -1 });
 
-// ===== MIDDLEWARE PRE-SAVE =====
+// ===== MIDDLEWARE DE MIGRATION AUTOMATIQUE =====
 
-// Synchroniser user et preparateur pour compatibilité
+// ✅ AVANT SAUVEGARDE : Migrer vehicleInfo vers vehicleData
 preparationSchema.pre('save', function(next) {
+  // Si vehicleInfo existe mais pas vehicleData, migrer automatiquement
+  if (this.vehicleInfo && !this.vehicleData) {
+    console.log(`🔄 Migration automatique vehicleInfo -> vehicleData pour ${this._id}`);
+    
+    this.vehicleData = {
+      licensePlate: this.vehicleInfo.licensePlate || 'N/A',
+      brand: this.vehicleInfo.brand || 'N/A',
+      model: this.vehicleInfo.model || 'Véhicule',
+      vehicleType: this.vehicleInfo.vehicleType || 'particulier',
+      year: this.vehicleInfo.year,
+      fuelType: this.vehicleInfo.fuelType || 'essence',
+      color: this.vehicleInfo.color || '',
+      condition: this.vehicleInfo.condition || 'good'
+    };
+  }
+
+  // Assurer que vehicleData est valide
+  if (this.vehicleData) {
+    if (!this.vehicleData.brand || this.vehicleData.brand.trim() === '') {
+      this.vehicleData.brand = 'N/A';
+    }
+    if (!this.vehicleData.model || this.vehicleData.model.trim() === '') {
+      this.vehicleData.model = 'Véhicule';
+    }
+    if (!this.vehicleData.vehicleType) {
+      this.vehicleData.vehicleType = 'particulier';
+    }
+  }
+
+  // Synchroniser preparateur avec user pour compatibilité
   if (this.user && !this.preparateur) {
     this.preparateur = this.user;
-  } else if (this.preparateur && !this.user) {
-    this.user = this.preparateur;
   }
-  
-  // Mettre à jour updatedAt
-  this.updatedAt = new Date();
-  
+
   next();
 });
 
-// ✅ NOUVEAU : Middleware pour gérer la création admin vs préparateur
-preparationSchema.pre('save', function(next) {
-  // Si créé par admin, s'assurer que le statut initial est correct
-  if (this.isNew && this.createdBy?.role === 'admin') {
-    // Pour les créations admin, commencer en PENDING
-    if (!this.status || this.status === PREPARATION_STATUS.IN_PROGRESS) {
-      this.status = PREPARATION_STATUS.PENDING;
-    }
-  }
-
-  // Si créé par préparateur, commencer en IN_PROGRESS
-  if (this.isNew && this.createdBy?.role === 'preparateur') {
-    if (!this.status) {
-      this.status = PREPARATION_STATUS.IN_PROGRESS;
-    }
-    
-    // Auto-assigner startTime pour les préparateurs
-    if (!this.startTime) {
-      this.startTime = new Date();
-    }
-  }
-
-  // Validation des étapes assignées
-  if (this.assignedSteps && this.assignedSteps.length > 0) {
-    // S'assurer que toutes les étapes assignées sont dans les étapes du document
-    const stepTypes = this.steps.map(s => s.step);
-    const missingSteps = this.assignedSteps.filter(step => !stepTypes.includes(step));
-    
-    if (missingSteps.length > 0) {
-      // Ajouter les étapes manquantes
-      missingSteps.forEach(stepType => {
-        this.steps.push({
-          step: stepType,
-          completed: false,
-          completedAt: null,
-          notes: '',
-          photos: []
-        });
-      });
-    }
-  }
-
-  // Initialiser les étapes par défaut si aucune n'est définie
-  if (this.isNew && this.steps.length === 0) {
-    const defaultSteps = this.assignedSteps && this.assignedSteps.length > 0 
-      ? this.assignedSteps 
-      : DEFAULT_STEPS;
+// ✅ APRÈS SAUVEGARDE : Synchroniser avec véhicule lié si disponible
+preparationSchema.post('save', async function(doc) {
+  if (doc.vehicle && doc.vehicleData && (!doc.vehicleData.brand || doc.vehicleData.brand === 'N/A')) {
+    try {
+      const Vehicle = mongoose.model('Vehicle');
+      const vehicle = await Vehicle.findById(doc.vehicle);
       
-    this.steps = defaultSteps.map(stepType => ({
-      step: stepType,
-      completed: false,
-      completedAt: null,
-      notes: '',
-      photos: []
-    }));
+      if (vehicle && vehicle.brand && vehicle.brand.trim() !== '') {
+        doc.vehicleData.brand = vehicle.brand;
+        await doc.save({ validateBeforeSave: false });
+        console.log(`✅ Synchronisé brand depuis véhicule: ${vehicle.brand}`);
+      }
+    } catch (error) {
+      console.warn('⚠️ Erreur synchronisation vehicleData:', error.message);
+    }
   }
-
-  next();
-});
-
-// ===== VIRTUALS =====
-
-// Calculer la progression automatiquement
-preparationSchema.virtual('calculatedProgress').get(function() {
-  const totalSteps = this.steps.length;
-  if (totalSteps === 0) return 0;
-  
-  const completedSteps = this.steps.filter(step => step.completed).length;
-  return Math.round((completedSteps / totalSteps) * 100);
 });
 
 // ===== MÉTHODES D'INSTANCE =====
 
-// ✅ NOUVEAU : Démarrer une préparation (transition PENDING -> IN_PROGRESS)
-preparationSchema.methods.startPreparation = function(userId, userName, userEmail) {
-  if (this.status !== PREPARATION_STATUS.PENDING) {
-    throw new Error('Cette préparation ne peut pas être démarrée');
-  }
-
-  this.status = PREPARATION_STATUS.IN_PROGRESS;
-  this.startTime = new Date();
-  this.updatedAt = new Date();
-
-  // Enregistrer qui a démarré la préparation
-  if (!this.adminModifications) this.adminModifications = [];
-  this.adminModifications.push({
-    modifiedBy: {
-      id: userId,
-      name: userName || 'Utilisateur',
-      email: userEmail || 'user@app.com'
-    },
-    modifiedAt: new Date(),
-    type: 'status_change',
-    previousValue: PREPARATION_STATUS.PENDING,
-    newValue: PREPARATION_STATUS.IN_PROGRESS,
-    adminNotes: 'Préparation démarrée par le préparateur'
-  });
-
-  return this.save();
-};
-
-// Compléter une étape
-preparationSchema.methods.completeStep = function(stepType, photoUrl, notes) {
-  const step = this.steps.find(s => s.step === stepType);
-  if (!step) {
-    throw new Error('Étape non trouvée');
-  }
-
-  step.completed = true;
-  step.completedAt = new Date();
-  step.notes = notes || step.notes;
+// Obtenir le nom complet du véhicule
+preparationSchema.methods.getVehicleFullName = function() {
+  if (!this.vehicleData) return 'Véhicule inconnu';
   
-  if (photoUrl) {
-    step.photos.push({
-      url: photoUrl,
-      description: notes || `Photo étape ${stepType}`,
-      uploadedAt: new Date()
-    });
-  }
-
-  // Recalculer la progression
-  this.progress = this.calculatedProgress;
-  this.updatedAt = new Date();
-
-  return this.save();
+  const brand = this.vehicleData.brand && this.vehicleData.brand !== 'N/A' 
+    ? this.vehicleData.brand 
+    : '';
+  const model = this.vehicleData.model || 'Véhicule';
+  
+  return brand ? `${brand} ${model}` : model;
 };
 
-// Obtenir les étapes disponibles (non complétées)
-preparationSchema.methods.getAvailableSteps = function() {
-  return this.steps.filter(step => !step.completed);
-};
-
-// Obtenir les étapes complétées
-preparationSchema.methods.getCompletedSteps = function() {
-  return this.steps.filter(step => step.completed);
-};
-
-// Obtenir le statut détaillé
-preparationSchema.methods.getDetailedStatus = function() {
-  const totalSteps = this.steps.length;
+// Calculer la progression
+preparationSchema.methods.calculateProgress = function() {
+  if (!this.steps || this.steps.length === 0) return 0;
+  
   const completedSteps = this.steps.filter(step => step.completed).length;
-  const issues = this.issues ? this.issues.length : 0;
-  
-  return {
-    completed: completedSteps,
-    total: totalSteps,
-    progress: totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0,
-    canComplete: completedSteps > 0, // Peut terminer dès qu'une étape est faite
-    duration: this.currentDuration,
-    isOnTime: this.isOnTime,
-    issues,
-    status: this.status,
-    availableSteps: this.getAvailableSteps(),
-    nextSuggestedStep: this.getAvailableSteps()[0] || null
-  };
+  return Math.round((completedSteps / this.steps.length) * 100);
 };
 
-// Ajouter un incident
-preparationSchema.methods.addIssue = function(issueData) {
-  if (!this.issues) {
-    this.issues = [];
-  }
+// Vérifier si dans les temps
+preparationSchema.methods.checkIfOnTime = function() {
+  if (!this.currentDuration) return null;
   
-  this.issues.push({
-    type: issueData.type,
-    description: issueData.description,
-    severity: issueData.severity || 'medium',
-    photos: issueData.photos || []
-  });
-  
-  this.updatedAt = new Date();
-  return this.save();
-};
-
-// Résoudre un incident
-preparationSchema.methods.resolveIssue = function(issueId, resolvedBy, resolution) {
-  const issue = this.issues.id(issueId);
-  if (!issue) {
-    throw new Error('Incident non trouvé');
-  }
-  
-  issue.resolved = true;
-  issue.resolvedAt = new Date();
-  issue.resolvedBy = resolvedBy;
-  issue.resolution = resolution;
-  
-  this.updatedAt = new Date();
-  return this.save();
-};
-
-// ✅ NOUVEAU : Calculer les statistiques admin
-preparationSchema.methods.getAdminStats = function() {
-  const totalSteps = this.steps.length;
-  const completedSteps = this.steps.filter(s => s.completed).length;
-  const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-
-  return {
-    id: this._id,
-    progress,
-    totalSteps,
-    completedSteps,
-    status: this.status,
-    priority: this.priority,
-    createdBy: this.createdBy,
-    isOverdue: this.isOverdue(),
-    timeSpent: this.currentDuration || 0,
-    lastModified: this.updatedAt
-  };
-};
-
-// ✅ NOUVEAU : Vérifier si la préparation est en retard
-preparationSchema.methods.isOverdue = function() {
-  if (!this.startTime || this.status === PREPARATION_STATUS.COMPLETED) {
-    return false;
-  }
-
-  const now = new Date();
-  const timeSpent = now.getTime() - this.startTime.getTime();
-  const maxTime = (TIME_LIMITS.PREPARATION_TIME || 120) * 60 * 1000; // Convertir minutes en millisecondes
-
-  return timeSpent > maxTime;
+  // Limite standard : 90 minutes
+  const timeLimit = TIME_LIMITS[this.vehicleData?.vehicleType] || TIME_LIMITS.particulier;
+  return this.currentDuration <= timeLimit;
 };
 
 // ===== MÉTHODES STATIQUES =====
 
-// Trouver les préparations en cours pour un utilisateur
-preparationSchema.statics.findInProgressByUser = function(userId) {
+// Trouver par plaque d'immatriculation (compatible ancien/nouveau)
+preparationSchema.statics.findByLicensePlate = function(licensePlate) {
+  const plateUpper = licensePlate.toUpperCase();
+  
+  return this.find({
+    $or: [
+      { 'vehicleData.licensePlate': plateUpper },
+      { 'vehicleInfo.licensePlate': plateUpper } // Compatibilité
+    ]
+  }).populate(['user', 'agency', 'vehicle']);
+};
+
+// Trouver préparations actives d'un utilisateur
+preparationSchema.statics.findActiveByUser = function(userId) {
   return this.findOne({
     user: userId,
-    status: PREPARATION_STATUS.IN_PROGRESS
-  }).populate(['vehicle', 'agency']);
+    status: { $in: [PREPARATION_STATUS.PENDING, PREPARATION_STATUS.IN_PROGRESS] }
+  }).populate(['agency', 'vehicle']);
 };
 
-// Statistiques pour un utilisateur
-preparationSchema.statics.getStatsForUser = function(userId, period = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - period);
-  
-  return this.aggregate([
-    {
-      $match: {
-        user: new mongoose.Types.ObjectId(userId),
-        status: PREPARATION_STATUS.COMPLETED,
-        createdAt: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalPreparations: { $sum: 1 },
-        averageTime: { $avg: '$totalTime' },
-        onTimeCount: {
-          $sum: {
-            $cond: [
-              { $lte: ['$totalTime', TIME_LIMITS.PREPARATION_TIME || 120] },
-              1,
-              0
-            ]
-          }
-        }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalPreparations: 1,
-        averageTime: { $round: ['$averageTime', 1] },
-        onTimeRate: {
-          $round: [
-            { $multiply: [{ $divide: ['$onTimeCount', '$totalPreparations'] }, 100] },
-            1
-          ]
-        }
-      }
-    }
-  ]);
-};
+// ===== VIRTUALS =====
 
-// ✅ NOUVEAU : Obtenir les préparations en attente pour un utilisateur
-preparationSchema.statics.findPendingByUser = function(userId) {
-  return this.find({
-    user: userId,
-    status: PREPARATION_STATUS.PENDING
-  })
-  .populate(['agency'])
-  .sort({ priority: -1, createdAt: 1 }); // Priorité desc, puis ancien en premier
-};
+preparationSchema.virtual('vehicleFullName').get(function() {
+  return this.getVehicleFullName();
+});
 
-// ✅ NOUVEAU : Statistiques admin globales
-preparationSchema.statics.getAdminStats = function(filters = {}) {
-  const matchStage = { ...filters };
-  
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalPreparations: { $sum: 1 },
-        completedPreparations: {
-          $sum: { $cond: [{ $eq: ['$status', PREPARATION_STATUS.COMPLETED] }, 1, 0] }
-        },
-        inProgressPreparations: {
-          $sum: { $cond: [{ $eq: ['$status', PREPARATION_STATUS.IN_PROGRESS] }, 1, 0] }
-        },
-        pendingPreparations: {
-          $sum: { $cond: [{ $eq: ['$status', PREPARATION_STATUS.PENDING] }, 1, 0] }
-        },
-        averageTime: { $avg: '$totalTime' },
-        totalIssues: { $sum: { $size: { $ifNull: ['$issues', []] } } }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalPreparations: 1,
-        completedPreparations: 1,
-        inProgressPreparations: 1,
-        pendingPreparations: 1,
-        completionRate: {
-          $round: [
-            { $multiply: [{ $divide: ['$completedPreparations', '$totalPreparations'] }, 100] },
-            1
-          ]
-        },
-        averageTime: { $round: ['$averageTime', 1] },
-        totalIssues: 1
-      }
-    }
-  ]);
-};
+preparationSchema.virtual('isActive').get(function() {
+  return [PREPARATION_STATUS.PENDING, PREPARATION_STATUS.IN_PROGRESS].includes(this.status);
+});
 
 module.exports = mongoose.model('Preparation', preparationSchema);
