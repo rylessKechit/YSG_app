@@ -75,7 +75,7 @@ const vehicleDataSchema = z.object({
   
   // ✅ NOUVEAU : Étapes déjà complétées
   completedSteps: z.array(z.enum([
-    'exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'
+    'exterior', 'interior', 'fuel', 'special_wash'
   ] as const)).default([])
 });
 
@@ -209,7 +209,7 @@ export default function NewPreparationPage() {
   };
 
   // ✅ CORRECTION : Définir les types littéraux pour TypeScript
-  type StepType = 'exterior' | 'interior' | 'fuel' | 'tires_fluids' | 'special_wash' | 'parking';
+  type StepType = 'exterior' | 'interior' | 'fuel' | 'special_wash';
 
   // ✅ NOUVEAU : Étapes disponibles avec typage strict
   const availableSteps: Array<{

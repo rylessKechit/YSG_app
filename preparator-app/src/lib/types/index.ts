@@ -7,7 +7,7 @@
 
 export type VehicleType = 'particulier' | 'utilitaire';
 export type PreparationStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
-export type StepType = 'exterior' | 'interior' | 'fuel' | 'tires_fluids' | 'special_wash' | 'parking';
+export type StepType = 'exterior' | 'interior' | 'fuel' | 'special_wash';
 export type FuelType = 'essence' | 'diesel' | 'electrique' | 'hybride';
 export type VehicleCondition = 'excellent' | 'good' | 'fair' | 'poor';
 export type IssueSeverity = 'low' | 'medium' | 'high';
@@ -326,22 +326,10 @@ export const PREPARATION_STEPS: readonly StepDefinition[] = [
     icon: '⛽'
   },
   {
-    step: 'tires_fluids',
-    label: 'Pneus & Fluides',
-    description: 'Pression pneus, niveaux huile/liquides',
-    icon: '🔧'
-  },
-  {
     step: 'special_wash',
     label: 'Lavage Spécial',
     description: 'Traitement anti-bactérien, parfums',
     icon: '✨'
-  },
-  {
-    step: 'parking',
-    label: 'Stationnement',
-    description: 'Positionnement final, vérification clés',
-    icon: '🅿️'
   }
 ] as const;
 

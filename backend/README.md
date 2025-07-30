@@ -203,7 +203,7 @@ vehicle-prep-backend/
   endTime: Date,
   totalMinutes: Number,
   steps: [{
-    type: Enum ['exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'],
+    type: Enum ['exterior', 'interior', 'fuel', 'special_wash'],
     completed: Boolean,
     photoUrl: String,
     completedAt: Date,

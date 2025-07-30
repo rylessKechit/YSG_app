@@ -62,18 +62,14 @@ const PREPARATION_STEP_LABELS: Record<string, string> = {
   'exterior': 'Extérieur',
   'interior': 'Intérieur',
   'fuel': 'Carburant',
-  'tires_fluids': 'Pneus & Fluides',
   'special_wash': 'Lavage Spécial',
-  'parking': 'Stationnement'
 };
 
 const PREPARATION_STEP_ICONS: Record<string, string> = {
   'exterior': '🚗',
   'interior': '🧽',
   'fuel': '⛽',
-  'tires_fluids': '🔧',
   'special_wash': '✨',
-  'parking': '🅿️'
 };
 
 // Composant DeletePreparationDialog simplifié pour éviter les erreurs d'import

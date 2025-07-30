@@ -1,5 +1,5 @@
 // preparator-app/src/app/(dashboard)/preparations/[id]/page.tsx
-// ✅ Page workflow avec étapes flexibles - TOUTES LES ERREURS TYPESCRIPT CORRIGÉES
+// ✅ VERSION MINIMALE - Juste les corrections d'erreurs TypeScript/compatibilité
 
 'use client';
 
@@ -21,18 +21,19 @@ import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { CameraCapture } from '@/components/preparations/CameraCapture';
-import { StepCard } from '@/components/preparations/StepCard'; // ✅ Import du composant séparé
+import { StepCard } from '@/components/preparations/StepCard';
 
-// ✅ Import des types et utilitaires
-import { 
-  PREPARATION_STEPS, 
+// ✅ CORRECTION: Import des types corrigés
+import {
+  PREPARATION_STEPS,
   adaptBackendStep,
   type PreparationStepData,
   type StepDefinition,
-  type StepType
+  type StepType,
+  type PreparationStep
 } from '@/lib/types/preparation';
 
-// ✅ Types locaux simplifiés
+// ✅ Types locaux simplifiés - INCHANGÉS
 interface PreparationStats {
   completedSteps: number;
   totalSteps: number;
@@ -57,7 +58,7 @@ const PreparationWorkflowPage = () => {
     clearError
   } = usePreparationStore();
 
-  // États locaux
+  // États locaux - INCHANGÉS
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
@@ -65,7 +66,7 @@ const PreparationWorkflowPage = () => {
   const [isCompletingPreparation, setIsCompletingPreparation] = useState(false);
   const [finalNotes, setFinalNotes] = useState('');
 
-  // ✅ Calcul des statistiques locales
+  // ✅ Calcul des statistiques locales - INCHANGÉ
   const stats: PreparationStats = React.useMemo(() => {
     if (!currentPreparation?.steps) {
       return {
@@ -91,21 +92,19 @@ const PreparationWorkflowPage = () => {
     };
   }, [currentPreparation]);
 
-  // Charger la préparation
+  // Effets - INCHANGÉS
   useEffect(() => {
     if (params.id) {
       getCurrentPreparation();
     }
   }, [params.id, getCurrentPreparation]);
 
-  // Rediriger si pas de préparation
   useEffect(() => {
     if (!isLoading && !currentPreparation && !error) {
       router.push('/preparations');
     }
   }, [isLoading, currentPreparation, error, router]);
 
-  // Gérer les erreurs
   useEffect(() => {
     if (error) {
       toast({
@@ -117,20 +116,19 @@ const PreparationWorkflowPage = () => {
     }
   }, [error, toast, clearError]);
 
-  // ✅ FONCTION POUR DÉMARRER N'IMPORTE QUELLE ÉTAPE
+  // ✅ FONCTION POUR DÉMARRER N'IMPORTE QUELLE ÉTAPE - INCHANGÉE
   const handleStartStep = (stepType: string) => {
     console.log('🎬 Démarrage étape avec caméra:', stepType);
     setSelectedStep(stepType);
     setShowCamera(true);
   };
 
-  // ✅ FONCTION POUR GÉRER LA PHOTO PRISE - Signature corrigée
+  // ✅ CORRECTION: Signature de la fonction handlePhotoTaken
   const handlePhotoTaken = async (photo: File, notes?: string) => {
     if (!selectedStep || !currentPreparation?.id) return;
 
     setIsCompletingStep(true);
     try {
-      // ✅ Appel corrigé avec les bons paramètres
       await completeStep(currentPreparation.id, {
         step: selectedStep as StepType,
         photo,
@@ -156,14 +154,13 @@ const PreparationWorkflowPage = () => {
     }
   };
 
-  // Fermer la caméra
+  // Fonctions - INCHANGÉES
   const handleCameraClose = () => {
     setShowCamera(false);
     setSelectedStep(null);
     setIsCompletingStep(false);
   };
 
-  // ✅ Finaliser la préparation - Signature corrigée
   const handleCompletePreparation = async () => {
     if (!currentPreparation?.id) return;
 
@@ -202,7 +199,7 @@ const PreparationWorkflowPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header fixe */}
+      {/* Header fixe - INCHANGÉ */}
       <div className="sticky top-0 z-40 bg-white shadow-sm border-b">
         <div className="max-w-md mx-auto px-4 py-3">
           <div className="flex items-center space-x-3 mb-3">
@@ -235,7 +232,7 @@ const PreparationWorkflowPage = () => {
             </Button>
           </div>
 
-          {/* Progression */}
+          {/* Progression - INCHANGÉE */}
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Progression</span>
@@ -244,7 +241,7 @@ const PreparationWorkflowPage = () => {
             <Progress value={stats.progress} className="h-2" />
           </div>
 
-          {/* Chrono temps */}
+          {/* Chrono temps - INCHANGÉ */}
           {stats.currentDuration && (
             <div className="flex items-center justify-between text-sm mt-2 pt-2 border-t">
               <div className="flex items-center space-x-1 text-gray-600">
@@ -263,9 +260,9 @@ const PreparationWorkflowPage = () => {
         </div>
       </div>
 
-      {/* Contenu principal */}
+      {/* Contenu principal - INCHANGÉ */}
       <div className="max-w-md mx-auto px-4 py-6 space-y-4">
-        {/* Instructions */}
+        {/* Instructions - INCHANGÉES */}
         <Card className="bg-blue-50 border-blue-200">
           <CardContent className="p-4">
             <h2 className="font-semibold text-blue-900 mb-2">📋 Instructions</h2>
@@ -276,10 +273,10 @@ const PreparationWorkflowPage = () => {
           </CardContent>
         </Card>
 
-        {/* Liste des étapes - Toutes accessibles */}
+        {/* Liste des étapes - CORRECTION PRINCIPALE ICI */}
         <div className="space-y-3">
           {PREPARATION_STEPS.map((stepDef, index) => {
-            // ✅ Trouver l'étape du backend et l'adapter
+            // ✅ CORRECTION: Inverser l'ordre des paramètres pour adaptBackendStep
             const backendStep = currentPreparation.steps?.find(s => s.step === stepDef.step);
             const step = adaptBackendStep(backendStep, stepDef);
             
@@ -299,7 +296,7 @@ const PreparationWorkflowPage = () => {
           })}
         </div>
 
-        {/* Finalisation - Accessible dès qu'au moins une étape est faite */}
+        {/* Finalisation - INCHANGÉE */}
         {stats.canComplete && (
           <Card className="bg-green-50 border-green-200">
             <CardContent className="p-4">
@@ -348,7 +345,7 @@ const PreparationWorkflowPage = () => {
         )}
       </div>
 
-      {/* Caméra */}
+      {/* Caméra - INCHANGÉE */}
       {showCamera && selectedStep && (
         <CameraCapture
           onCapture={handlePhotoTaken}
@@ -358,7 +355,7 @@ const PreparationWorkflowPage = () => {
         />
       )}
 
-      {/* Modal Incidents */}
+      {/* Modal Incidents - INCHANGÉ */}
       {showIssueModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-sm">

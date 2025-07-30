@@ -135,9 +135,7 @@ const PREPARATION_STEPS_ORDER = [
   PREPARATION_STEPS.EXTERIOR,      // 'exterior'
   PREPARATION_STEPS.INTERIOR,      // 'interior'
   PREPARATION_STEPS.FUEL,          // 'fuel'
-  PREPARATION_STEPS.TIRES_FLUIDS,  // 'tires_fluids'
   PREPARATION_STEPS.SPECIAL_WASH,  // 'special_wash'
-  PREPARATION_STEPS.PARKING        // 'parking'
 ];
 
 /**
@@ -147,9 +145,7 @@ const STEP_LABELS = {
   [PREPARATION_STEPS.EXTERIOR]: 'Extérieur',
   [PREPARATION_STEPS.INTERIOR]: 'Intérieur',
   [PREPARATION_STEPS.FUEL]: 'Carburant',
-  [PREPARATION_STEPS.TIRES_FLUIDS]: 'Pneus & Fluides',
   [PREPARATION_STEPS.SPECIAL_WASH]: 'Lavage Spécial',
-  [PREPARATION_STEPS.PARKING]: 'Stationnement'
 };
 
 /**
@@ -159,9 +155,7 @@ const STEP_DESCRIPTIONS = {
   [PREPARATION_STEPS.EXTERIOR]: 'Nettoyage carrosserie, vitres, jantes',
   [PREPARATION_STEPS.INTERIOR]: 'Aspirateur, nettoyage surfaces, désinfection',
   [PREPARATION_STEPS.FUEL]: 'Vérification niveau, ajout si nécessaire',
-  [PREPARATION_STEPS.TIRES_FLUIDS]: 'Pression pneus, niveaux huile/liquides',
   [PREPARATION_STEPS.SPECIAL_WASH]: 'Traitement anti-bactérien, parfums',
-  [PREPARATION_STEPS.PARKING]: 'Positionnement final, vérification clés'
 };
 
 /**
@@ -171,9 +165,7 @@ const STEP_ICONS = {
   [PREPARATION_STEPS.EXTERIOR]: '🚗',
   [PREPARATION_STEPS.INTERIOR]: '🧽',
   [PREPARATION_STEPS.FUEL]: '⛽',
-  [PREPARATION_STEPS.TIRES_FLUIDS]: '🔧',
   [PREPARATION_STEPS.SPECIAL_WASH]: '✨',
-  [PREPARATION_STEPS.PARKING]: '🅿️'
 };
 
 /**

@@ -163,9 +163,7 @@ class DataService {
           exterior: false,
           interior: false,
           fuel: false,
-          tires_fluids: false,
           special_wash: false,
-          parking: false
         };
 
         if (prep.steps && Array.isArray(prep.steps)) {

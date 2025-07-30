@@ -213,9 +213,9 @@ const preparationSchemas = {
   completeStep: Joi.object({
     step: Joi.string()
       .required()
-      .valid('exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking')
+      .valid('exterior', 'interior', 'fuel', 'special_wash')
       .messages({
-        'any.only': 'Type d\'étape invalide. Types autorisés: exterior, interior, fuel, tires_fluids, special_wash, parking'
+        'any.only': 'Type d\'étape invalide. Types autorisés: exterior, interior, fuel, special_wash'
       }),
     notes: Joi.string().optional().trim().max(500)
     // Photo gérée par le middleware d'upload
@@ -268,7 +268,7 @@ const simplifiedVehicleSchema = z.object({
   
   // ✅ Étapes déjà complétées
   completedSteps: z.array(z.enum([
-    'exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'
+    'exterior', 'interior', 'fuel', 'special_wash'
   ], {
     invalid_type_error: 'Étape invalide'
   })).default([])
@@ -362,7 +362,7 @@ const createPreparation = z.object({
     .optional(),
   
   assignedSteps: z.array(z.enum([
-    'exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'
+    'exterior', 'interior', 'fuel', 'special_wash'
   ], {
     invalid_type_error: 'Étape invalide'
   })).optional(),
@@ -540,7 +540,7 @@ const validatePreparationUpload = (req, res, next) => {
   }
 
   // ✅ Validation des types d'étapes autorisés SEULEMENT
-  const validSteps = ['exterior', 'interior', 'fuel', 'tires_fluids', 'special_wash', 'parking'];
+  const validSteps = ['exterior', 'interior', 'fuel', 'special_wash'];
   if (!validSteps.includes(step)) {
     return res.status(400).json({
       success: false,

@@ -11,9 +11,7 @@ export enum PreparationStep {
   EXTERIOR = 'exterior',
   INTERIOR = 'interior',
   FUEL = 'fuel',
-  TIRES_FLUIDS = 'tires_fluids',
   SPECIAL_WASH = 'special_wash',
-  PARKING = 'parking'
 }
 
 export enum IssueType {
@@ -402,18 +400,14 @@ export const PREPARATION_STEP_LABELS: Record<PreparationStep, string> = {
   [PreparationStep.EXTERIOR]: 'Extérieur',
   [PreparationStep.INTERIOR]: 'Intérieur',
   [PreparationStep.FUEL]: 'Carburant',
-  [PreparationStep.TIRES_FLUIDS]: 'Pneus & Fluides',
   [PreparationStep.SPECIAL_WASH]: 'Lavage Spécial',
-  [PreparationStep.PARKING]: 'Stationnement'
 };
 
 export const PREPARATION_STEP_ICONS: Record<PreparationStep, string> = {
   [PreparationStep.EXTERIOR]: '🚗',
   [PreparationStep.INTERIOR]: '🧽',
   [PreparationStep.FUEL]: '⛽',
-  [PreparationStep.TIRES_FLUIDS]: '🔧',
   [PreparationStep.SPECIAL_WASH]: '✨',
-  [PreparationStep.PARKING]: '🅿️'
 };
 
 export const ISSUE_TYPE_LABELS: Record<IssueType, string> = {
