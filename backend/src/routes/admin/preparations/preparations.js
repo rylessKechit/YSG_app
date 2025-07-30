@@ -149,7 +149,7 @@ router.post('/new',
       }
 
       // Initialiser les étapes
-      const defaultSteps = assignedSteps || PREPARATION_STEPS;
+      const defaultSteps = assignedSteps || DEFAULT_STEPS;
       const steps = defaultSteps.map(stepType => ({
         step: stepType,
         completed: false,
@@ -333,7 +333,7 @@ router.post('/bulk',
           }
 
           // Initialiser les étapes avec les étapes déjà complétées
-          const steps = PREPARATION_STEPS.map(stepType => {
+          const steps = DEFAULT_STEPS.map(stepType => {
             const isCompleted = vehicleData.completedSteps?.includes(stepType) || false;
             return {
               step: stepType,
