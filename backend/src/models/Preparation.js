@@ -1,4 +1,4 @@
-// backend/src/models/Preparation.js - VERSION CORRIGÉE COMPLÈTE
+// backend/src/models/Preparation.js - VERSION CORRIGÉE POUR RAPPORT
 const mongoose = require('mongoose');
 const { PREPARATION_STATUS, PREPARATION_STEPS, DEFAULT_STEPS, TIME_LIMITS } = require('../utils/constants');
 
@@ -275,45 +275,78 @@ preparationSchema.index({ 'vehicleData.licensePlate': 1 });
 preparationSchema.index({ createdAt: -1 });
 preparationSchema.index({ status: 1, createdAt: -1 });
 
+// ⚠️ INDEX SPÉCIAL POUR RAPPORT : Performance sur les étapes
+preparationSchema.index({ 'steps.step': 1 });
+preparationSchema.index({ agency: 1, createdAt: -1 });
+
 // ===== MIDDLEWARE DE MIGRATION AUTOMATIQUE =====
 
 // ✅ AVANT SAUVEGARDE : Migrer vehicleInfo vers vehicleData
 preparationSchema.pre('save', function(next) {
-  // Si vehicleInfo existe mais pas vehicleData, migrer automatiquement
-  if (this.vehicleInfo && !this.vehicleData) {
-    console.log(`🔄 Migration automatique vehicleInfo -> vehicleData pour ${this._id}`);
-    
-    this.vehicleData = {
-      licensePlate: this.vehicleInfo.licensePlate || 'N/A',
-      brand: this.vehicleInfo.brand || 'N/A',
-      model: this.vehicleInfo.model || 'Véhicule',
-      vehicleType: this.vehicleInfo.vehicleType || 'particulier',
-      year: this.vehicleInfo.year,
-      fuelType: this.vehicleInfo.fuelType || 'essence',
-      color: this.vehicleInfo.color || '',
-      condition: this.vehicleInfo.condition || 'good'
-    };
-  }
-
-  // Assurer que vehicleData est valide
-  if (this.vehicleData) {
-    if (!this.vehicleData.brand || this.vehicleData.brand.trim() === '') {
-      this.vehicleData.brand = 'N/A';
+  try {
+    // ⚠️ VALIDATION CRITIQUE : Vérifier que les ObjectIds sont valides
+    if (this.user && !mongoose.Types.ObjectId.isValid(this.user)) {
+      console.error(`❌ ObjectId invalide pour user: ${this.user}`);
+      return next(new Error(`Invalid user ObjectId: ${this.user}`));
     }
-    if (!this.vehicleData.model || this.vehicleData.model.trim() === '') {
-      this.vehicleData.model = 'Véhicule';
+    if (this.agency && !mongoose.Types.ObjectId.isValid(this.agency)) {
+      console.error(`❌ ObjectId invalide pour agency: ${this.agency}`);
+      return next(new Error(`Invalid agency ObjectId: ${this.agency}`));
     }
-    if (!this.vehicleData.vehicleType) {
-      this.vehicleData.vehicleType = 'particulier';
+    if (this.vehicle && !mongoose.Types.ObjectId.isValid(this.vehicle)) {
+      console.error(`❌ ObjectId invalide pour vehicle: ${this.vehicle}`);
+      return next(new Error(`Invalid vehicle ObjectId: ${this.vehicle}`));
     }
-  }
 
-  // Synchroniser preparateur avec user pour compatibilité
-  if (this.user && !this.preparateur) {
-    this.preparateur = this.user;
-  }
+    // Si vehicleInfo existe mais pas vehicleData, migrer automatiquement
+    if (this.vehicleInfo && !this.vehicleData) {
+      console.log(`🔄 Migration automatique vehicleInfo -> vehicleData pour ${this._id}`);
+      
+      this.vehicleData = {
+        licensePlate: this.vehicleInfo.licensePlate || 'N/A',
+        brand: this.vehicleInfo.brand || 'N/A',
+        model: this.vehicleInfo.model || 'Véhicule',
+        vehicleType: this.vehicleInfo.vehicleType || 'particulier',
+        year: this.vehicleInfo.year,
+        fuelType: this.vehicleInfo.fuelType || 'essence',
+        color: this.vehicleInfo.color || '',
+        condition: this.vehicleInfo.condition || 'good'
+      };
+    }
 
-  next();
+    // Assurer que vehicleData est valide
+    if (this.vehicleData) {
+      if (!this.vehicleData.brand || this.vehicleData.brand.trim() === '') {
+        this.vehicleData.brand = 'N/A';
+      }
+      if (!this.vehicleData.model || this.vehicleData.model.trim() === '') {
+        this.vehicleData.model = 'Véhicule';
+      }
+      if (!this.vehicleData.vehicleType) {
+        this.vehicleData.vehicleType = 'particulier';
+      }
+      
+      // ⚠️ IMPORTANT : S'assurer que licensePlate n'est pas un ObjectId
+      if (this.vehicleData.licensePlate) {
+        // Si c'est un ObjectId, utiliser une valeur par défaut
+        if (mongoose.Types.ObjectId.isValid(this.vehicleData.licensePlate) && 
+            this.vehicleData.licensePlate.length === 24) {
+          console.warn(`⚠️ licensePlate semble être un ObjectId: ${this.vehicleData.licensePlate}`);
+          this.vehicleData.licensePlate = 'PLAQUE-INCONNUE';
+        }
+      }
+    }
+
+    // Synchroniser preparateur avec user pour compatibilité
+    if (this.user && !this.preparateur) {
+      this.preparateur = this.user;
+    }
+
+    next();
+  } catch (error) {
+    console.error('❌ Erreur middleware pre-save:', error);
+    next(error);
+  }
 });
 
 // ✅ APRÈS SAUVEGARDE : Synchroniser avec véhicule lié si disponible
@@ -336,16 +369,28 @@ preparationSchema.post('save', async function(doc) {
 
 // ===== MÉTHODES D'INSTANCE =====
 
-// Obtenir le nom complet du véhicule
+// Obtenir le nom complet du véhicule (compatible pour rapport)
 preparationSchema.methods.getVehicleFullName = function() {
-  if (!this.vehicleData) return 'Véhicule inconnu';
+  // ✅ RAPPORT : Priorité vehicleData puis vehicleInfo puis populate
+  let brand = 'N/A', model = 'Véhicule', licensePlate = 'INCONNUE';
   
-  const brand = this.vehicleData.brand && this.vehicleData.brand !== 'N/A' 
-    ? this.vehicleData.brand 
-    : '';
-  const model = this.vehicleData.model || 'Véhicule';
+  if (this.vehicleData) {
+    brand = this.vehicleData.brand || 'N/A';
+    model = this.vehicleData.model || 'Véhicule';
+    licensePlate = this.vehicleData.licensePlate || 'INCONNUE';
+  } else if (this.vehicleInfo) {
+    brand = this.vehicleInfo.brand || 'N/A';
+    model = this.vehicleInfo.model || 'Véhicule';
+    licensePlate = this.vehicleInfo.licensePlate || 'INCONNUE';
+  } else if (this.vehicle && this.vehicle.brand) {
+    // Si populate
+    brand = this.vehicle.brand;
+    model = this.vehicle.model || 'Véhicule';
+    licensePlate = this.vehicle.licensePlate || 'INCONNUE';
+  }
   
-  return brand ? `${brand} ${model}` : model;
+  const fullName = brand && brand !== 'N/A' ? `${brand} ${model}` : model;
+  return `${fullName} (${licensePlate})`;
 };
 
 // Calculer la progression
@@ -385,6 +430,17 @@ preparationSchema.statics.findActiveByUser = function(userId) {
     user: userId,
     status: { $in: [PREPARATION_STATUS.PENDING, PREPARATION_STATUS.IN_PROGRESS] }
   }).populate(['agency', 'vehicle']);
+};
+
+// ✅ MÉTHODE SPÉCIALE POUR RAPPORT (évite les erreurs ObjectId)
+preparationSchema.statics.findForReport = function(filters) {
+  const query = this.find(filters)
+    .populate('user', 'firstName lastName', null, { strictPopulate: false })
+    .populate('agency', 'name code', null, { strictPopulate: false })
+    .populate('vehicle', 'brand model licensePlate', null, { strictPopulate: false })
+    .lean(); // ⚠️ IMPORTANT : .lean() évite les erreurs de cast
+  
+  return query;
 };
 
 // ===== VIRTUALS =====

@@ -62,6 +62,11 @@ const navigationItems = [
     icon: Building2,
   },
   {
+    title: 'Rapports Préparations',
+    href: '/reports/preparations',
+    icon: BarChart3,
+  },
+  {
     title: 'Rapports',
     href: '/reports',
     icon: BarChart3,
