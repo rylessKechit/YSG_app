@@ -75,7 +75,7 @@ const preparationsReportApi = {
     });
 
     const response = await apiClient.get<PreparationsReportResponse>(
-      `/admin/reports/preparations-steps?${params.toString()}`
+      `/admin/reports/preparations?${params.toString()}`
     );
 
     return response.data;
@@ -93,7 +93,7 @@ const preparationsReportApi = {
     });
 
     const response = await apiClient.get(
-      `/admin/reports/preparations-steps?${params.toString()}`,
+      `/admin/reports/preparations?${params.toString()}`,
       {
         responseType: 'blob',
         headers: {

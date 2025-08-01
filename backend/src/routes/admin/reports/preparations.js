@@ -1,7 +1,7 @@
-// backend/src/routes/admin/reports/preparations.js
+// backend/src/routes/admin/reports/preparations.js - VERSION CORRIGÉE BASÉE SUR L'ANCIEN
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose'); // ✅ AJOUT : Import mongoose
+const mongoose = require('mongoose');
 const { auth } = require('../../../middleware/auth');
 const { adminAuth } = require('../../../middleware/adminAuth');
 const ExcelJS = require('exceljs');
@@ -13,10 +13,10 @@ router.use(auth, adminAuth);
 
 /**
  * @route   GET /api/admin/reports/preparations-steps
- * @desc    Rapport des préparations par étapes pour une agence
+ * @desc    Rapport des préparations par étapes pour une agence - VERSION MODIFIÉE VP/VU
  * @access  Admin
  */
-router.get('/preparations-steps', async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { agencyId, startDate, endDate, format = 'json' } = req.query;
 
@@ -68,7 +68,7 @@ router.get('/preparations-steps', async (req, res) => {
 
     console.log(`📊 Génération rapport préparations - Agence: ${agency.name}, Période: ${start.toDateString()} -> ${end.toDateString()}`);
 
-    // ✅ Utiliser une requête MongoDB directe pour éviter les erreurs de cast
+    // Utiliser une requête MongoDB directe pour éviter les erreurs de cast
     const preparations = await mongoose.connection.db.collection('preparations').find({
       agency: new mongoose.Types.ObjectId(agencyId),
       createdAt: {
@@ -79,9 +79,9 @@ router.get('/preparations-steps', async (req, res) => {
 
     console.log(`📋 ${preparations.length} préparations trouvées`);
 
-    // ✅ Populate manuellement les références pour éviter les erreurs
-    const User = require('../../../models/User'); // ✅ CORRECTION : Chemin correct
-    const Vehicle = require('../../../models/Vehicle'); // ✅ CORRECTION : Chemin correct
+    // Populate manuellement les références pour éviter les erreurs
+    const User = require('../../../models/User');
+    const Vehicle = require('../../../models/Vehicle');
 
     // Récupérer les utilisateurs
     const userIds = preparations
@@ -103,10 +103,11 @@ router.get('/preparations-steps', async (req, res) => {
       return acc;
     }, {});
 
-    // Calculer les métriques
+    // ✅ NOUVELLES MÉTRIQUES SÉPARÉES VP/VU
     const metrics = {
       totalPreparations: preparations.length,
-      exteriorOrInterior: 0,
+      vpExteriorOrInterior: 0,  // ✅ NOUVEAU : VP seulement
+      vuExteriorOrInterior: 0,  // ✅ NOUVEAU : VU seulement
       fuel: 0,
       specialWash: 0,
       details: []
@@ -116,16 +117,41 @@ router.get('/preparations-steps', async (req, res) => {
     preparations.forEach(prep => {
       const steps = prep.steps || [];
       
-      // ✅ CORRECTION : Vérifier les étapes TERMINÉES seulement (completed: true)
+      // Vérifier les étapes TERMINÉES seulement (completed: true)
       const hasExterior = steps.some(step => step.step === 'exterior' && step.completed === true);
       const hasInterior = steps.some(step => step.step === 'interior' && step.completed === true);
       const hasFuel = steps.some(step => step.step === 'fuel' && step.completed === true);
       const hasSpecialWash = steps.some(step => step.step === 'special_wash' && step.completed === true);
 
-      // Compter les métriques
-      if (hasExterior || hasInterior) {
-        metrics.exteriorOrInterior++;
+      // ✅ DÉTERMINER LE TYPE DE VÉHICULE
+      let vehicleType = 'particulier'; // défaut
+      
+      // Chercher dans vehicleData d'abord (nouveau schéma)
+      if (prep.vehicleData && prep.vehicleData.vehicleType) {
+        vehicleType = prep.vehicleData.vehicleType;
       }
+      // Puis dans vehicleInfo (ancien schéma)  
+      else if (prep.vehicleInfo && prep.vehicleInfo.vehicleType) {
+        vehicleType = prep.vehicleInfo.vehicleType;
+      }
+      // Enfin dans vehicle populate
+      else if (prep.vehicle && mongoose.Types.ObjectId.isValid(prep.vehicle)) {
+        const vehicle = vehiclesMap[prep.vehicle.toString()];
+        if (vehicle && vehicle.vehicleType) {
+          vehicleType = vehicle.vehicleType;
+        }
+      }
+
+      // ✅ COMPTER SÉPARÉMENT VP ET VU POUR NETTOYAGE
+      if (hasExterior || hasInterior) {
+        if (vehicleType === 'particulier') {
+          metrics.vpExteriorOrInterior++;
+        } else if (vehicleType === 'utilitaire') {
+          metrics.vuExteriorOrInterior++;
+        }
+      }
+
+      // Compter les autres métriques (inchangées)
       if (hasFuel) {
         metrics.fuel++;
       }
@@ -161,9 +187,9 @@ router.get('/preparations-steps', async (req, res) => {
 
       metrics.details.push({
         id: prep._id,
-        plaque: getVehiclePlate(prep), // ✅ Seulement la plaque
+        plaque: getVehiclePlate(prep),
         preparateur: getUserInfo(prep),
-        dateCreation: prep.createdAt,
+        vehicleType, // ✅ NOUVEAU : Type de véhicule ajouté
         hasExterior,
         hasInterior,
         hasFuel,
@@ -217,18 +243,18 @@ router.get('/preparations-steps', async (req, res) => {
 });
 
 /**
- * Générer le fichier Excel du rapport
+ * ✅ FONCTION CORRIGÉE : generateExcelReport - BASÉE SUR L'ANCIEN QUI MARCHAIT
+ * Changements : VP/VU séparés + suppression "Date création" + ajout "Type de véhicule"
  */
 async function generateExcelReport(reportData) {
-  // ✅ Nouvelle approche : Créer un workbook avec seulement 2 colonnes dès le départ
   const workbook = new ExcelJS.Workbook();
   
-  // Métadonnées
+  // Métadonnées (identiques à l'ancien)
   workbook.creator = 'Système de Gestion Véhicules';
   workbook.created = new Date();
   workbook.title = `Rapport Préparations - ${reportData.agence.nom}`;
 
-  // ===== ONGLET 1: RÉSUMÉ =====
+  // ===== ONGLET 1: RÉSUMÉ (STRUCTURE IDENTIQUE À L'ANCIEN) =====
   const summarySheet = workbook.addWorksheet('📊 Résumé', {
     pageSetup: {
       paperSize: 9, // A4
@@ -236,7 +262,7 @@ async function generateExcelReport(reportData) {
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
-      printArea: 'A1:B30' // ✅ Zone encore plus stricte
+      printArea: 'A1:B30'
     },
     properties: {
       defaultColWidth: 20
@@ -246,13 +272,13 @@ async function generateExcelReport(reportData) {
         state: 'normal',
         rightToLeft: false,
         activeCell: 'A1',
-        selection: [{ sq: 'A1:B30' }] // ✅ Sélection forcée sur A:B seulement
+        selection: [{ sq: 'A1:B30' }]
       }
     ]
   });
 
-  // En-tête principal
-  summarySheet.mergeCells('A1:B1'); // ✅ Seulement 2 colonnes maintenant
+  // En-tête principal (identique à l'ancien)
+  summarySheet.mergeCells('A1:B1');
   const titleCell = summarySheet.getCell('A1');
   titleCell.value = `📊 Rapport Préparations - ${reportData.agence.nom}`;
   titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFF' } };
@@ -260,7 +286,7 @@ async function generateExcelReport(reportData) {
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
   summarySheet.getRow(1).height = 35;
 
-  // Informations générales
+  // Informations générales (identiques à l'ancien)
   summarySheet.addRow([]);
   summarySheet.addRow(['📅 PÉRIODE', `${reportData.periode.debut} → ${reportData.periode.fin}`]);
   summarySheet.addRow(['🏢 AGENCE', `${reportData.agence.nom} (${reportData.agence.code})`]);
@@ -269,7 +295,7 @@ async function generateExcelReport(reportData) {
   // Métriques principales
   summarySheet.addRow([]);
   
-  // ✅ Titre "MÉTRIQUES" sur 2 colonnes
+  // Titre "MÉTRIQUES" (identique à l'ancien)
   const metricsRowNum = summarySheet.rowCount + 1;
   summarySheet.addRow(['📈 MÉTRIQUES']);
   summarySheet.mergeCells(`A${metricsRowNum}:B${metricsRowNum}`);
@@ -277,12 +303,14 @@ async function generateExcelReport(reportData) {
   summarySheet.getRow(metricsRowNum).getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
   
   const metricsStartRow = summarySheet.rowCount + 1;
-  // ✅ SUPPRIMÉ : Total préparations
-  summarySheet.addRow(['🚗 Nettoyage intérieur / extérieur', reportData.metriques.exteriorOrInterior]);
+  
+  // ✅ NOUVELLES LIGNES SÉPARÉES VP/VU (au lieu de l'ancienne ligne globale)
+  summarySheet.addRow(['🚗 VP Nettoyage intérieur / extérieur', reportData.metriques.vpExteriorOrInterior || 0]);
+  summarySheet.addRow(['🚚 VU Nettoyage intérieur / extérieur', reportData.metriques.vuExteriorOrInterior || 0]);
   summarySheet.addRow(['⛽ Carburant', reportData.metriques.fuel]);
   summarySheet.addRow(['✨ Lavage spécial', reportData.metriques.specialWash]);
 
-  // Style des métriques
+  // Style des métriques (identique à l'ancien)
   for (let i = metricsStartRow; i <= summarySheet.rowCount; i++) {
     summarySheet.getCell(`A${i}`).font = { bold: true };
     summarySheet.getCell(`B${i}`).font = { bold: true, color: { argb: '0066CC' } };
@@ -291,7 +319,7 @@ async function generateExcelReport(reportData) {
   // Pourcentages
   summarySheet.addRow([]);
   
-  // ✅ Titre "POURCENTAGES" sur 2 colonnes
+  // Titre "POURCENTAGES" (identique à l'ancien)
   const percentagesRowNum = summarySheet.rowCount + 1;
   summarySheet.addRow(['📊 POURCENTAGES']);
   summarySheet.mergeCells(`A${percentagesRowNum}:B${percentagesRowNum}`);
@@ -300,14 +328,16 @@ async function generateExcelReport(reportData) {
   
   const total = reportData.metriques.totalPreparations;
   if (total > 0) {
-    summarySheet.addRow(['🚗 % Nettoyage', `${Math.round((reportData.metriques.exteriorOrInterior / total) * 100)}%`]);
+    // ✅ NOUVEAUX POURCENTAGES SÉPARÉS VP/VU
+    summarySheet.addRow(['🚗 % VP Nettoyage', `${Math.round(((reportData.metriques.vpExteriorOrInterior || 0) / total) * 100)}%`]);
+    summarySheet.addRow(['🚚 % VU Nettoyage', `${Math.round(((reportData.metriques.vuExteriorOrInterior || 0) / total) * 100)}%`]);
     summarySheet.addRow(['⛽ % Carburant', `${Math.round((reportData.metriques.fuel / total) * 100)}%`]);
     summarySheet.addRow(['✨ % Lavage spécial', `${Math.round((reportData.metriques.specialWash / total) * 100)}%`]);
   }
 
-  // ✅ AMÉLIORATION : Cellules plus hautes et centrées
+  // ✅ AMÉLIORATION : Cellules plus hautes et centrées (identique à l'ancien)
   summarySheet.eachRow((row, rowNumber) => {
-    row.height = 25; // Hauteur augmentée
+    row.height = 25;
     row.eachCell((cell) => {
       cell.alignment = { 
         horizontal: 'center', 
@@ -317,63 +347,65 @@ async function generateExcelReport(reportData) {
     });
   });
 
-  // Ajuster les colonnes (seulement A et B) avec masquage des autres
+  // Ajuster les colonnes (identique à l'ancien)
   summarySheet.getColumn('A').width = 30;
   summarySheet.getColumn('B').width = 25;
   
-  // ✅ MASQUER TOUTES les colonnes après B (C à ZZ pour être sûr)
-  for (let col = 3; col <= 100; col++) { // Étendre jusqu'à 100 colonnes
+  // ✅ MASQUER TOUTES les colonnes après B (identique à l'ancien)
+  for (let col = 3; col <= 100; col++) {
     summarySheet.getColumn(col).hidden = true;
     summarySheet.getColumn(col).width = 0;
   }
 
-  // ===== ONGLET 2: DÉTAILS =====
+  // ===== ONGLET 2: DÉTAILS (MODIFIÉ SELON VOS DEMANDES) =====
   const detailsSheet = workbook.addWorksheet('📋 Détails');
 
-  // ✅ En-têtes simplifiées selon vos demandes (sans Status)
+  // ✅ NOUVEAUX EN-TÊTES : Supprimé "Date Création", Ajouté "Type de véhicule"
   const headers = [
     'Plaque',
     'Préparateur', 
-    'Date Création',
+    'Type de véhicule', // ✅ NOUVEAU
     'Exterior',
     'Interior',
     'Fuel',
     'Special Wash'
+    // ❌ SUPPRIMÉ : Date Création
   ];
 
   detailsSheet.addRow(headers);
   
-  // Style en-têtes avec hauteur augmentée
+  // Style en-têtes (identique à l'ancien)
   const headerRow = detailsSheet.getRow(1);
   headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
   headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4472C4' } };
   headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-  headerRow.height = 30; // ✅ Hauteur augmentée
+  headerRow.height = 30;
 
-  // ✅ Données détaillées simplifiées (sans Status)
+  // ✅ DONNÉES DÉTAILLÉES MODIFIÉES
   reportData.metriques.details.forEach(detail => {
     const row = detailsSheet.addRow([
       detail.plaque,
       detail.preparateur,
-      detail.dateCreation ? new Date(detail.dateCreation).toLocaleDateString('fr-FR') : 'N/A',
+      detail.vehicleType === 'particulier' ? 'Véhicule Particulier' : 'Véhicule Utilitaire', // ✅ NOUVEAU
       detail.hasExterior ? '✅' : '❌',
       detail.hasInterior ? '✅' : '❌', 
       detail.hasFuel ? '✅' : '❌',
       detail.hasSpecialWash ? '✅' : '❌'
+      // ❌ SUPPRIMÉ : detail.dateCreation
     ]);
     
-    // ✅ Hauteur et centrage pour chaque ligne
+    // Style identique à l'ancien
     row.height = 25;
     row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   });
 
-  // ✅ Ajuster les colonnes avec centrage
+  // Ajuster les colonnes (identique à l'ancien)
   detailsSheet.columns.forEach((column, index) => {
     column.width = index === 0 ? 20 : 15; // Plaque plus large
     column.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   });
 
-  // Générer le buffer
+  // ✅ RETOURNER LE BUFFER (identique à l'ancien)
   const buffer = await workbook.xlsx.writeBuffer();
   return buffer;
 }

@@ -192,7 +192,7 @@ try {
 
 try {
   // Reports
-  app.use('/api/admin/reports', require('./routes/admin/reports/preparations'));
+  app.use('/api/admin/reports/preparations', require('./routes/admin/reports/preparations'));
   console.log('✅ Routes admin/reports chargées avec succès');
 } catch (error) {
   console.warn('⚠️ Erreur chargement routes admin/reports:', error.message);
