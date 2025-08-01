@@ -50,9 +50,6 @@ import type {
   VehicleType, 
   FuelType, 
   VehicleCondition,
-  VEHICLE_TYPES,
-  VEHICLE_TYPE_LABELS,
-  VEHICLE_TYPE_DESCRIPTIONS,
   VEHICLE_TYPE_ICONS
 } from '@/lib/types/preparation';
 
