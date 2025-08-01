@@ -134,21 +134,19 @@ router.get('/preparations-steps', async (req, res) => {
       }
 
       // Détails pour export Excel (compatible avec ancien et nouveau schéma)
-      const getVehicleInfo = (prep) => {
+      const getVehiclePlate = (prep) => {
         // Priorité : vehicleData > vehicleInfo > vehicle populate > fallback
         if (prep.vehicleData && prep.vehicleData.licensePlate) {
-          const { brand, model, licensePlate } = prep.vehicleData;
-          return `${brand && brand !== 'N/A' ? brand + ' ' : ''}${model || 'Véhicule'} (${licensePlate})`;
+          return prep.vehicleData.licensePlate;
         } else if (prep.vehicleInfo && prep.vehicleInfo.licensePlate) {
-          const { brand, model, licensePlate } = prep.vehicleInfo;
-          return `${brand && brand !== 'N/A' ? brand + ' ' : ''}${model || 'Véhicule'} (${licensePlate})`;
+          return prep.vehicleInfo.licensePlate;
         } else if (prep.vehicle && mongoose.Types.ObjectId.isValid(prep.vehicle)) {
           const vehicle = vehiclesMap[prep.vehicle.toString()];
-          if (vehicle) {
-            return `${vehicle.brand || ''} ${vehicle.model || 'Véhicule'} (${vehicle.licensePlate || 'N/A'})`;
+          if (vehicle && vehicle.licensePlate) {
+            return vehicle.licensePlate;
           }
         }
-        return 'Véhicule inconnu';
+        return 'N/A';
       };
 
       const getUserInfo = (prep) => {
@@ -163,18 +161,13 @@ router.get('/preparations-steps', async (req, res) => {
 
       metrics.details.push({
         id: prep._id,
-        vehicule: getVehicleInfo(prep),
+        plaque: getVehiclePlate(prep), // ✅ Seulement la plaque
         preparateur: getUserInfo(prep),
         dateCreation: prep.createdAt,
-        dateCompletion: prep.completedAt,
-        statut: prep.status,
         hasExterior,
         hasInterior,
         hasFuel,
-        hasSpecialWash,
-        exteriorOrInterior: hasExterior || hasInterior,
-        etapesTotal: steps.length,
-        etapesCompletees: steps.filter(s => s.completed === true).length
+        hasSpecialWash
       });
     });
 
@@ -227,6 +220,7 @@ router.get('/preparations-steps', async (req, res) => {
  * Générer le fichier Excel du rapport
  */
 async function generateExcelReport(reportData) {
+  // ✅ Nouvelle approche : Créer un workbook avec seulement 2 colonnes dès le départ
   const workbook = new ExcelJS.Workbook();
   
   // Métadonnées
@@ -235,10 +229,30 @@ async function generateExcelReport(reportData) {
   workbook.title = `Rapport Préparations - ${reportData.agence.nom}`;
 
   // ===== ONGLET 1: RÉSUMÉ =====
-  const summarySheet = workbook.addWorksheet('📊 Résumé');
+  const summarySheet = workbook.addWorksheet('📊 Résumé', {
+    pageSetup: {
+      paperSize: 9, // A4
+      orientation: 'portrait',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printArea: 'A1:B30' // ✅ Zone encore plus stricte
+    },
+    properties: {
+      defaultColWidth: 20
+    },
+    views: [
+      {
+        state: 'normal',
+        rightToLeft: false,
+        activeCell: 'A1',
+        selection: [{ sq: 'A1:B30' }] // ✅ Sélection forcée sur A:B seulement
+      }
+    ]
+  });
 
   // En-tête principal
-  summarySheet.mergeCells('A1:D1');
+  summarySheet.mergeCells('A1:B1'); // ✅ Seulement 2 colonnes maintenant
   const titleCell = summarySheet.getCell('A1');
   titleCell.value = `📊 Rapport Préparations - ${reportData.agence.nom}`;
   titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFF' } };
@@ -251,17 +265,22 @@ async function generateExcelReport(reportData) {
   summarySheet.addRow(['📅 PÉRIODE', `${reportData.periode.debut} → ${reportData.periode.fin}`]);
   summarySheet.addRow(['🏢 AGENCE', `${reportData.agence.nom} (${reportData.agence.code})`]);
   summarySheet.addRow(['📊 GÉNÉRÉ LE', reportData.genereA.toLocaleString('fr-FR')]);
-  summarySheet.addRow(['👤 GÉNÉRÉ PAR', reportData.generePar]);
 
   // Métriques principales
   summarySheet.addRow([]);
-  summarySheet.addRow(['📈 MÉTRIQUES (ÉTAPES TERMINÉES UNIQUEMENT)']);
+  
+  // ✅ Titre "MÉTRIQUES" sur 2 colonnes
+  const metricsRowNum = summarySheet.rowCount + 1;
+  summarySheet.addRow(['📈 MÉTRIQUES']);
+  summarySheet.mergeCells(`A${metricsRowNum}:B${metricsRowNum}`);
+  summarySheet.getRow(metricsRowNum).getCell(1).font = { bold: true, size: 12 };
+  summarySheet.getRow(metricsRowNum).getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
   
   const metricsStartRow = summarySheet.rowCount + 1;
-  summarySheet.addRow(['📊 Total préparations', reportData.metriques.totalPreparations]);
-  summarySheet.addRow(['🚗 Nettoyage terminé (exterior/interior)', reportData.metriques.exteriorOrInterior]);
-  summarySheet.addRow(['⛽ Carburant terminé (fuel)', reportData.metriques.fuel]);
-  summarySheet.addRow(['✨ Lavage spécial terminé (special_wash)', reportData.metriques.specialWash]);
+  // ✅ SUPPRIMÉ : Total préparations
+  summarySheet.addRow(['🚗 Nettoyage intérieur / extérieur', reportData.metriques.exteriorOrInterior]);
+  summarySheet.addRow(['⛽ Carburant', reportData.metriques.fuel]);
+  summarySheet.addRow(['✨ Lavage spécial', reportData.metriques.specialWash]);
 
   // Style des métriques
   for (let i = metricsStartRow; i <= summarySheet.rowCount; i++) {
@@ -271,72 +290,88 @@ async function generateExcelReport(reportData) {
 
   // Pourcentages
   summarySheet.addRow([]);
-  summarySheet.addRow(['📊 POURCENTAGES (ÉTAPES TERMINÉES)']);
+  
+  // ✅ Titre "POURCENTAGES" sur 2 colonnes
+  const percentagesRowNum = summarySheet.rowCount + 1;
+  summarySheet.addRow(['📊 POURCENTAGES']);
+  summarySheet.mergeCells(`A${percentagesRowNum}:B${percentagesRowNum}`);
+  summarySheet.getRow(percentagesRowNum).getCell(1).font = { bold: true, size: 12 };
+  summarySheet.getRow(percentagesRowNum).getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+  
   const total = reportData.metriques.totalPreparations;
   if (total > 0) {
-    summarySheet.addRow(['🚗 % Nettoyage terminé', `${Math.round((reportData.metriques.exteriorOrInterior / total) * 100)}%`]);
-    summarySheet.addRow(['⛽ % Carburant terminé', `${Math.round((reportData.metriques.fuel / total) * 100)}%`]);
-    summarySheet.addRow(['✨ % Lavage spécial terminé', `${Math.round((reportData.metriques.specialWash / total) * 100)}%`]);
+    summarySheet.addRow(['🚗 % Nettoyage', `${Math.round((reportData.metriques.exteriorOrInterior / total) * 100)}%`]);
+    summarySheet.addRow(['⛽ % Carburant', `${Math.round((reportData.metriques.fuel / total) * 100)}%`]);
+    summarySheet.addRow(['✨ % Lavage spécial', `${Math.round((reportData.metriques.specialWash / total) * 100)}%`]);
   }
 
-  // Ajuster les colonnes
+  // ✅ AMÉLIORATION : Cellules plus hautes et centrées
+  summarySheet.eachRow((row, rowNumber) => {
+    row.height = 25; // Hauteur augmentée
+    row.eachCell((cell) => {
+      cell.alignment = { 
+        horizontal: 'center', 
+        vertical: 'middle',
+        wrapText: true 
+      };
+    });
+  });
+
+  // Ajuster les colonnes (seulement A et B) avec masquage des autres
   summarySheet.getColumn('A').width = 30;
   summarySheet.getColumn('B').width = 25;
+  
+  // ✅ MASQUER TOUTES les colonnes après B (C à ZZ pour être sûr)
+  for (let col = 3; col <= 100; col++) { // Étendre jusqu'à 100 colonnes
+    summarySheet.getColumn(col).hidden = true;
+    summarySheet.getColumn(col).width = 0;
+  }
 
   // ===== ONGLET 2: DÉTAILS =====
   const detailsSheet = workbook.addWorksheet('📋 Détails');
 
-  // En-têtes du tableau
+  // ✅ En-têtes simplifiées selon vos demandes (sans Status)
   const headers = [
-    'ID Préparation',
-    'Véhicule',
+    'Plaque',
     'Préparateur', 
     'Date Création',
-    'Date Completion',
-    'Statut',
     'Exterior',
     'Interior',
     'Fuel',
-    'Special Wash',
-    'Nettoyage (E/I)',
-    'Étapes Total',
-    'Étapes Complétées'
+    'Special Wash'
   ];
 
   detailsSheet.addRow(headers);
   
-  // Style en-têtes
+  // Style en-têtes avec hauteur augmentée
   const headerRow = detailsSheet.getRow(1);
   headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
   headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4472C4' } };
-  headerRow.alignment = { horizontal: 'center' };
-  headerRow.height = 25;
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+  headerRow.height = 30; // ✅ Hauteur augmentée
 
-  // Données détaillées
+  // ✅ Données détaillées simplifiées (sans Status)
   reportData.metriques.details.forEach(detail => {
-    detailsSheet.addRow([
-      detail.id,
-      detail.vehicule,
+    const row = detailsSheet.addRow([
+      detail.plaque,
       detail.preparateur,
       detail.dateCreation ? new Date(detail.dateCreation).toLocaleDateString('fr-FR') : 'N/A',
-      detail.dateCompletion ? new Date(detail.dateCompletion).toLocaleDateString('fr-FR') : 'N/A',
-      detail.statut,
       detail.hasExterior ? '✅' : '❌',
       detail.hasInterior ? '✅' : '❌', 
       detail.hasFuel ? '✅' : '❌',
-      detail.hasSpecialWash ? '✅' : '❌',
-      detail.exteriorOrInterior ? '✅' : '❌',
-      detail.etapesTotal,
-      detail.etapesCompletees
+      detail.hasSpecialWash ? '✅' : '❌'
     ]);
+    
+    // ✅ Hauteur et centrage pour chaque ligne
+    row.height = 25;
+    row.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   });
 
-  // Ajuster les colonnes
-  detailsSheet.columns.forEach(column => {
-    column.width = 15;
+  // ✅ Ajuster les colonnes avec centrage
+  detailsSheet.columns.forEach((column, index) => {
+    column.width = index === 0 ? 20 : 15; // Plaque plus large
+    column.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   });
-  detailsSheet.getColumn('B').width = 25; // Véhicule
-  detailsSheet.getColumn('C').width = 20; // Préparateur
 
   // Générer le buffer
   const buffer = await workbook.xlsx.writeBuffer();

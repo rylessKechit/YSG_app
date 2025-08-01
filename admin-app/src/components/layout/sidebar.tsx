@@ -15,7 +15,8 @@ import {
   LogOut,
   ChevronDown,
   Building2,
-  ChevronRight
+  ChevronRight,
+  FileSpreadsheet
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -60,11 +61,6 @@ const navigationItems = [
     title: 'Agences',
     href: '/agencies',
     icon: Building2,
-  },
-  {
-    title: 'Rapports Préparations',
-    href: '/reports/preparations',
-    icon: BarChart3,
   },
   {
     title: 'Rapports',
