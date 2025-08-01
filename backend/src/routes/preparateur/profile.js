@@ -212,7 +212,7 @@ router.get('/dashboard', async (req, res) => {
 
 /**
  * @route   GET /api/profile/schedule/week
- * @desc    Planning de la semaine
+ * @desc    Planning de la semaine AVEC pointages réels
  * @access  Preparateur
  */
 router.get('/schedule/week', async (req, res) => {
@@ -225,22 +225,51 @@ router.get('/schedule/week', async (req, res) => {
     weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Lundi
     weekStart.setHours(0, 0, 0, 0);
 
-    const schedules = await Schedule.findUserWeekSchedule(userId, weekStart);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6); // Dimanche
+    weekEnd.setHours(23, 59, 59, 999);
 
-    // Organiser les plannings par jour de la semaine
+    // ✅ RÉCUPÉRER EN PARALLÈLE : Planning + Pointages de la semaine
+    const [schedules, timesheets] = await Promise.all([
+      Schedule.findUserWeekSchedule(userId, weekStart),
+      
+      // ✅ NOUVEAU - Récupérer TOUS les pointages de la semaine
+      Timesheet.find({
+        user: userId,
+        date: {
+          $gte: weekStart,
+          $lte: weekEnd
+        }
+      }).populate('agency', 'name code client').lean()
+    ]);
+
+    // Créer un map des pointages par date pour faciliter l'accès
+    const timesheetsByDate = {};
+    timesheets.forEach(timesheet => {
+      const dateKey = timesheet.date.toISOString().split('T')[0];
+      timesheetsByDate[dateKey] = timesheet;
+    });
+
+    // Organiser les plannings par jour de la semaine avec pointages
     const weekSchedule = Array.from({ length: 7 }, (_, index) => {
       const date = new Date(weekStart);
       date.setDate(date.getDate() + index);
+      const dateKey = date.toISOString().split('T')[0];
       
       const daySchedule = schedules.find(schedule => 
         schedule.date.toDateString() === date.toDateString()
       );
+
+      // ✅ RÉCUPÉRER LE POINTAGE DU JOUR
+      const dayTimesheet = timesheetsByDate[dateKey];
 
       return {
         date: date,
         dayName: date.toLocaleDateString('fr-FR', { weekday: 'long' }),
         dayShort: date.toLocaleDateString('fr-FR', { weekday: 'short' }),
         isToday: date.toDateString() === new Date().toDateString(),
+        
+        // Planning prévu
         schedule: daySchedule ? {
           id: daySchedule._id,
           agency: daySchedule.agency,
@@ -251,27 +280,31 @@ router.get('/schedule/week', async (req, res) => {
           notes: daySchedule.notes,
           workingDuration: daySchedule.workingDuration,
           formatted: daySchedule.formatted
+        } : null,
+
+        // ✅ POINTAGES RÉELS
+        timesheet: dayTimesheet ? {
+          id: dayTimesheet._id,
+          agency: dayTimesheet.agency,
+          startTime: dayTimesheet.startTime,
+          endTime: dayTimesheet.endTime,
+          breakStart: dayTimesheet.breakStart,
+          breakEnd: dayTimesheet.breakEnd,
+          totalWorkedMinutes: dayTimesheet.totalWorkedMinutes,
+          status: dayTimesheet.status,
+          delays: dayTimesheet.delays,
+          // ✅ CALCULER LES ÉCARTS
+          variance: daySchedule && dayTimesheet.startTime ? 
+            calculateTimeVariance(daySchedule.startTime, dayTimesheet.startTime) : null
         } : null
       };
     });
-
-    // Calculer les totaux de la semaine
-    const weekTotals = schedules.reduce((totals, schedule) => {
-      // Utiliser le virtual workDuration du modèle Schedule
-      const duration = schedule.workDuration || 0;
-      return {
-        totalDays: totals.totalDays + 1,
-        totalMinutes: totals.totalMinutes + duration,
-        totalHours: Math.round((totals.totalMinutes + duration) / 60 * 10) / 10
-      };
-    }, { totalDays: 0, totalMinutes: 0, totalHours: 0 });
 
     res.json({
       success: true,
       data: {
         weekStart,
-        weekSchedule,
-        weekTotals
+        weekSchedule
       }
     });
 
@@ -283,6 +316,30 @@ router.get('/schedule/week', async (req, res) => {
     });
   }
 });
+
+// ✅ FONCTION UTILITAIRE - Calculer écart entre prévu et réel
+function calculateTimeVariance(scheduledTime, actualTime) {
+  try {
+    // Convertir l'heure planifiée (string) en minutes
+    const [schedHours, schedMinutes] = scheduledTime.split(':').map(Number);
+    const scheduledMinutes = schedHours * 60 + schedMinutes;
+    
+    // Convertir l'heure réelle (Date) en minutes
+    const actualMinutes = actualTime.getHours() * 60 + actualTime.getMinutes();
+    
+    // Retourner la différence en minutes
+    const variance = actualMinutes - scheduledMinutes;
+    
+    return {
+      minutes: variance,
+      status: variance <= 5 ? 'on_time' : variance <= 15 ? 'slight_delay' : 'late',
+      label: variance === 0 ? 'À l\'heure' : 
+             variance > 0 ? `+${variance}min` : `${variance}min`
+    };
+  } catch (error) {
+    return null;
+  }
+}
 
 /**
  * @route   GET /api/profile/performance

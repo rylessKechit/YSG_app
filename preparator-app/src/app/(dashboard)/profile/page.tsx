@@ -33,6 +33,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+// ✅ AJOUT - Import du nouveau composant
+import { WeekSchedule } from '@/components/profile/WeekSchedule';
 
 // Types pour les données du profil
 interface ProfileData {
@@ -56,9 +58,11 @@ interface ProfileData {
     createdAt: string;
     lastLogin: string;
   };
+  // ✅ MODIFICATION - Type mis à jour pour inclure les pointages
   weekSchedule: Array<{
     date: string;
     dayName: string;
+    isToday: boolean;
     schedule: {
       id: string;
       agency: {
@@ -69,6 +73,23 @@ interface ProfileData {
       endTime: string;
       breakStart?: string;
       breakEnd?: string;
+    } | null;
+    // ✅ NOUVEAU - Pointages réels
+    timesheet: {
+      id: string;
+      agency: any;
+      startTime: string;
+      endTime: string;
+      breakStart?: string;
+      breakEnd?: string;
+      totalWorkedMinutes: number;
+      status: string;
+      delays: any;
+      variance: {
+        minutes: number;
+        status: 'on_time' | 'slight_delay' | 'late';
+        label: string;
+      } | null;
     } | null;
   }>;
   preparations: {
@@ -89,6 +110,8 @@ export default function ProfilePage() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // ✅ NOUVEAU STATE - Pour gérer le chargement du planning séparément
+  const [loadingWeekSchedule, setLoadingWeekSchedule] = useState(false);
 
   // Charger toutes les données du profil
   useEffect(() => {
@@ -122,16 +145,19 @@ export default function ProfilePage() {
 
       console.log('📊 Données principales reçues:', { dashboard, myStats });
 
-      // Essayer de récupérer le planning séparément (optionnel)
+      // ✅ MODIFICATION - Récupérer le planning avec pointages séparément
       let weekSchedule = null;
       try {
-        console.log('🔄 Tentative récupération planning...');
+        setLoadingWeekSchedule(true);
+        console.log('🔄 Tentative récupération planning avec pointages...');
         const scheduleResponse = await apiClient.get('/profile/schedule/week');
         weekSchedule = scheduleResponse.data.data;
-        console.log('✅ Planning récupéré:', weekSchedule);
+        console.log('✅ Planning avec pointages récupéré:', weekSchedule);
       } catch (scheduleError) {
         console.warn('⚠️ Erreur planning (non bloquant):', scheduleError);
         // Continuer sans le planning
+      } finally {
+        setLoadingWeekSchedule(false);
       }
 
       // Construire l'objet profileData complet
@@ -151,6 +177,7 @@ export default function ProfilePage() {
           createdAt: dashboard?.user?.createdAt || user?.createdAt,
           lastLogin: dashboard?.user?.lastLogin || user?.lastLogin
         },
+        // ✅ MODIFICATION - Utiliser les nouvelles données enrichies
         weekSchedule: weekSchedule?.weekSchedule || [],
         preparations: {
           total: myStats?.totalPreparations || 0,
@@ -425,85 +452,11 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Planning de la semaine */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center text-lg">
-                <Calendar className="h-5 w-5 mr-2 text-purple-600" />
-                Planning de la semaine
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => router.push('/timesheets')}
-              >
-                Voir tout
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {profileData.weekSchedule.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium mb-2">Aucun planning cette semaine</p>
-                <p className="text-sm">Contactez votre administrateur</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {profileData.weekSchedule.slice(0, 7).map((day, index) => (
-                  <div 
-                    key={index}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="text-center min-w-[60px]">
-                        <div className="text-sm font-medium">
-                          {formatDate(day.date)}
-                        </div>
-                        <div className="text-xs text-gray-500 capitalize">
-                          {day.dayName}
-                        </div>
-                      </div>
-                      <div>
-                        {day.schedule ? (
-                          <>
-                            <div className="font-medium text-sm">
-                              {day.schedule.agency.name}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              {day.schedule.startTime} - {day.schedule.endTime}
-                              {day.schedule.breakStart && ` (pause ${day.schedule.breakStart}-${day.schedule.breakEnd})`}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-sm text-gray-500">Repos</div>
-                        )}
-                      </div>
-                    </div>
-                    <Badge 
-                      variant="outline" 
-                      className={`text-xs ${getStatusColor(!!day.schedule)}`}
-                    >
-                      {day.schedule ? 'Programmé' : 'Libre'}
-                    </Badge>
-                  </div>
-                ))}
-                
-                {profileData.weekSchedule.length > 7 && (
-                  <Button 
-                    variant="outline"
-                    className="w-full mt-3"
-                    onClick={() => router.push('/timesheets')}
-                  >
-                    Voir le planning complet
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* ✅ REMPLACEMENT - Utiliser le nouveau composant WeekSchedule */}
+        <WeekSchedule 
+          weekSchedule={profileData.weekSchedule} 
+          isLoading={loadingWeekSchedule} 
+        />
 
         {/* Actions */}
         <Card>

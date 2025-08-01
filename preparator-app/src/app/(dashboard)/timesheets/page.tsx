@@ -5,6 +5,7 @@ import { Clock, Play, Square, Coffee, RotateCcw, Calendar, FileText, Home, User 
 import { useTimesheetStore } from '@/lib/stores/timesheet';
 import { useAuthStore } from '@/lib/stores/auth';
 import { useAppStore } from '@/lib/stores/app';
+import { profileApi } from '@/lib/api/profileApi'; // ✅ AJOUT - Utiliser la même API que le dashboard
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
@@ -28,11 +29,7 @@ interface User {
 export default function TimesheetsPage() {
   const { user } = useAuthStore();
   const { 
-    todayStatus, 
     history, 
-    isLoading, 
-    error,
-    getTodayStatus,
     clockIn,
     clockOut,
     startBreak,
@@ -44,6 +41,10 @@ export default function TimesheetsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>('');
+  // ✅ AJOUT - States pour les données du dashboard
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   // Fonction pour obtenir l'agence par défaut
@@ -71,6 +72,26 @@ export default function TimesheetsPage() {
     return '';
   };
 
+  // ✅ NOUVELLE FONCTION - Charger les données depuis la route dashboard
+  const loadDashboardData = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log('🔄 Chargement données depuis route dashboard...');
+      const data = await profileApi.getDashboard();
+      setDashboardData(data);
+      console.log('✅ Données dashboard récupérées:', data);
+    } catch (err: any) {
+      console.error('❌ Erreur chargement dashboard:', err);
+      setError('Impossible de charger les données');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Initialisation
   useEffect(() => {
     if (user) {
@@ -89,11 +110,11 @@ export default function TimesheetsPage() {
       setSelectedAgencyId(agencyId);
       console.log('🔄 Chargement timesheet avec agencyId:', agencyId);
       
-      // Charger les données
-      getTodayStatus(agencyId);
+      // ✅ MODIFICATION - Charger les données du dashboard au lieu de getTodayStatus
+      loadDashboardData();
       getHistory();
     }
-  }, [user, getTodayStatus, getHistory, addNotification]);
+  }, [user, getHistory, addNotification]);
 
   // Gestion des actions de pointage
   const handleAction = async (action: string, handler: () => Promise<void>) => {
@@ -125,9 +146,9 @@ export default function TimesheetsPage() {
         duration: 3000
       });
 
-      // Rafraîchir le statut après action
+      // ✅ MODIFICATION - Recharger les données dashboard après action
       setTimeout(() => {
-        getTodayStatus(selectedAgencyId);
+        loadDashboardData();
       }, 500);
 
     } catch (error) {
@@ -151,9 +172,53 @@ export default function TimesheetsPage() {
     return hours > 0 ? `${hours}h${mins}min` : `${mins}min`;
   };
 
+  // ✅ NOUVELLE FONCTION - Calculer le statut comme le dashboard
+  const calculateCurrentStatus = (timesheet: any) => {
+    if (!timesheet) {
+      return {
+        status: 'not_started' as const,
+        workedTime: 0,
+        breakTime: 0,
+        startTime: null,
+        endTime: null
+      };
+    }
+
+    let status: 'not_started' | 'working' | 'on_break' | 'finished';
+    
+    if (!timesheet.startTime) {
+      status = 'not_started';
+    } else if (timesheet.endTime) {
+      status = 'finished';
+    } else if (timesheet.breakStart && !timesheet.breakEnd) {
+      status = 'on_break';
+    } else {
+      status = 'working';
+    }
+
+    let breakTime = 0;
+    if (timesheet.breakStart && timesheet.breakEnd) {
+      breakTime = Math.floor(
+        (new Date(timesheet.breakEnd).getTime() - new Date(timesheet.breakStart).getTime()) / (1000 * 60)
+      );
+    }
+
+    return {
+      status,
+      workedTime: timesheet.totalWorkedMinutes || 0,
+      breakTime,
+      startTime: timesheet.startTime,
+      endTime: timesheet.endTime
+    };
+  };
+
+  // ✅ EXTRACTION DES DONNÉES - Comme le dashboard
+  const todayTimesheet = dashboardData?.today?.timesheet;
+  const currentStatus = calculateCurrentStatus(todayTimesheet);
+
   // Obtenir les informations de statut
   const getStatusInfo = () => {
-    if (!todayStatus) {
+    if (!currentStatus) {
       return {
         label: 'Chargement...',
         color: 'text-gray-600',
@@ -161,61 +226,62 @@ export default function TimesheetsPage() {
       };
     }
 
-    if (todayStatus.isNotStarted) {
-      return {
-        label: 'Pas encore pointé',
-        color: 'text-gray-600',
-        bgColor: 'bg-gray-100'
-      };
+    switch (currentStatus.status) {
+      case 'not_started':
+        return {
+          label: 'Pas encore pointé',
+          color: 'text-gray-600',
+          bgColor: 'bg-gray-100'
+        };
+      case 'on_break':
+        return {
+          label: 'En pause',
+          color: 'text-orange-600',
+          bgColor: 'bg-orange-100'
+        };
+      case 'finished':
+        return {
+          label: 'Service terminé',
+          color: 'text-blue-600',
+          bgColor: 'bg-blue-100'
+        };
+      case 'working':
+        return {
+          label: 'En service',
+          color: 'text-green-600',
+          bgColor: 'bg-green-100'
+        };
+      default:
+        return {
+          label: 'Statut inconnu',
+          color: 'text-gray-600',
+          bgColor: 'bg-gray-100'
+        };
     }
-
-    if (todayStatus.isOnBreak) {
-      return {
-        label: 'En pause',
-        color: 'text-orange-600',
-        bgColor: 'bg-orange-100'
-      };
-    }
-
-    if (todayStatus.isClockedOut) {
-      return {
-        label: 'Service terminé',
-        color: 'text-blue-600',
-        bgColor: 'bg-blue-100'
-      };
-    }
-
-    if (todayStatus.isClockedIn) {
-      return {
-        label: 'En service',
-        color: 'text-green-600',
-        bgColor: 'bg-green-100'
-      };
-    }
-
-    return {
-      label: 'Statut inconnu',
-      color: 'text-gray-600',
-      bgColor: 'bg-gray-100'
-    };
   };
 
-  // Conditions d'activation des boutons
-  const canClockIn = todayStatus?.isNotStarted || false;
-  const canClockOut = (todayStatus?.isClockedIn || todayStatus?.isOnBreak) && !todayStatus?.isClockedOut || false;
-  const canStartBreak = todayStatus?.isClockedIn && !todayStatus?.isOnBreak || false;
-  const canEndBreak = todayStatus?.isOnBreak || false;
+  // ✅ MODIFICATION - Conditions basées sur le statut calculé
+  const canClockIn = currentStatus?.status === 'not_started';
+  const canClockOut = currentStatus?.status === 'working' || currentStatus?.status === 'on_break';
+  const canStartBreak = currentStatus?.status === 'working';
+  const canEndBreak = currentStatus?.status === 'on_break';
 
   // Message d'aide
   const getHelpMessage = (): string => {
-    if (!todayStatus) return 'Chargement du statut...';
+    if (!currentStatus) return 'Chargement du statut...';
     
-    if (todayStatus.isNotStarted) return 'Vous pouvez pointer votre arrivée';
-    if (todayStatus.isClockedIn && !todayStatus.isOnBreak) return 'Vous êtes en service - Vous pouvez prendre une pause ou pointer votre départ';
-    if (todayStatus.isOnBreak) return 'Vous êtes en pause - Vous pouvez reprendre le travail';
-    if (todayStatus.isClockedOut) return 'Votre service est terminé pour aujourd\'hui';
-    
-    return 'Statut en cours de synchronisation...';
+    switch (currentStatus.status) {
+      case 'not_started':
+        return 'Vous pouvez pointer votre arrivée';
+      case 'working':
+        return 'Vous êtes en service - Vous pouvez prendre une pause ou pointer votre départ';
+      case 'on_break':
+        return 'Vous êtes en pause - Vous pouvez reprendre le travail';
+      case 'finished':
+        return 'Votre service est terminé pour aujourd\'hui';
+      default:
+        return 'Statut en cours de synchronisation...';
+    }
   };
 
   // Debug logs
@@ -223,7 +289,10 @@ export default function TimesheetsPage() {
     user: user ? 'Chargé' : 'Non chargé',
     userAgencies: user?.agencies?.length || 0,
     selectedAgencyId,
-    todayStatus,
+    // ✅ AJOUT - Debug données dashboard
+    dashboardData,
+    todayTimesheet,
+    currentStatus,
     canClockIn,
     canClockOut,
     canStartBreak,
@@ -233,7 +302,7 @@ export default function TimesheetsPage() {
   });
 
   // Écran de chargement
-  if (isLoading && !todayStatus) {
+  if (isLoading && !dashboardData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -258,12 +327,8 @@ export default function TimesheetsPage() {
           </div>
           <button
             onClick={() => {
-              clearError();
-              const agencyId = getDefaultAgencyId();
-              if (agencyId) {
-                getTodayStatus(agencyId);
-                setSelectedAgencyId(agencyId);
-              }
+              setError(null);
+              loadDashboardData();
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
@@ -338,7 +403,8 @@ export default function TimesheetsPage() {
               <span className="text-gray-700">Temps travaillé</span>
             </div>
             <span className="text-xl font-bold text-blue-600">
-              {todayStatus?.currentWorkedTime || '0min'}
+              {/* ✅ CORRECTION - Utiliser les données du dashboard */}
+              {formatTime(currentStatus?.workedTime || 0)}
             </span>
           </div>
 
@@ -346,8 +412,9 @@ export default function TimesheetsPage() {
           <div className="grid grid-cols-2 gap-4 text-center">
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="text-2xl font-bold text-green-600">
-                {todayStatus?.timesheet?.startTime ? 
-                  format(new Date(todayStatus.timesheet.startTime), 'HH:mm') : 
+                {/* ✅ CORRECTION - Utiliser les données du dashboard */}
+                {todayTimesheet?.startTime ? 
+                  format(new Date(todayTimesheet.startTime), 'HH:mm') : 
                   '--:--'
                 }
               </div>
@@ -355,8 +422,9 @@ export default function TimesheetsPage() {
             </div>
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="text-2xl font-bold text-red-600">
-                {todayStatus?.timesheet?.endTime ? 
-                  format(new Date(todayStatus.timesheet.endTime), 'HH:mm') : 
+                {/* ✅ CORRECTION - Utiliser les données du dashboard */}
+                {todayTimesheet?.endTime ? 
+                  format(new Date(todayTimesheet.endTime), 'HH:mm') : 
                   '--:--'
                 }
               </div>

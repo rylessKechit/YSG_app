@@ -104,6 +104,42 @@ const calculateCurrentStatus = (data: any): 'not_started' | 'working' | 'on_brea
   return 'not_started';
 };
 
+// ✅ CORRECTION MAJEURE - Calculer currentWorkedMinutes en temps réel
+const calculateCurrentWorkedMinutes = (data: any): number => {
+  if (!data.timesheet || !data.timesheet.startTime) {
+    return 0;
+  }
+
+  const { timesheet } = data;
+  const now = new Date();
+  const startTime = new Date(timesheet.startTime);
+  
+  // Si service terminé, utiliser totalWorkedMinutes du backend
+  if (timesheet.endTime) {
+    return timesheet.totalWorkedMinutes || 0;
+  }
+  
+  // Calculer le temps travaillé en temps réel
+  let totalWorkedMs = now.getTime() - startTime.getTime();
+  
+  // Soustraire les pauses
+  if (timesheet.breakStart) {
+    const breakStartTime = new Date(timesheet.breakStart);
+    
+    if (timesheet.breakEnd) {
+      // Pause terminée
+      const breakEndTime = new Date(timesheet.breakEnd);
+      totalWorkedMs -= (breakEndTime.getTime() - breakStartTime.getTime());
+    } else {
+      // Pause en cours
+      totalWorkedMs -= (now.getTime() - breakStartTime.getTime());
+    }
+  }
+  
+  // Convertir en minutes et s'assurer que c'est positif
+  return Math.max(0, Math.floor(totalWorkedMs / (1000 * 60)));
+};
+
 export const timesheetApi = {
   // ✅ CORRECTION MAJEURE - Récupérer le statut du jour
   getTodayStatus: async (agencyId: string): Promise<TimesheetStatus> => {
@@ -129,6 +165,9 @@ export const timesheetApi = {
       // ✅ CALCUL AUTOMATIQUE DU STATUT ACTUEL
       const currentStatus = calculateCurrentStatus(data);
       
+      // ✅ CORRECTION CRITIQUE - Calcul en temps réel du temps travaillé
+      const currentWorkedMinutes = calculateCurrentWorkedMinutes(data);
+      
       // 🔧 CORRECTION CRITIQUE - Logique basée sur la vraie structure backend
       const adaptedData: TimesheetStatus = {
         timesheet: data.timesheet,
@@ -137,13 +176,14 @@ export const timesheetApi = {
         isClockedIn: currentStatus === 'working' || currentStatus === 'on_break',
         isClockedOut: currentStatus === 'finished',
         isOnBreak: currentStatus === 'on_break',
-        currentWorkedMinutes: data.currentStatus?.currentWorkedMinutes || 0,
+        // ✅ CORRECTION MAJEURE - Utiliser notre calcul au lieu de celui du backend
+        currentWorkedMinutes: currentWorkedMinutes,
         currentWorkedTime: data.currentStatus?.currentWorkedTime || null,
         // ✅ NOUVEAU - Statut calculé automatiquement
         currentStatus
       };
 
-      console.log('✅ Données adaptées avec currentStatus:', adaptedData);
+      console.log('✅ Données adaptées avec currentWorkedMinutes calculé:', adaptedData);
       return adaptedData;
 
     } catch (error: any) {
