@@ -35,6 +35,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 // ✅ AJOUT - Import du nouveau composant
 import { WeekSchedule } from '@/components/profile/WeekSchedule';
+import { BottomNavigation } from '@/components/layout/BottomNavigation';
 
 // Types pour les données du profil
 interface ProfileData {
@@ -528,6 +529,7 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+      <BottomNavigation />
     </div>
   );
 }
