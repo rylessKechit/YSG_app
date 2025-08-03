@@ -5,6 +5,7 @@ import { Clock, Car, Calendar, Plus, Home, FileText, User } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/auth';
 import { useDashboardStore } from '@/lib/stores/dashboard';
 import { useRouter } from 'next/navigation';
+import { BottomNavigation } from '@/components/layout/BottomNavigation';
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuthStore();
@@ -293,41 +294,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Navigation fixe en bas */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg">
-        <div className="grid grid-cols-4 h-16">
-          <button 
-            onClick={() => router.push('/dashboard')}
-            className="flex flex-col items-center justify-center space-y-1 bg-blue-50"
-          >
-            <Home className="w-5 h-5 text-blue-600" />
-            <span className="text-xs text-blue-600 font-medium">Accueil</span>
-          </button>
-          
-          <button 
-            onClick={() => router.push('/timesheets')}
-            className="flex flex-col items-center justify-center space-y-1"
-          >
-            <Clock className="w-5 h-5 text-gray-400" />
-            <span className="text-xs text-gray-600">Pointages</span>
-          </button>
-          
-          <button 
-            onClick={() => router.push('/preparations')}
-            className="flex flex-col items-center justify-center space-y-1"
-          >
-            <FileText className="w-5 h-5 text-gray-400" />
-            <span className="text-xs text-gray-600">Préparations</span>
-          </button>
-          
-          <button 
-            onClick={() => router.push('/profile')}
-            className="flex flex-col items-center justify-center space-y-1"
-          >
-            <User className="w-5 h-5 text-gray-400" />
-            <span className="text-xs text-gray-600">Profil</span>
-          </button>
-        </div>
-      </div>
+      <BottomNavigation />
     </div>
   );
 }

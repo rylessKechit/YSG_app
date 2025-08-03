@@ -9,6 +9,7 @@ import { profileApi } from '@/lib/api/profileApi'; // ✅ AJOUT - Utiliser la m�
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
+import { BottomNavigation } from '@/components/layout/BottomNavigation';
 
 interface Agency {
   id: string;
@@ -535,43 +536,8 @@ export default function TimesheetsPage() {
             </div>
           )}
         </div>
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50">
-          <div className="grid grid-cols-4 h-16">
-            <button 
-              onClick={() => router.push('/dashboard')}
-              className="flex flex-col items-center justify-center space-y-1 text-xs"
-            >
-              <Home className="w-5 h-5 text-gray-400" />
-              <span className="text-gray-600">Accueil</span>
-            </button>
-            
-            <button 
-              onClick={() => router.push('/timesheets')}
-              className="flex flex-col items-center justify-center space-y-1 text-xs bg-blue-50"
-            >
-              <Clock className="w-5 h-5 text-blue-600" />
-              <span className="text-blue-600 font-medium">Pointages</span>
-            </button>
-            
-            <button 
-              onClick={() => router.push('/preparations')}
-              className="flex flex-col items-center justify-center space-y-1 text-xs"
-            >
-              <FileText className="w-5 h-5 text-gray-400" />
-              <span className="text-gray-600">Préparations</span>
-            </button>
-            
-            <button 
-              onClick={() => router.push('/profile')}
-              className="flex flex-col items-center justify-center space-y-1 text-xs"
-            >
-              <User className="w-5 h-5 text-gray-400" />
-              <span className="text-gray-600">Profil</span>
-            </button>
-          </div>
-        </div>
-
       </div>
+      <BottomNavigation />
     </div>
   );
 }
