@@ -45,10 +45,11 @@ export function usePreparations(filters: PreparationFilters) {
         }
       });
 
+      console.log('🔄 [usePreparations] API Call with params:', params.toString());
       const response = await apiClient.get(`/admin/preparations?${params.toString()}`);
       return response.data;
     },
-    staleTime: 30000,
+    staleTime: 0, // ✅ FIX: Changé de 30000 à 0 pour forcer le refetch
     refetchOnWindowFocus: false,
   });
 }

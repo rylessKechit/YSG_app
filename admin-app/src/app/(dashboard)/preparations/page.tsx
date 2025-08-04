@@ -42,6 +42,19 @@ import { DeletePreparationDialog } from '@/components/preparations/delete-prepar
 export default function PreparationsPage() {
   const router = useRouter();
 
+  function getStartOfCurrentMonth(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // Convertir en 1-indexé
+    
+    // Format manuel YYYY-MM-01
+    const monthStr = month.toString().padStart(2, '0');
+    const result = `${year}-${monthStr}-01`;
+    
+    console.log('🗓️ Début du mois en cours:', result);
+    return result;
+  }
+
   // États pour les filtres
   const [filters, setFilters] = useState<PreparationFilters>({
     page: 1,
@@ -50,7 +63,7 @@ export default function PreparationsPage() {
     status: 'all',
     user: undefined,
     agency: undefined,
-    startDate: '',
+    startDate: getStartOfCurrentMonth(),
     endDate: '',
     sort: 'createdAt',
     order: 'desc'
@@ -104,11 +117,11 @@ export default function PreparationsPage() {
   // Handlers
   const handleFiltersChange = (newFilters: Partial<PreparationFilters>) => {
     console.log('🔄 Changement de filtres:', newFilters);
-    setFilters(prev => ({ ...prev, ...newFilters, page: 1 })); // Reset page à 1
+    setFilters(prev => ({ ...prev, ...newFilters }));
   };
 
   const handleSearch = () => {
-    handleFiltersChange({ search: searchInput.trim() });
+    handleFiltersChange({ search: searchInput.trim(), page: 1 });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

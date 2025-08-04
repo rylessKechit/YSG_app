@@ -63,9 +63,10 @@ import type {
 interface Pagination {
   page: number;
   limit: number;
-  total: number;
+  Pagination: number;
   pages?: number;
   totalPages?: number;
+  totalCount?: number;
   hasNext?: boolean;
   hasPrev?: boolean;
 }
@@ -201,7 +202,7 @@ export function PreparationsTable({
   const totalPages = pagination?.totalPages || pagination?.pages || 1;
   const currentPage = pagination?.page || 1;
   const limit = pagination?.limit || filters.limit || 20;
-  const total = pagination?.total || 0;
+  const total = pagination?.totalCount || 0;
 
   const startItem = total === 0 ? 0 : ((currentPage - 1) * limit) + 1;
   const endItem = Math.min(currentPage * limit, total);
