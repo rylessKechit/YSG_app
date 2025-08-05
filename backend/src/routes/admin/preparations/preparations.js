@@ -82,7 +82,8 @@ router.post('/new',
         vehicleData,
         notes,
         assignedSteps,
-        priority
+        priority,
+        createdAt
       } = req.body;
 
       console.log('🚀 Création préparation admin:', { 
@@ -158,6 +159,8 @@ router.post('/new',
         photos: []
       }));
 
+      console.log(createdAt)
+
       // Créer la préparation
       const preparation = new Preparation({
         user: userId,
@@ -187,7 +190,7 @@ router.post('/new',
           email: req.user.email,
           role: 'admin'
         },
-        createdAt: new Date(),
+        createdAt: createdAt,
         updatedAt: new Date()
       });
 
@@ -274,8 +277,11 @@ router.post('/bulk',
         agencyId,
         vehicles, // Array de véhicules simplifiés
         notes,
-        priority
+        priority,
+        createdAt
       } = req.body;
+
+      console.log('BBBBOOOOOOODDDDYYYYYY', req.body);
 
       console.log('🚀 Création en lot:', { 
         userId, 
@@ -348,6 +354,8 @@ router.post('/bulk',
           const completedCount = steps.filter(s => s.completed).length;
           const initialProgress = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
 
+          console.log('DDDDDDAAAAAATTTEEEEE ', createdAt);
+
           // Créer la préparation
           const preparation = new Preparation({
             user: userId,
@@ -373,7 +381,7 @@ router.post('/bulk',
               email: req.user.email,
               role: 'admin'
             },
-            createdAt: new Date(),
+            createdAt: createdAt,
             updatedAt: new Date()
           });
 

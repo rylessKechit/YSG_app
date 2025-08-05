@@ -274,30 +274,63 @@ const simplifiedVehicleSchema = z.object({
   })).default([])
 });
 
-// ✅ Schéma pour création en lot (ZOD)
 const createBulkPreparations = z.object({
   userId: z.string()
-    .min(1, 'ID utilisateur requis')
-    .regex(/^[0-9a-fA-F]{24}$/, 'ID utilisateur invalide'),
+    .min(1, 'Préparateur requis')
+    .regex(/^[0-9a-fA-F]{24}$/, 'ID préparateur invalide'),
   
   agencyId: z.string()
-    .min(1, 'ID agence requis')
+    .min(1, 'Agence requise')
     .regex(/^[0-9a-fA-F]{24}$/, 'ID agence invalide'),
+  
+  // ✅ GESTION ROBUSTE DES DATES
+  createdAt: z.union([
+    // Format ISO complet (2024-08-01T10:00:00.000Z)
+    z.string().datetime({ message: 'Date ISO invalide' }),
+    // Format date seule (2024-08-01)
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date YYYY-MM-DD requis'),
+    // Objet Date JavaScript
+    z.date()
+  ]).transform((val) => {
+    let date;
+    
+    if (typeof val === 'string') {
+      if (val.includes('T')) {
+        // Format ISO complet - convertir directement
+        date = new Date(val);
+      } else {
+        // Format YYYY-MM-DD - créer une date à minuit UTC
+        // pour éviter les décalages timezone
+        const [year, month, day] = val.split('-').map(Number);
+        date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)); // 12h UTC
+      }
+    } else {
+      date = val; // Déjà un objet Date
+    }
+    
+    // Validation: pas de date invalide
+    if (isNaN(date.getTime())) {
+      throw new Error('Date invalide');
+    }
+    
+    // Valider les limites (ignorer l'heure pour la comparaison)
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const now = new Date();
+    const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const past = new Date(2020, 0, 1); // 1er janvier 2020
+    const future = new Date(todayOnly);
+    future.setDate(future.getDate() + 7);
+    
+    if (dateOnly < past || dateOnly > future) {
+      throw new Error('La date doit être comprise entre 2020 et 7 jours dans le futur');
+    }
+    
+    return date;
+  }),
   
   vehicles: z.array(simplifiedVehicleSchema)
     .min(1, 'Au moins un véhicule requis')
-    .max(10, 'Maximum 10 véhicules par lot')
-    .refine(
-      (vehicles) => {
-        // Vérifier les doublons de plaques dans le lot
-        const plates = vehicles.map(v => v.licensePlate.toUpperCase());
-        const uniquePlates = new Set(plates);
-        return uniquePlates.size === plates.length;
-      },
-      {
-        message: 'Plaques d\'immatriculation en doublon dans le lot'
-      }
-    ),
+    .max(20, 'Maximum 20 véhicules par lot'),
   
   notes: z.string()
     .max(1000, 'Notes trop longues')

@@ -44,6 +44,12 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { addDays, format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 // Types
 import type { 
@@ -82,11 +88,18 @@ const vehicleDataSchema = z.object({
 const newPreparationSchema = z.object({
   userId: z.string().min(1, 'Veuillez sélectionner un préparateur'),
   agencyId: z.string().min(1, 'Veuillez sélectionner une agence'),
+  createdAt: z.date({
+    required_error: 'Date de création requise',
+    invalid_type_error: 'Date invalide'
+  }).refine(
+    (date) => date >= new Date('2020-01-01') && date <= addDays(new Date(), 7),
+    'La date doit être comprise entre 2020 et 7 jours dans le futur'
+  ),
   
-  // ✅ NOUVEAU : Array de véhicules
+  // ✅ MODIFICATION: Passer la limite de 10 à 20
   vehicles: z.array(vehicleDataSchema)
     .min(1, 'Au moins un véhicule requis')
-    .max(10, 'Maximum 10 véhicules par lot'),
+    .max(20, 'Maximum 20 véhicules par lot'), // ✅ CHANGÉ: 10 → 20
   
   notes: z.string().optional(),
   priority: z.enum(['low', 'normal', 'high', 'urgent'] as const)
@@ -114,6 +127,7 @@ export default function NewPreparationPage() {
     defaultValues: {
       userId: '',
       agencyId: '',
+      createdAt: new Date(), // ✅ NOUVEAU : Date de création
       vehicles: [
         {
           licensePlate: '',
@@ -177,9 +191,19 @@ export default function NewPreparationPage() {
     try {
       setIsSubmitting(true);
 
-      console.log('🚀 Création de', data.vehicles.length, 'préparations:', data);
+      // ✅ SOLUTION TIMEZONE: Envoyer au format YYYY-MM-DD
+      const dateOnly = format(data.createdAt, 'yyyy-MM-dd');
 
-      const response = await apiClient.post('/admin/preparations/bulk', data);
+      const payload = {
+        ...data,
+        createdAt: dateOnly // String au format YYYY-MM-DD
+      };
+
+      console.log('🚀 Création de', data.vehicles.length, 'préparations');
+      console.log('📅 Date sélectionnée:', data.createdAt.toLocaleDateString('fr-FR'));
+      console.log('📅 Date envoyée (YYYY-MM-DD):', payload.createdAt);
+
+      const response = await apiClient.post('/admin/preparations/bulk', payload);
 
       if (response.data.success) {
         const createdCount = response.data.data.createdPreparations?.length || data.vehicles.length;
@@ -456,6 +480,50 @@ export default function NewPreparationPage() {
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name="createdAt"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date de création *</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? (
+                                format(field.value, "dd/MM/yyyy", { locale: fr })
+                              ) : (
+                                <span>Sélectionner une date</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={(date) => field.onChange(date)}
+                            locale={fr}
+                            disabled={(date) =>
+                              date < new Date("2020-01-01") || 
+                              date > addDays(new Date(), 7) // Limite à 7 jours dans le futur
+                            }
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
               </div>
             </CardContent>
           </Card>
@@ -473,7 +541,7 @@ export default function NewPreparationPage() {
                   variant="outline"
                   size="sm"
                   onClick={addVehicle}
-                  disabled={fields.length >= 10}
+                  disabled={fields.length >= 20}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Ajouter un véhicule
@@ -693,11 +761,11 @@ export default function NewPreparationPage() {
               ))}
 
               {/* Limite atteinte */}
-              {fields.length >= 10 && (
+              {fields.length >= 20 && ( // ✅ CHANGÉ: 10 → 20
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    Limite de 10 véhicules par lot atteinte. Créez un nouveau lot pour ajouter plus de véhicules.
+                    Limite de 20 véhicules par lot atteinte. Créez un nouveau lot pour ajouter plus de véhicules.
                   </AlertDescription>
                 </Alert>
               )}
