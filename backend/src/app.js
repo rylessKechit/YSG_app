@@ -28,6 +28,14 @@ const allowedOrigins = [
 
 console.log(allowedOrigins);
 
+app.use((req, res, next) => {
+  if (req.path.includes('/bulk')) {
+    req.setTimeout(120000); // 2 minutes
+    res.setTimeout(120000);
+  }
+  next();
+});
+
 app.use(cors({
   origin: function (origin, callback) {
     // Autoriser les requêtes sans origin (ex: mobile apps, Postman)

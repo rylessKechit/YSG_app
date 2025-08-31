@@ -265,7 +265,7 @@ router.post('/new',
 
 /**
  * @route   POST /api/admin/preparations/bulk
- * @desc    Créer plusieurs préparations en une fois
+ * @desc    Créer plusieurs préparations en une fois (VERSION CORRIGÉE)
  * @access  Admin
  */
 router.post('/bulk', 
@@ -275,22 +275,24 @@ router.post('/bulk',
       const {
         userId,
         agencyId,
-        vehicles, // Array de véhicules simplifiés
+        vehicles, // Array de véhicules
         notes,
         priority,
         createdAt
       } = req.body;
 
-      console.log('BBBBOOOOOOODDDDYYYYYY', req.body);
-
-      console.log('🚀 Création en lot:', { 
+      console.log('🚀 Création en lot PARALLÈLE:', { 
         userId, 
         agencyId, 
         vehicleCount: vehicles.length 
       });
 
-      // Vérifier que l'utilisateur existe et est un préparateur
-      const user = await User.findById(userId);
+      // Vérifications préalables (une seule fois)
+      const [user, agency] = await Promise.all([
+        User.findById(userId),
+        Agency.findById(agencyId)
+      ]);
+
       if (!user) {
         return res.status(404).json({
           success: false,
@@ -305,8 +307,6 @@ router.post('/bulk',
         });
       }
 
-      // Vérifier que l'agence existe
-      const agency = await Agency.findById(agencyId);
       if (!agency) {
         return res.status(404).json({
           success: false,
@@ -314,14 +314,11 @@ router.post('/bulk',
         });
       }
 
-      // Créer les préparations en parallèle
-      const createdPreparations = [];
-      const errors = [];
-
-      for (let i = 0; i < vehicles.length; i++) {
-        const vehicleData = vehicles[i];
-        
+      // ✅ TRAITEMENT EN PARALLÈLE - SOLUTION PRINCIPALE
+      const preparationPromises = vehicles.map(async (vehicleData, index) => {
         try {
+          console.log(`🔄 Traitement préparation ${index + 1}/${vehicles.length}`);
+
           // Créer ou trouver le véhicule
           let vehicle = await Vehicle.findOne({ 
             licensePlate: vehicleData.licensePlate.toUpperCase() 
@@ -330,9 +327,13 @@ router.post('/bulk',
           if (!vehicle) {
             vehicle = new Vehicle({
               licensePlate: vehicleData.licensePlate.toUpperCase(),
-              brand: '', // Pas de marque dans le formulaire simplifié
+              brand: vehicleData.brand || '',
               model: vehicleData.model,
-              vehicleType: vehicleData.vehicleType,
+              vehicleType: vehicleData.vehicleType || 'particulier',
+              year: vehicleData.year,
+              fuelType: vehicleData.fuelType,
+              color: vehicleData.color,
+              condition: vehicleData.condition || 'good',
               agency: agencyId
             });
             await vehicle.save();
@@ -352,9 +353,8 @@ router.post('/bulk',
 
           // Calculer la progression initiale
           const completedCount = steps.filter(s => s.completed).length;
-          const initialProgress = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
-
-          console.log('DDDDDDAAAAAATTTEEEEE ', createdAt);
+          const initialProgress = steps.length > 0 ? 
+            Math.round((completedCount / steps.length) * 100) : 0;
 
           // Créer la préparation
           const preparation = new Preparation({
@@ -363,13 +363,17 @@ router.post('/bulk',
             vehicle: vehicle._id,
             vehicleData: {
               licensePlate: vehicleData.licensePlate.toUpperCase(),
-              brand: '', // Pas de marque
+              brand: vehicleData.brand || '',
               model: vehicleData.model,
-              vehicleType: vehicleData.vehicleType
+              vehicleType: vehicleData.vehicleType || 'particulier',
+              year: vehicleData.year,
+              fuelType: vehicleData.fuelType,
+              color: vehicleData.color,
+              condition: vehicleData.condition || 'good'
             },
             status: PREPARATION_STATUS.PENDING,
             steps: steps,
-            progress: initialProgress, // ✅ Progression calculée
+            progress: initialProgress,
             currentDuration: 0,
             totalTime: null,
             isOnTime: null,
@@ -386,37 +390,83 @@ router.post('/bulk',
           });
 
           await preparation.save();
-          
+
           // Populate pour la réponse
-          await preparation.populate(['user', 'agency']);
-          
-          createdPreparations.push({
-            id: preparation._id,
-            vehicle: {
-              licensePlate: preparation.vehicleData.licensePlate,
-              model: preparation.vehicleData.model,
-              vehicleType: preparation.vehicleData.vehicleType
-            },
-            status: preparation.status,
-            priority: preparation.priority,
-            progress: preparation.progress, // ✅ Inclure la progression
-            completedSteps: vehicleData.completedSteps || [], // ✅ Inclure les étapes pré-complétées
-            createdAt: preparation.createdAt
-          });
+          await preparation.populate(['user', 'agency', 'vehicle']);
+
+          console.log(`✅ Préparation ${index + 1} créée: ${preparation._id}`);
+
+          return {
+            success: true,
+            preparation: {
+              id: preparation._id,
+              vehicle: {
+                id: preparation.vehicle._id,
+                licensePlate: preparation.vehicleData.licensePlate,
+                brand: preparation.vehicleData.brand,
+                model: preparation.vehicleData.model,
+                vehicleType: preparation.vehicleData.vehicleType,
+                year: preparation.vehicleData.year,
+                color: preparation.vehicleData.color,
+                condition: preparation.vehicleData.condition
+              },
+              user: {
+                id: preparation.user._id,
+                name: `${preparation.user.firstName} ${preparation.user.lastName}`,
+                email: preparation.user.email
+              },
+              agency: {
+                id: preparation.agency._id,
+                name: preparation.agency.name,
+                code: preparation.agency.code,
+                client: preparation.agency.client
+              },
+              status: preparation.status,
+              steps: preparation.steps,
+              progress: preparation.progress,
+              notes: preparation.notes,
+              priority: preparation.priority,
+              createdAt: preparation.createdAt,
+              createdBy: preparation.createdBy
+            }
+          };
 
         } catch (error) {
-          console.error(`❌ Erreur création préparation ${i + 1}:`, error);
-          errors.push({
-            vehicleIndex: i + 1,
+          console.error(`❌ Erreur préparation ${index + 1}:`, error);
+          return {
+            success: false,
+            vehicleIndex: index + 1,
             licensePlate: vehicleData.licensePlate,
             error: error.message
-          });
+          };
         }
-      }
+      });
+
+      // ✅ EXÉCUTER TOUTES LES PROMESSES EN PARALLÈLE
+      console.log('⏳ Traitement en parallèle de', vehicles.length, 'préparations...');
+      const startTime = Date.now();
+      
+      const results = await Promise.all(preparationPromises);
+      
+      const endTime = Date.now();
+      console.log(`⚡ Traitement terminé en ${endTime - startTime}ms`);
+
+      // Séparer les succès et les erreurs
+      const createdPreparations = results
+        .filter(result => result.success)
+        .map(result => result.preparation);
+      
+      const errors = results
+        .filter(result => !result.success)
+        .map(result => ({
+          vehicleIndex: result.vehicleIndex,
+          licensePlate: result.licensePlate,
+          error: result.error
+        }));
 
       console.log(`✅ ${createdPreparations.length}/${vehicles.length} préparations créées`);
 
-      // Réponse
+      // Réponse selon les résultats
       if (createdPreparations.length === 0) {
         return res.status(400).json({
           success: false,
@@ -433,7 +483,8 @@ router.post('/bulk',
             summary: {
               total: vehicles.length,
               created: createdPreparations.length,
-              failed: errors.length
+              failed: errors.length,
+              processingTime: endTime - startTime
             }
           }
         });
@@ -446,7 +497,8 @@ router.post('/bulk',
             summary: {
               total: vehicles.length,
               created: createdPreparations.length,
-              failed: 0
+              failed: 0,
+              processingTime: endTime - startTime
             }
           }
         });
