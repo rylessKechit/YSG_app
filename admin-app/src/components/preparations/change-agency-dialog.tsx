@@ -25,7 +25,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 
-import type { Preparation, Agency } from '@/types/preparation';
+import type { Preparation } from '@/types/preparation';
+
+import type { Agency } from '@/types/agency';
 
 interface ChangeAgencyDialogProps {
   open: boolean;

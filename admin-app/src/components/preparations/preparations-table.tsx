@@ -1,5 +1,3 @@
-// admin-app/src/components/preparations/preparations-table.tsx - CORRECTIONS FINALES
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -56,39 +54,25 @@ import { ChangeAgencyDialog } from './change-agency-dialog';
 import type { 
   Preparation, 
   PreparationFilters,
-  Agency
+  Pagination
 } from '@/types/preparation';
 
-// ✅ CORRECTION 1 : Types stricts
-interface Pagination {
-  page: number;
-  limit: number;
-  Pagination: number;
-  pages?: number;
-  totalPages?: number;
-  totalCount?: number;
-  hasNext?: boolean;
-  hasPrev?: boolean;
-}
+import type { Agency } from '@/types/agency';
 
-// ✅ CORRECTION 2 : SortField avec tous les champs valides
-type SortField = keyof PreparationFilters['sort'] extends string 
-  ? PreparationFilters['sort'] 
-  : 'createdAt' | 'startTime' | 'endTime' | 'totalTime' | 'status';
-
+// ✅ INTERFACES CORRIGÉES
 interface PreparationsTableProps {
   preparations: Preparation[];
   pagination?: Pagination;
   filters: PreparationFilters;
   onFiltersChange: (filters: Partial<PreparationFilters>) => void;
   onPreparationSelect: (preparationId: string) => void;
-  agencies: Agency[];
+  agencies: Agency[]; // ✅ CORRECTION: Utiliser PreparationAgency[] au lieu d'Agency[]
   isLoading?: boolean;
   selectedPreparations?: string[];
   onSelectionChange?: (preparationIds: string[]) => void;
 }
 
-// ✅ CORRECTION 3 : Fonctions utilitaires avec types stricts
+// ✅ FONCTIONS UTILITAIRES CORRIGÉES
 const getStatusColor = (status: string): "default" | "secondary" | "destructive" | "outline" => {
   switch (status) {
     case 'completed': return 'default';
@@ -108,7 +92,7 @@ const getStatusLabel = (status: string): string => {
   return labels[status] || status;
 };
 
-const formatDuration = (minutes: number): string => {
+const formatDuration = (minutes: number | null | undefined): string => {
   if (!minutes || minutes === 0) return '0 min';
   
   const hours = Math.floor(minutes / 60);
@@ -119,6 +103,7 @@ const formatDuration = (minutes: number): string => {
   return `${hours}h ${mins}min`;
 };
 
+// ✅ COMPOSANT PRINCIPAL CORRIGÉ
 export function PreparationsTable({
   preparations,
   pagination,
@@ -133,12 +118,10 @@ export function PreparationsTable({
   const [selectedPreparation, setSelectedPreparation] = useState<Preparation | null>(null);
   const [showChangeAgencyDialog, setShowChangeAgencyDialog] = useState<boolean>(false);
   
-  // ✅ CORRECTION 4 : Ref avec type correct pour HTMLInputElement
-  const selectAllCheckboxRef = useRef<HTMLInputElement>(null);
-
+  const selectAllCheckboxRef = useRef<any>(null);
   const { mutate: updateAgency, isPending: isUpdatingAgency } = useUpdatePreparationAgency();
 
-  // ✅ CORRECTION 5 : handleSort avec type any pour plus de flexibilité
+  // ✅ CALLBACKS CORRIGÉS
   const handleSort = useCallback((field: string) => {
     const newOrder: 'asc' | 'desc' = filters.sort === field && filters.order === 'asc' ? 'desc' : 'asc';
     onFiltersChange({ sort: field as any, order: newOrder });
@@ -160,14 +143,12 @@ export function PreparationsTable({
     }
   }, [onFiltersChange]);
 
-  // ✅ CORRECTION 6 : handleSelectAll avec type correct
   const handleSelectAll = useCallback((checked: boolean | "indeterminate") => {
     if (onSelectionChange && checked !== "indeterminate") {
       onSelectionChange(checked ? preparations.map(prep => prep.id) : []);
     }
   }, [preparations, onSelectionChange]);
 
-  // ✅ CORRECTION 7 : handleSelectOne avec type correct
   const handleSelectOne = useCallback((preparationId: string, checked: boolean | "indeterminate") => {
     if (onSelectionChange && checked !== "indeterminate") {
       if (checked) {
@@ -198,11 +179,11 @@ export function PreparationsTable({
     });
   }, [selectedPreparation, updateAgency]);
 
-  // Calculs pagination
+  // ✅ CALCULS PAGINATION CORRIGÉS
   const totalPages = pagination?.totalPages || pagination?.pages || 1;
   const currentPage = pagination?.page || 1;
   const limit = pagination?.limit || filters.limit || 20;
-  const total = pagination?.totalCount || 0;
+  const total = pagination?.total || pagination?.totalCount || 0;
 
   const startItem = total === 0 ? 0 : ((currentPage - 1) * limit) + 1;
   const endItem = Math.min(currentPage * limit, total);
@@ -211,14 +192,12 @@ export function PreparationsTable({
     preparations.every(prep => selectedPreparations.includes(prep.id));
   const isIndeterminate = selectedPreparations.length > 0 && !isAllSelected;
 
-  // ✅ CORRECTION 8 : useEffect pour indeterminate avec HTMLInputElement
   useEffect(() => {
     if (selectAllCheckboxRef.current) {
       selectAllCheckboxRef.current.indeterminate = isIndeterminate;
     }
   }, [isIndeterminate]);
 
-  // ✅ CORRECTION 9 : getPageNumbers avec type union explicite
   const getPageNumbers = useCallback((): (number | 'ellipsis')[] => {
     if (totalPages <= 7) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -278,278 +257,223 @@ export function PreparationsTable({
             >
               Désélectionner tout
             </Button>
-            <DeletePreparationDialog
-              preparations={preparations.filter(prep => selectedPreparations.includes(prep.id))}
-              onSuccess={() => {
-                onSelectionChange?.([]);
-                window.location.reload();
-              }}
-            >
-              <Button variant="destructive" size="sm">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Supprimer la sélection
-              </Button>
-            </DeletePreparationDialog>
+            <Button variant="default" size="sm">
+              Actions groupées
+            </Button>
           </div>
         </div>
       )}
 
       {/* Table */}
-      <div className="rounded-md border overflow-hidden">
+      <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-12">
-                {/* ✅ CORRECTION 10 : Checkbox sans ref, gestion manuelle indeterminate */}
-                <Checkbox
-                  checked={isAllSelected}
-                  // @ts-ignore - Temporaire pour éviter l'erreur indeterminate
-                  ref={selectAllCheckboxRef}
-                  onCheckedChange={handleSelectAll}
-                  aria-label="Sélectionner tout"
-                />
-              </TableHead>
-
-              <TableHead className="min-w-[200px]">
+              {onSelectionChange && (
+                <TableHead className="w-12">
+                  <Checkbox
+                    ref={selectAllCheckboxRef}
+                    checked={isAllSelected}
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Sélectionner tout"
+                  />
+                </TableHead>
+              )}
+              <TableHead>
                 <Button
                   variant="ghost"
+                  size="sm"
+                  className="h-8 data-[state=open]:bg-accent"
                   onClick={() => handleSort('vehicle')}
-                  className="h-auto p-0 hover:bg-transparent font-semibold"
                 >
                   Véhicule
                   <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-
-              <TableHead className="min-w-[180px]">
+              <TableHead>
                 <Button
                   variant="ghost"
+                  size="sm"
+                  className="h-8 data-[state=open]:bg-accent"
                   onClick={() => handleSort('user')}
-                  className="h-auto p-0 hover:bg-transparent font-semibold"
                 >
                   Préparateur
                   <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-
-              <TableHead className="min-w-[160px]">
+              <TableHead>
                 <Button
                   variant="ghost"
+                  size="sm"
+                  className="h-8 data-[state=open]:bg-accent"
                   onClick={() => handleSort('agency')}
-                  className="h-auto p-0 hover:bg-transparent font-semibold"
                 >
                   Agence
                   <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-
-              <TableHead className="min-w-[120px]">
+              <TableHead>Statut</TableHead>
+              <TableHead>Progression</TableHead>
+              <TableHead>
                 <Button
                   variant="ghost"
-                  onClick={() => handleSort('status')}
-                  className="h-auto p-0 hover:bg-transparent font-semibold"
-                >
-                  Statut
-                  <ArrowUpDown className="ml-2 h-4 w-4" />
-                </Button>
-              </TableHead>
-
-              <TableHead className="min-w-[140px]">Progression</TableHead>
-
-              <TableHead className="min-w-[120px]">
-                <Button
-                  variant="ghost"
+                  size="sm"
+                  className="h-8 data-[state=open]:bg-accent"
                   onClick={() => handleSort('totalTime')}
-                  className="h-auto p-0 hover:bg-transparent font-semibold"
                 >
                   Durée
                   <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-
-              <TableHead className="min-w-[120px]">
+              <TableHead>
                 <Button
                   variant="ghost"
+                  size="sm"
+                  className="h-8 data-[state=open]:bg-accent"
                   onClick={() => handleSort('createdAt')}
-                  className="h-auto p-0 hover:bg-transparent font-semibold"
                 >
-                  Date
+                  Créé le
                   <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
               </TableHead>
-
-              <TableHead className="w-16">Actions</TableHead>
+              <TableHead className="w-20">Actions</TableHead>
             </TableRow>
           </TableHeader>
-
           <TableBody>
             {preparations.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
-                  <div className="flex flex-col items-center justify-center space-y-2">
-                    <Building2 className="h-8 w-8 text-muted-foreground" />
-                    <span>Aucune préparation trouvée</span>
-                  </div>
+                <TableCell 
+                  colSpan={onSelectionChange ? 9 : 8} 
+                  className="h-24 text-center"
+                >
+                  Aucune préparation trouvée.
                 </TableCell>
               </TableRow>
             ) : (
               preparations.map((preparation) => (
-                <TableRow
+                <TableRow 
                   key={preparation.id}
-                  className={`cursor-pointer hover:bg-muted/50 transition-colors ${
-                    selectedPreparations.includes(preparation.id) ? 'bg-blue-50 border-blue-200' : ''
-                  }`}
-                  onClick={() => onPreparationSelect(preparation.id)}
+                  className="hover:bg-muted/50"
                 >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedPreparations.includes(preparation.id)}
-                      onCheckedChange={(checked) => 
-                        handleSelectOne(preparation.id, checked)
-                      }
-                      aria-label={`Sélectionner ${preparation.vehicle?.licensePlate || 'cette préparation'}`}
-                    />
-                  </TableCell>
-
-                  <TableCell>
+                  {onSelectionChange && (
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedPreparations.includes(preparation.id)}
+                        onCheckedChange={(checked) => handleSelectOne(preparation.id, checked)}
+                        aria-label={`Sélectionner préparation ${preparation.vehicle.licensePlate}`}
+                      />
+                    </TableCell>
+                  )}
+                  
+                  <TableCell className="font-medium">
                     <div className="space-y-1">
-                      <div className="font-medium text-gray-900">
-                        {preparation.vehicle?.licensePlate || 'N/A'}
+                      <div className="font-mono text-sm">
+                        {preparation.vehicle.licensePlate}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {preparation.vehicle?.brand} {preparation.vehicle?.model}
+                        {preparation.vehicle.brand && preparation.vehicle.brand !== 'N/A' 
+                          ? `${preparation.vehicle.brand} ${preparation.vehicle.model}` 
+                          : preparation.vehicle.model
+                        }
                       </div>
                     </div>
                   </TableCell>
-
+                  
                   <TableCell>
                     <div className="space-y-1">
-                      <div className="font-medium text-gray-900">
-                        {preparation.user?.name || 'N/A'}
+                      <div className="font-medium text-sm">
+                        {preparation.user.name}
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        {preparation.user?.email}
-                      </div>
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <div className="space-y-1 min-w-0">
-                        <div className="font-medium text-gray-900 truncate">
-                          {preparation.agency?.name || 'N/A'}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {preparation.agency?.code}
-                        </div>
+                      <div className="text-xs text-muted-foreground">
+                        {preparation.user.email}
                       </div>
                     </div>
                   </TableCell>
-
+                  
                   <TableCell>
-                    <Badge variant={getStatusColor(preparation.status)} className="whitespace-nowrap">
+                    <div className="flex items-center space-x-2">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium text-sm">
+                          {preparation.agency.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {preparation.agency.code}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  
+                  <TableCell>
+                    <Badge variant={getStatusColor(preparation.status)}>
                       {getStatusLabel(preparation.status)}
                     </Badge>
                   </TableCell>
-
+                  
                   <TableCell>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{preparation.progress || 0}%</span>
-                        <span className="text-muted-foreground">
-                          {preparation.steps?.filter(s => s.completed).length || 0}/
-                          {preparation.steps?.length || 6}
-                        </span>
-                      </div>
-                      <Progress 
-                        value={preparation.progress || 0} 
-                        className="h-2"
-                      />
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <div className="space-y-1">
-                        <div className="font-medium">
-                          {formatDuration(preparation.totalTime || preparation.duration || 0)}
-                        </div>
-                        {preparation.isOnTime !== undefined && (
-                          <div className="flex items-center gap-1 text-sm">
-                            {preparation.isOnTime ? (
-                              <>
-                                <CheckCircle2 className="h-3 w-3 text-green-500" />
-                                <span className="text-green-600">À temps</span>
-                              </>
-                            ) : (
-                              <>
-                                <AlertCircle className="h-3 w-3 text-orange-500" />
-                                <span className="text-orange-600">En retard</span>
-                              </>
-                            )}
-                          </div>
+                        <span>{preparation.progress}%</span>
+                        {preparation.isOnTime === false && (
+                          <AlertCircle className="h-4 w-4 text-red-500" />
+                        )}
+                        {preparation.status === 'completed' && (
+                          <CheckCircle2 className="h-4 w-4 text-green-500" />
                         )}
                       </div>
+                      <Progress value={preparation.progress} className="h-2" />
                     </div>
                   </TableCell>
-
+                  
                   <TableCell>
-                    <div className="space-y-1 text-sm">
-                      <div className="font-medium">
-                        {new Date(preparation.createdAt).toLocaleDateString('fr-FR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        })}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {new Date(preparation.createdAt).toLocaleTimeString('fr-FR', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </div>
+                    <div className="flex items-center space-x-1">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">
+                        {formatDuration(preparation.totalTime || preparation.currentDuration)}
+                      </span>
                     </div>
                   </TableCell>
-
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  
+                  <TableCell>
+                    <div className="text-sm text-muted-foreground">
+                      {new Date(preparation.createdAt).toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </TableCell>
+                  
+                  <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Ouvrir le menu</span>
+                          <span className="sr-only">Ouvrir menu</span>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         
-                        <DropdownMenuItem 
-                          onClick={() => onPreparationSelect(preparation.id)}
-                          className="cursor-pointer"
-                        >
+                        <DropdownMenuItem onClick={() => onPreparationSelect(preparation.id)}>
                           <Eye className="h-4 w-4 mr-2" />
-                          Voir les détails
+                          Voir détails
                         </DropdownMenuItem>
                         
-                        <DropdownMenuItem 
-                          onClick={() => onPreparationSelect(preparation.id)}
-                          className="cursor-pointer"
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Modifier
-                        </DropdownMenuItem>
-                        
-                        <DropdownMenuItem 
-                          onClick={() => handleChangeAgency(preparation)}
-                          className="cursor-pointer"
-                        >
-                          <Building2 className="h-4 w-4 mr-2" />
-                          Changer d'agence
+                        <DropdownMenuItem onClick={() => window.open(`/preparations/${preparation.id}/photos`, '_blank')}>
+                          <Camera className="h-4 w-4 mr-2" />
+                          Photos
                         </DropdownMenuItem>
                         
                         <DropdownMenuSeparator />
+                        
+                        <DropdownMenuItem onClick={() => handleChangeAgency(preparation)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Changer d&apos;agence
+                        </DropdownMenuItem>
                         
                         <DeletePreparationDialog
                           preparation={preparation}
@@ -599,7 +523,8 @@ export function PreparationsTable({
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          {/* Navigation pagination */}
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -622,11 +547,11 @@ export function PreparationsTable({
               Précédent
             </Button>
 
-            <div className="flex items-center gap-1 mx-2">
+            <div className="flex items-center gap-1">
               {getPageNumbers().map((pageNum, index) => {
                 if (pageNum === 'ellipsis') {
                   return (
-                    <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                    <span key={`ellipsis-${index}`} className="px-2 py-1 text-sm text-muted-foreground">
                       ...
                     </span>
                   );
@@ -672,6 +597,7 @@ export function PreparationsTable({
         </div>
       )}
 
+      {/* Message vide */}
       {pagination && total === 0 && (
         <div className="flex items-center justify-center py-8 text-center">
           <div className="space-y-2">
@@ -686,6 +612,7 @@ export function PreparationsTable({
         </div>
       )}
 
+      {/* Dialog changement d'agence */}
       <ChangeAgencyDialog
         open={showChangeAgencyDialog}
         onOpenChange={setShowChangeAgencyDialog}

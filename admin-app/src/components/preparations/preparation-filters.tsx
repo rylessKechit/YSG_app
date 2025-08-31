@@ -15,13 +15,15 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 
-import type { PreparationFilters, PreparationAgency, PreparationUser } from '@/types/preparation';
+import type { PreparationFilters, PreparationUser } from '@/types/preparation';
 import { PREPARATION_STATUS_LABELS, PreparationStatus } from '@/types/preparation';
+
+import type { Agency } from '@/types/agency';
 
 interface PreparationFiltersProps {
   filters: PreparationFilters;
   onFiltersChange: (filters: Partial<PreparationFilters>) => void;
-  agencies: PreparationAgency[];
+  agencies: Agency[];
   users: PreparationUser[];
   isLoading?: boolean;
 }
