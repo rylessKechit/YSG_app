@@ -24,7 +24,14 @@ import {
 } from '@/components/ui/select';
 
 import type { Preparation, PreparationStepData } from '@/types/preparation';
-import { PREPARATION_STEP_LABELS, PREPARATION_STEP_ICONS } from '@/types/preparation';
+import { PREPARATION_STEP_LABELS } from '@/types/preparation';
+
+const PREPARATION_STEP_ICONS: Record<string, string> = {
+  'exterior': '🚗',
+  'interior': '🧽',
+  'fuel': '⛽',
+  'special_wash': '✨',
+};
 
 interface EditStepsDialogProps {
   open: boolean;
