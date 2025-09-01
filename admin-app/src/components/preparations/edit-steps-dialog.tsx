@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import type { Preparation, PreparationStepData } from '@/types/preparation';
+import type { Preparation } from '@/types/preparation';
 import { PREPARATION_STEP_LABELS } from '@/types/preparation';
 
 const PREPARATION_STEP_ICONS: Record<string, string> = {

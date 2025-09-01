@@ -236,7 +236,7 @@ export default function PreparationsPage() {
               Liste des préparations
               {stats && (
                 <span className="text-sm font-normal text-gray-500 ml-2">
-                  ({stats.global.totalPreparations} au total)
+                  ({stats.global?.totalPreparations} au total)
                 </span>
               )}
             </CardTitle>

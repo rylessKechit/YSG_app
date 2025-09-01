@@ -16,6 +16,8 @@ const { preparateurAuth } = require('../../middleware/adminAuth');
 // ✅ IMPORT SIMPLIFIÉ POUR ÉVITER LES BLOCAGES
 const { uploadSingle } = require('../../middleware/upload');
 
+const Schedule = require('../../models/Schedule');
+
 // ✅ CLOUDINARY DIRECT IMPORT (sans middleware)
 let CloudinaryService;
 try {
@@ -270,6 +272,89 @@ router.post('/start', async (req, res) => {
 });
 
 /**
+ * @route   GET /api/preparations/today-schedule-agency
+ * @desc    Récupérer l'agence du planning d'aujourd'hui pour auto-completion
+ * @access  Preparateur
+ */
+router.get('/today-schedule-agency', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Dates d'aujourd'hui
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    console.log('🔍 Recherche planning du jour pour userId:', userId);
+
+    // Chercher le planning d'aujourd'hui
+    const todaySchedule = await Schedule.findOne({
+      user: new mongoose.Types.ObjectId(userId),
+      date: { $gte: today, $lt: tomorrow },
+      status: 'active' // ✅ S'assurer que le planning est actif
+    }).populate('agency', 'name code client');
+
+    console.log('📅 Planning trouvé:', todaySchedule ? {
+      id: todaySchedule._id,
+      agencyName: todaySchedule.agency?.name,
+      date: todaySchedule.date
+    } : 'Aucun planning');
+
+    // Si aucun planning, retourner null mais pas d'erreur
+    if (!todaySchedule) {
+      return res.json({
+        success: true,
+        data: {
+          hasSchedule: false,
+          defaultAgency: null,
+          message: 'Aucun planning trouvé pour aujourd\'hui'
+        }
+      });
+    }
+
+    // Vérifier que l'agence existe toujours et est active
+    if (!todaySchedule.agency || !todaySchedule.agency.isActive) {
+      return res.json({
+        success: true,
+        data: {
+          hasSchedule: true,
+          defaultAgency: null,
+          message: 'Planning trouvé mais agence non disponible'
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        hasSchedule: true,
+        defaultAgency: {
+          id: todaySchedule.agency._id,
+          name: todaySchedule.agency.name,
+          code: todaySchedule.agency.code,
+          client: todaySchedule.agency.client
+        },
+        schedule: {
+          id: todaySchedule._id,
+          startTime: todaySchedule.startTime,
+          endTime: todaySchedule.endTime,
+          date: todaySchedule.date
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur récupération planning du jour:', error);
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR
+    });
+  }
+});
+
+/**
  * @route   GET /api/preparations/current
  * @desc    Obtenir la préparation en cours
  * @access  Preparateur
@@ -345,7 +430,7 @@ router.get('/current', async (req, res) => {
 
 /**
  * @route   PUT /api/preparations/:id/step
- * @desc    Compléter une étape avec photo Cloudinary (VERSION DIRECTE)
+ * @desc    Compléter une étape (photo maintenant optionnelle)
  * @access  Preparateur
  */
 router.put('/:id/step', uploadSingle('photo'), async (req, res) => {
@@ -353,11 +438,11 @@ router.put('/:id/step', uploadSingle('photo'), async (req, res) => {
     const { id } = req.params;
     const { step, notes } = req.body;
     const userId = req.user.userId;
-    
-    console.log('📝 Completion étape:', { 
-      id, 
-      step, 
-      hasFile: !!req.file,
+
+    console.log('✅ Complétion étape:', {
+      preparationId: id,
+      step,
+      hasPhoto: !!req.file,
       notes: notes?.substring(0, 50) 
     });
     
@@ -408,18 +493,18 @@ router.put('/:id/step', uploadSingle('photo'), async (req, res) => {
       });
     }
     
-    // Mettre à jour l'étape
+    // ✅ NOUVEAU : Mettre à jour l'étape SANS photo obligatoire
     preparation.steps[stepIndex].completed = true;
     preparation.steps[stepIndex].completedAt = new Date();
     preparation.steps[stepIndex].notes = notes?.trim() || '';
     
     let photoUrl = null;
-    let uploadResult = null; // ✅ DÉCLARATION DANS LE BON SCOPE
+    let uploadResult = null;
     
-    // ✅ UPLOAD CLOUDINARY DIRECT (sans middleware qui bloque)
+    // ✅ Upload photo OPTIONNEL (seulement si fournie)
     if (req.file && req.file.buffer && CloudinaryService) {
       try {
-        console.log('📸 Upload Cloudinary direct...');
+        console.log('📸 Upload photo optionnelle...');
         
         const metadata = {
           userId: userId,
@@ -432,13 +517,23 @@ router.put('/:id/step', uploadSingle('photo'), async (req, res) => {
         
         if (uploadResult && uploadResult.url) {
           photoUrl = uploadResult.url;
-          console.log('✅ Photo Cloudinary uploadée:', uploadResult.url);
+          console.log('✅ Photo optionnelle uploadée:', uploadResult.url);
         }
         
       } catch (cloudinaryError) {
-        console.error('❌ Erreur upload Cloudinary:', cloudinaryError);
-        // Continue sans photo plutôt que de bloquer
+        console.error('⚠️ Erreur upload photo optionnelle (continue sans photo):', cloudinaryError);
+        // Continue sans photo - ne bloque pas la complétion
       }
+    }
+    
+    // ✅ Ajouter photo seulement si upload réussi
+    if (photoUrl) {
+      preparation.steps[stepIndex].photos = preparation.steps[stepIndex].photos || [];
+      preparation.steps[stepIndex].photos.push({
+        url: photoUrl,
+        description: `Photo étape ${step}`,
+        uploadedAt: new Date()
+      });
     }
     
     // Recalculer la progression
@@ -446,7 +541,7 @@ router.put('/:id/step', uploadSingle('photo'), async (req, res) => {
     const newProgress = Math.round((completedSteps / preparation.steps.length) * 100);
     const newDuration = Math.floor((new Date() - preparation.startTime) / (1000 * 60));
     
-    // ✅ MISE À JOUR DIRECTE MONGODB SANS MIDDLEWARES MONGOOSE
+    // ✅ Mise à jour avec upsert pour éviter les conflits
     const updateData = {
       $set: {
         [`steps.${stepIndex}.completed`]: true,
@@ -457,104 +552,75 @@ router.put('/:id/step', uploadSingle('photo'), async (req, res) => {
         updatedAt: new Date()
       }
     };
-    
-    // Ajouter la photo si uploadée
+
+    // ✅ Ajouter photos seulement si présentes
     if (photoUrl) {
       updateData.$push = {
         [`steps.${stepIndex}.photos`]: {
           url: photoUrl,
           description: `Photo étape ${step}`,
-          uploadedAt: new Date(),
-          publicId: uploadResult?.publicId || null,
-          size: uploadResult?.bytes || null
+          uploadedAt: new Date()
         }
       };
     }
-    
-    console.log('💾 Mise à jour directe MongoDB...');
-    
-    // ✅ UPDATE DIRECT SANS .save() QUI BLOQUE
-    await Preparation.updateOne(
-      { _id: id },
-      updateData
-    );
-    
-    console.log('✅ Mise à jour MongoDB réussie');
-    
-    // ✅ RÉPONSE IMMÉDIATE GARANTIE AVEC PRÉPARATION COMPLÈTE
-    const updatedSteps = preparation.steps.map((s, index) => {
-      if (index === stepIndex) {
-        return {
-          step: s.step,
-          completed: true,
-          completedAt: new Date(),
-          notes: notes?.trim() || '',
-          photos: photoUrl ? [...(s.photos || []), {
-            url: photoUrl,
-            description: `Photo étape ${step}`,
-            uploadedAt: new Date(),
-            publicId: uploadResult?.publicId || null,
-            size: uploadResult?.bytes || null
-          }] : s.photos || []
-        };
-      }
-      return s;
+
+    const updatedPreparation = await Preparation.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+    .populate('vehicle', 'licensePlate brand model')
+    .populate('agency', 'name code client');
+
+    if (!updatedPreparation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Impossible de mettre à jour la préparation'
+      });
+    }
+
+    console.log(`✅ Étape ${step} complétée:`, {
+      progress: newProgress,
+      duration: newDuration,
+      hasPhoto: !!photoUrl
     });
-    
-    const response = {
+
+    res.json({
       success: true,
-      message: `Étape ${step} complétée avec succès`,
+      message: `Étape ${step} complétée avec succès${photoUrl ? ' avec photo' : ''}`,
       data: {
-        preparation: {
-          id: preparation._id.toString(),
-          vehicle: {
-            licensePlate: preparation.vehicleData?.licensePlate || 'N/A',
-            brand: preparation.vehicleData?.brand || 'N/A',
-            model: preparation.vehicleData?.model || 'Véhicule',
-            vehicleType: preparation.vehicleData?.vehicleType || 'particulier',
-            year: preparation.vehicleData?.year,
-            fuelType: preparation.vehicleData?.fuelType || 'essence',
-            color: preparation.vehicleData?.color || '',
-            condition: preparation.vehicleData?.condition || 'good'
-          },
-          agency: preparation.agency ? {
-            id: preparation.agency._id?.toString() || preparation.agency.toString(),
-            name: preparation.agency.name || 'Agence',
-            code: preparation.agency.code || 'N/A',
-            client: preparation.agency.client || 'Client'
-          } : {
-            id: preparation.agency?.toString() || 'unknown',
-            name: 'Agence',
-            code: 'N/A',
-            client: 'Client'
-          },
-          status: preparation.status,
-          startTime: preparation.startTime,
-          steps: updatedSteps,
-          progress: newProgress,
-          currentDuration: newDuration,
-          notes: preparation.notes || '',
-          issues: preparation.issues || []
+        preparation: updatedPreparation,
+        stepCompleted: {
+          step,
+          completedAt: preparation.steps[stepIndex].completedAt,
+          hasPhoto: !!photoUrl,
+          photoUrl: photoUrl,
+          notes: notes?.trim() || ''
+        },
+        progress: {
+          completedSteps,
+          totalSteps: preparation.steps.length,
+          percentage: newProgress,
+          duration: newDuration
         }
       }
-    };
-    
-    console.log('📤 Envoi réponse étape...');
-    res.json(response);
-    console.log('✅ Réponse étape envoyée');
+    });
     
   } catch (error) {
-    console.error('❌ Erreur completion étape:', error);
+    console.error('❌ Erreur complétion étape:', error);
     
-    try {
-      return res.status(500).json({
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
         success: false,
-        message: 'Erreur lors de la completion de l\'étape',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Données invalides',
+        errors: Object.values(error.errors).map(err => err.message)
       });
-    } catch (responseError) {
-      console.error('❌ Erreur envoi réponse d\'erreur:', responseError);
     }
+    
+    res.status(500).json({
+      success: false,
+      message: ERROR_MESSAGES.SERVER_ERROR
+    });
   }
 });
 
