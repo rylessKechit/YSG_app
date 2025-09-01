@@ -531,16 +531,22 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
- * @route   GET /api/preparations/:id
- * @desc    Récupérer le détail d'une préparation spécifique
- * @access  Preparateur (propriétaire uniquement)
+ * @route   PUT /api/preparations/:id/step
+ * @desc    Compléter une étape (photo maintenant optionnelle)
+ * @access  Preparateur
  */
-router.get('/:id', async (req, res) => {
+router.put('/:id/step', uploadSingle('photo'), async (req, res) => {
   try {
     const { id } = req.params;
+    const { step, notes } = req.body;
     const userId = req.user.userId;
 
-    console.log('🔍 Récupération détail préparation:', { id, userId });
+    console.log('✅ Complétion étape:', {
+      preparationId: id,
+      step,
+      hasPhoto: !!req.file,
+      notes: notes?.substring(0, 50) 
+    });
     
     // Validation de l'ObjectId
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -550,84 +556,172 @@ router.get('/:id', async (req, res) => {
       });
     }
     
-    // Récupérer la préparation avec vérification de propriété
+    // Validation du type d'étape
+    const validSteps = ['exterior', 'interior', 'fuel', 'special_wash'];
+    if (!validSteps.includes(step)) {
+      return res.status(400).json({
+        success: false,
+        message: `Type d'étape invalide: ${step}. Types autorisés: ${validSteps.join(', ')}`
+      });
+    }
+    
     const preparation = await Preparation.findOne({
       _id: id,
-      user: userId // SÉCURITÉ: seul le propriétaire peut voir sa préparation
-    })
-    .populate('agency', 'name code client')
-    .lean();
+      user: userId,
+      status: 'in_progress'
+    });
     
     if (!preparation) {
       return res.status(404).json({
         success: false,
-        message: 'Préparation non trouvée ou accès refusé'
+        message: 'Préparation non trouvée ou non accessible'
       });
     }
     
-    console.log('✅ Préparation trouvée:', preparation._id);
+    // Trouver l'étape à compléter
+    const stepIndex = preparation.steps.findIndex(s => s.step === step);
     
-    // Calculer la durée actuelle ou totale
-    let duration = 0;
-    if (preparation.status === 'in_progress') {
-      duration = Math.floor((new Date() - preparation.startTime) / (1000 * 60));
-    } else if (preparation.totalTime) {
-      duration = preparation.totalTime;
-    } else if (preparation.endTime) {
-      duration = Math.floor((preparation.endTime - preparation.startTime) / (1000 * 60));
+    if (stepIndex === -1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Étape non trouvée dans cette préparation'
+      });
     }
     
-    // Formatage compatible frontend
-    const formattedPreparation = {
-      id: preparation._id.toString(),
-      vehicle: {
-        licensePlate: preparation.vehicleData?.licensePlate || 'N/A',
-        brand: preparation.vehicleData?.brand || 'N/A',
-        model: preparation.vehicleData?.model || 'Véhicule',
-        vehicleType: preparation.vehicleData?.vehicleType || 'particulier',
-        year: preparation.vehicleData?.year,
-        fuelType: preparation.vehicleData?.fuelType || 'essence',
-        color: preparation.vehicleData?.color || '',
-        condition: preparation.vehicleData?.condition || 'good'
-      },
-      agency: preparation.agency ? {
-        id: preparation.agency._id.toString(),
-        name: preparation.agency.name,
-        code: preparation.agency.code,
-        client: preparation.agency.client
-      } : null,
-      status: preparation.status,
-      startTime: preparation.startTime,
-      endTime: preparation.endTime,
-      totalTime: preparation.totalTime,
-      currentDuration: duration,
-      progress: preparation.progress || 0,
-      isOnTime: preparation.isOnTime,
-      steps: (preparation.steps || []).map(step => ({
-        step: step.step,
-        completed: step.completed,
-        completedAt: step.completedAt,
-        notes: step.notes || '',
-        photos: step.photos || []
-      })),
-      issues: preparation.issues || [],
-      notes: preparation.notes || '',
-      createdAt: preparation.createdAt,
-      updatedAt: preparation.updatedAt
-    };
+    if (preparation.steps[stepIndex].completed) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cette étape est déjà complétée'
+      });
+    }
     
+    // ✅ NOUVEAU : Mettre à jour l'étape SANS photo obligatoire
+    preparation.steps[stepIndex].completed = true;
+    preparation.steps[stepIndex].completedAt = new Date();
+    preparation.steps[stepIndex].notes = notes?.trim() || '';
+    
+    let photoUrl = null;
+    let uploadResult = null;
+    
+    // ✅ Upload photo OPTIONNEL (seulement si fournie)
+    if (req.file && req.file.buffer && CloudinaryService) {
+      try {
+        console.log('📸 Upload photo optionnelle...');
+        
+        const metadata = {
+          userId: userId,
+          preparationId: id,
+          stepType: step,
+          timestamp: Date.now()
+        };
+        
+        uploadResult = await CloudinaryService.uploadPreparationPhoto(req.file.buffer, metadata);
+        
+        if (uploadResult && uploadResult.url) {
+          photoUrl = uploadResult.url;
+          console.log('✅ Photo optionnelle uploadée:', uploadResult.url);
+        }
+        
+      } catch (cloudinaryError) {
+        console.error('⚠️ Erreur upload photo optionnelle (continue sans photo):', cloudinaryError);
+        // Continue sans photo - ne bloque pas la complétion
+      }
+    }
+    
+    // ✅ Ajouter photo seulement si upload réussi
+    if (photoUrl) {
+      preparation.steps[stepIndex].photos = preparation.steps[stepIndex].photos || [];
+      preparation.steps[stepIndex].photos.push({
+        url: photoUrl,
+        description: `Photo étape ${step}`,
+        uploadedAt: new Date()
+      });
+    }
+    
+    // Recalculer la progression
+    const completedSteps = preparation.steps.filter(s => s.completed).length;
+    const newProgress = Math.round((completedSteps / preparation.steps.length) * 100);
+    const newDuration = Math.floor((new Date() - preparation.startTime) / (1000 * 60));
+    
+    // ✅ Mise à jour avec upsert pour éviter les conflits
+    const updateData = {
+      $set: {
+        [`steps.${stepIndex}.completed`]: true,
+        [`steps.${stepIndex}.completedAt`]: new Date(),
+        [`steps.${stepIndex}.notes`]: notes?.trim() || '',
+        progress: newProgress,
+        currentDuration: newDuration,
+        updatedAt: new Date()
+      }
+    };
+
+    // ✅ Ajouter photos seulement si présentes
+    if (photoUrl) {
+      updateData.$push = {
+        [`steps.${stepIndex}.photos`]: {
+          url: photoUrl,
+          description: `Photo étape ${step}`,
+          uploadedAt: new Date()
+        }
+      };
+    }
+
+    const updatedPreparation = await Preparation.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+    .populate('vehicle', 'licensePlate brand model')
+    .populate('agency', 'name code client');
+
+    if (!updatedPreparation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Impossible de mettre à jour la préparation'
+      });
+    }
+
+    console.log(`✅ Étape ${step} complétée:`, {
+      progress: newProgress,
+      duration: newDuration,
+      hasPhoto: !!photoUrl
+    });
+
     res.json({
       success: true,
+      message: `Étape ${step} complétée avec succès${photoUrl ? ' avec photo' : ''}`,
       data: {
-        preparation: formattedPreparation
+        preparation: updatedPreparation,
+        stepCompleted: {
+          step,
+          completedAt: preparation.steps[stepIndex].completedAt,
+          hasPhoto: !!photoUrl,
+          photoUrl: photoUrl,
+          notes: notes?.trim() || ''
+        },
+        progress: {
+          completedSteps,
+          totalSteps: preparation.steps.length,
+          percentage: newProgress,
+          duration: newDuration
+        }
       }
     });
     
   } catch (error) {
-    console.error('❌ Erreur récupération détail préparation:', error);
+    console.error('❌ Erreur complétion étape:', error);
+    
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Données invalides',
+        errors: Object.values(error.errors).map(err => err.message)
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Erreur lors de la récupération du détail de la préparation'
+      message: ERROR_MESSAGES.SERVER_ERROR
     });
   }
 });
