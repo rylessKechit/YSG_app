@@ -32,9 +32,9 @@ export const VehicleDisplay: React.FC<VehicleDisplayProps> = ({
 
   const getFuelTypeIcon = (fuelType?: string) => {
     switch (fuelType) {
-      case 'electrique':
+      case 'electric':
         return '⚡';
-      case 'hybride':
+      case 'hybrid':
         return '🔋';
       case 'diesel':
         return '🛢️';

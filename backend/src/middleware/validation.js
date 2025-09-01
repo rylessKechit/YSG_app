@@ -377,7 +377,7 @@ const createPreparation = z.object({
       .nullable()
       .optional(),
     
-    fuelType: z.enum(['essence', 'diesel', 'electrique', 'hybride'], {
+    fuelType: z.enum(['essence', 'diesel', 'electric', 'hybrid'], {
       invalid_type_error: 'Type de carburant invalide'
     }).optional(),
     
@@ -539,7 +539,7 @@ const vehicleSchemas = {
       .max(new Date().getFullYear() + 2)
       .optional(),
     fuelType: Joi.string()
-      .valid('essence', 'diesel', 'electrique', 'hybride')
+      .valid('essence', 'diesel', 'electric', 'hybrid')
       .default('essence'),
     agencyId: objectId.required()
   }),
@@ -548,7 +548,7 @@ const vehicleSchemas = {
     brand: Joi.string().optional().trim().min(1).max(50),
     model: Joi.string().optional().trim().min(1).max(50),
     year: Joi.number().integer().min(1990).max(new Date().getFullYear() + 2).optional(),
-    fuelType: Joi.string().valid('essence', 'diesel', 'electrique', 'hybride').optional(),
+    fuelType: Joi.string().valid('essence', 'diesel', 'electric', 'hybrid').optional(),
     status: Joi.string().valid('available', 'in_preparation', 'ready', 'rented').optional(),
     agencyId: objectId.optional()
   })

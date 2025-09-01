@@ -8,7 +8,7 @@
 export type VehicleType = 'particulier' | 'utilitaire';
 export type PreparationStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type StepType = 'exterior' | 'interior' | 'fuel' | 'special_wash';
-export type FuelType = 'essence' | 'diesel' | 'electrique' | 'hybride';
+export type FuelType = 'essence' | 'diesel' | 'electric' | 'hybrid';
 export type VehicleCondition = 'excellent' | 'good' | 'fair' | 'poor';
 export type IssueSeverity = 'low' | 'medium' | 'high';
 export type IssueType = 'damage' | 'cleanliness' | 'missing_item' | 'mechanical' | 'other';

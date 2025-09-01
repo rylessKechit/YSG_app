@@ -1,12 +1,12 @@
 // ========================================
 // FICHIER: preparator-app/src/lib/types/preparation.ts
-// ✅ AJOUT : Types pour le nouveau workflow checkbox
+// ✅ CORRECTION : Ajout des exports manquants
 // ========================================
 
-// ===== TYPES EXISTANTS (pas de modification) =====
+// ===== TYPES EXISTANTS =====
 export type PreparationStatus = 'in_progress' | 'completed' | 'cancelled';
 export type StepType = 'exterior' | 'interior' | 'fuel' | 'special_wash';
-export type VehicleType = 'VP' | 'VU';
+export type VehicleType = 'particulier' | 'utilitaire';
 export type FuelType = 'essence' | 'diesel' | 'hybrid' | 'electric';
 export type VehicleCondition = 'excellent' | 'good' | 'fair' | 'poor';
 export type IssueType = 'damage' | 'missing_item' | 'technical' | 'other';
@@ -216,7 +216,15 @@ export interface ApiResponse<T> {
   errors?: string[];
 }
 
-// ✅ NOUVEAU : Constantes pour les étapes (utilisées dans le CheckboxWorkflow)
+// ✅ CORRECTION 1: Export de PREPARATION_STEPS (pour compatibilité)
+export const PREPARATION_STEPS = [
+  'exterior',
+  'interior', 
+  'fuel',
+  'special_wash'
+] as const;
+
+// ✅ CORRECTION 2: Export des constantes pour les étapes
 export const PREPARATION_STEP_DEFINITIONS = [
   {
     step: 'exterior' as StepType,
@@ -233,7 +241,7 @@ export const PREPARATION_STEP_DEFINITIONS = [
   {
     step: 'fuel' as StepType,
     label: 'Contrôle carburant',
-    description: 'Vérification du niveau de carburant',
+    description: 'Mise à niveau de carburant',
     icon: '⛽'
   },
   {
@@ -243,6 +251,72 @@ export const PREPARATION_STEP_DEFINITIONS = [
     icon: '✨'
   }
 ] as const;
+
+// ✅ CORRECTION 3: Fonctions utilitaires manquantes
+export const getSafeVehicleDisplay = (vehicle: Partial<VehicleInfo>): string => {
+  if (!vehicle) return 'Véhicule inconnu';
+  
+  const brand = vehicle.brand || '';
+  const model = vehicle.model || 'Modèle inconnu';
+  const licensePlate = vehicle.licensePlate || 'N/A';
+  
+  if (brand && model) {
+    return `${brand} ${model} (${licensePlate})`;
+  } else if (model) {
+    return `${model} (${licensePlate})`;
+  } else {
+    return licensePlate;
+  }
+};
+
+export const getSafeLicensePlate = (vehicle: Partial<VehicleInfo>): string => {
+  return vehicle?.licensePlate || 'N/A';
+};
+
+// ✅ CORRECTION 4: Fonction d'adaptation pour compatibilité avec ancien code
+export const adaptLegacyPreparation = (preparation: any): Preparation => {
+  // Cette fonction adapte les anciennes structures de données
+  // vers le nouveau format si nécessaire
+  return {
+    id: preparation.id || preparation._id,
+    vehicle: {
+      id: preparation.vehicle?.id || preparation.vehicle?._id || '',
+      licensePlate: preparation.vehicle?.licensePlate || preparation.vehicleData?.licensePlate || 'N/A',
+      brand: preparation.vehicle?.brand || preparation.vehicleData?.brand || '',
+      model: preparation.vehicle?.model || preparation.vehicleData?.model || 'Véhicule',
+      vehicleType: preparation.vehicle?.vehicleType || preparation.vehicleData?.vehicleType || 'particulier',
+      color: preparation.vehicle?.color || preparation.vehicleData?.color,
+      year: preparation.vehicle?.year || preparation.vehicleData?.year,
+      fuelType: preparation.vehicle?.fuelType || preparation.vehicleData?.fuelType || 'essence',
+      condition: preparation.vehicle?.condition || preparation.vehicleData?.condition || 'good'
+    },
+    agency: preparation.agency || {
+      id: preparation.agencyId || '',
+      name: 'Agence inconnue',
+      code: 'N/A',
+      client: 'N/A'
+    },
+    user: preparation.user || {
+      id: preparation.userId || '',
+      firstName: 'Préparateur',
+      lastName: '',
+      email: ''
+    },
+    status: preparation.status || 'in_progress',
+    steps: preparation.steps || [],
+    startTime: new Date(preparation.startTime),
+    endTime: preparation.endTime ? new Date(preparation.endTime) : undefined,
+    totalTime: preparation.totalTime,
+    progress: preparation.progress || 0,
+    currentDuration: preparation.currentDuration || 0,
+    isOnTime: preparation.isOnTime,
+    issues: preparation.issues || [],
+    notes: preparation.notes || '',
+    qualityCheck: preparation.qualityCheck,
+    createdAt: new Date(preparation.createdAt || Date.now()),
+    updatedAt: new Date(preparation.updatedAt || Date.now())
+  };
+};
 
 // Alias pour compatibilité avec l'ancien code
 export type BackendPreparation = Preparation;

@@ -39,6 +39,9 @@ interface TodayScheduleAgency {
 }
 
 export class PreparationAPI {
+  static getPreparationHistory(arg0: number, arg1: number, apiFilters: Record<string, string>) {
+    throw new Error('Method not implemented.');
+  }
   /**
    * ✅ NOUVEAU : Obtenir l'agence du planning d'aujourd'hui
    */

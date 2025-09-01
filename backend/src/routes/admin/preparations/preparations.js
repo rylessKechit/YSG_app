@@ -582,7 +582,7 @@ router.get('/stats', validateQuery(statsQuerySchema), async (req, res) => {
           { user: user }, // Fallback string
           { preparateur: user } // Fallback string
         );
-        console.log('👤 Filtre user/preparateur appliqué (hybride):', user);
+        console.log('👤 Filtre user/preparateur appliqué (hybrid):', user);
       } catch (error) {
         // Si ObjectId invalide, utiliser seulement string
         filters.$or = filters.$or || [];

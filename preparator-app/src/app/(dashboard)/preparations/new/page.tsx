@@ -46,11 +46,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 // Types
 import type { 
-  VehicleFormData, 
-  VehicleType, 
-  FuelType, 
-  VehicleCondition,
-  VEHICLE_TYPE_ICONS
+  VehicleFormData,
 } from '@/lib/types/preparation';
 
 // ===== SCHÉMA DE VALIDATION =====
@@ -73,7 +69,7 @@ const vehicleSchema = z.object({
     .max(new Date().getFullYear() + 2, 'Année trop récente')
     .nullable()
     .optional(),
-  fuelType: z.enum(['essence', 'diesel', 'electrique', 'hybride']).optional(),
+  fuelType: z.enum(['essence', 'diesel', 'electric', 'hybrid']).optional(),
   condition: z.enum(['excellent', 'good', 'fair', 'poor']).optional(),
   notes: z.string().max(500, 'Notes trop longues (max 500 caractères)').optional()
 }) satisfies z.ZodType<VehicleFormData>;

@@ -187,8 +187,8 @@ const VEHICLE_STATUS = {
 const FUEL_TYPES = {
   ESSENCE: 'essence',
   DIESEL: 'diesel',
-  ELECTRIQUE: 'electrique',
-  HYBRIDE: 'hybride'
+  ELECTRIQUE: 'electric',
+  HYBRIDE: 'hybrid'
 };
 
 /**

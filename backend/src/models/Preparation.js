@@ -74,7 +74,7 @@ const vehicleDataSchema = new mongoose.Schema({
   },
   fuelType: {
     type: String,
-    enum: ['essence', 'diesel', 'electrique', 'hybride'],
+    enum: ['essence', 'diesel', 'electric', 'hybrid'],
     default: 'essence'
   },
   color: {

@@ -1,12 +1,15 @@
-// ✅ Hook usePreparationHistory optimisé - STOP REFRESH AUTO + SEARCH TRIGGER ONLY
+// ✅ Hook usePreparationHistory - CORRECTION FINALE NOM DE MÉTHODE
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { preparationApi } from '@/lib/api/preparations';
+import { PreparationAPI } from '@/lib/api/preparations';
 import type { 
   PreparationHistory, 
   PreparationFilters, 
   Preparation 
 } from '@/lib/types/index';
+
+// Créer une instance de l'API
+const preparationApi = new PreparationAPI();
 
 // ===== TYPES POUR LE HOOK =====
 
@@ -15,7 +18,7 @@ export interface UsePreparationHistoryOptions {
   limit?: number;
   agencyId?: string;
   search?: string;
-  autoLoad?: boolean; // ✅ DÉSACTIVÉ PAR DÉFAUT
+  autoLoad?: boolean;
 }
 
 export interface UsePreparationHistoryReturn {
@@ -67,7 +70,7 @@ const initialFilters: PreparationFilters = {
   limit: 20
 };
 
-// ===== HOOK PRINCIPAL OPTIMISÉ =====
+// ===== HOOK PRINCIPAL =====
 
 export const usePreparationHistory = (
   options: UsePreparationHistoryOptions = {}
@@ -77,11 +80,10 @@ export const usePreparationHistory = (
     limit = 20,
     agencyId,
     search,
-    autoLoad = false // ✅ DÉSACTIVÉ PAR DÉFAUT
+    autoLoad = false
   } = options;
 
-  // ===== ÉTAT LOCAL =====
-  
+  // État local
   const [preparations, setPreparations] = useState<Preparation[]>([]);
   const [pagination, setPagination] = useState(initialPagination);
   const [filters, setFiltersState] = useState<PreparationFilters>({
@@ -95,16 +97,11 @@ export const usePreparationHistory = (
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ Référence pour éviter les appels multiples
   const loadingRef = useRef(false);
 
   // ===== ACTIONS =====
 
-  /**
-   * ✅ Charger l'historique des préparations - OPTIMISÉ
-   */
   const loadHistory = useCallback(async (newOptions?: Partial<UsePreparationHistoryOptions>) => {
-    // ✅ Prévenir les appels multiples simultanés
     if (loadingRef.current) {
       console.log('⚠️ Chargement déjà en cours, ignoré');
       return;
@@ -122,14 +119,18 @@ export const usePreparationHistory = (
     setError(null);
 
     try {
-      // ✅ Construire les filtres de requête
+      // Construire les filtres
       const currentFilters = {
         ...filters,
         ...newOptions
       };
 
-      // ✅ Préparer les paramètres pour l'API
-      const apiFilters: Record<string, string> = {};
+      // Créer un objet PreparationFilters pour l'API
+      const apiFilters: PreparationFilters = {
+        page: currentFilters.page || 1,
+        limit: currentFilters.limit || 20
+      };
+
       if (currentFilters.agencyId && currentFilters.agencyId !== 'all') {
         apiFilters.agencyId = currentFilters.agencyId;
       }
@@ -137,124 +138,98 @@ export const usePreparationHistory = (
         apiFilters.search = currentFilters.search.trim();
       }
 
-      console.log('🔄 Chargement historique avec filtres:', currentFilters);
+      console.log('🔄 Chargement historique avec filtres:', apiFilters);
 
-      // ✅ Appel API
-      const historyData = await preparationApi.getPreparationHistory(
-        currentFilters.page || 1,
-        currentFilters.limit || 20,
-        apiFilters
-      );
+      // ✅ CORRECTION: Utiliser getPreparationsHistory (avec 's')
+      const historyData = await preparationApi.getPreparationsHistory(apiFilters);
 
-      // ✅ Mise à jour des données
-      if (isLoadingMore) {
-        // Ajouter aux préparations existantes
-        setPreparations(prev => [...prev, ...historyData.preparations]);
+      if (historyData && historyData.preparations) {
+        // Mise à jour des données
+        if (isLoadingMore) {
+          setPreparations(prev => [...prev, ...historyData.preparations]);
+        } else {
+          setPreparations(historyData.preparations);
+        }
+
+        // Mise à jour pagination
+        setPagination(historyData.pagination);
+        
+        // Mise à jour filtres
+        setFiltersState(prev => ({
+          ...prev,
+          ...currentFilters
+        }));
+
+        console.log('✅ Historique chargé:', {
+          preparations: historyData.preparations.length,
+          total: historyData.pagination.totalCount
+        });
       } else {
-        // Remplacer les préparations
-        setPreparations(historyData.preparations);
+        console.warn('⚠️ Structure de données inattendue:', historyData);
+        setPreparations([]);
+        setPagination(initialPagination);
       }
-
-      // ✅ Mise à jour pagination
-      setPagination(historyData.pagination);
-      
-      // ✅ Mise à jour filtres avec les nouvelles valeurs
-      setFiltersState(prev => ({
-        ...prev,
-        ...currentFilters
-      }));
-
-      console.log('✅ Historique chargé:', {
-        preparations: historyData.preparations.length,
-        total: historyData.pagination.totalCount,
-        date: new Date().toLocaleDateString('fr-FR')
-      });
 
     } catch (err: any) {
       console.error('❌ Erreur chargement historique:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Erreur lors du chargement de l\'historique';
       setError(errorMessage);
+      
+      // Reset en cas d'erreur
+      setPreparations([]);
+      setPagination(initialPagination);
     } finally {
       setIsLoading(false);
       setIsLoadingMore(false);
-      loadingRef.current = false; // ✅ Libérer le verrou
+      loadingRef.current = false;
     }
   }, [filters]);
 
-  /**
-   * ✅ Charger plus de préparations (pagination)
-   */
   const loadMore = useCallback(async () => {
     if (pagination.hasNextPage && !isLoading && !isLoadingMore) {
       await loadHistory({ page: pagination.page + 1 });
     }
   }, [pagination.hasNextPage, pagination.page, isLoading, isLoadingMore, loadHistory]);
 
-  /**
-   * ✅ Rafraîchir les données (manuel uniquement)
-   */
   const refresh = useCallback(async () => {
     console.log('🔄 Refresh manuel déclenché');
     await loadHistory({ page: 1 });
   }, [loadHistory]);
 
-  /**
-   * ✅ Mettre à jour les filtres - TRIGGER MANUAL
-   */
   const setFilters = useCallback((newFilters: Partial<PreparationFilters>) => {
     console.log('🔍 Mise à jour filtres:', newFilters);
-    const updatedFilters = { ...filters, ...newFilters, page: 1 }; // Reset page lors du filtrage
+    const updatedFilters = { ...filters, ...newFilters, page: 1 };
     setFiltersState(updatedFilters);
-    // ✅ PAS DE CHARGEMENT AUTO - uniquement quand explicitement demandé
   }, [filters]);
 
-  /**
-   * ✅ Appliquer les filtres et charger (manuel)
-   */
   const applyFiltersAndLoad = useCallback(async (newFilters: Partial<PreparationFilters>) => {
     const updatedFilters = { ...filters, ...newFilters, page: 1 };
     setFiltersState(updatedFilters);
     await loadHistory(updatedFilters);
   }, [filters, loadHistory]);
 
-  /**
-   * ✅ Changer de page
-   */
   const setPage = useCallback(async (newPage: number) => {
     const updatedFilters = { ...filters, page: newPage };
     setFiltersState(updatedFilters);
     await loadHistory(updatedFilters);
   }, [filters, loadHistory]);
 
-  /**
-   * ✅ Effacer l'erreur
-   */
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // ===== EFFETS =====
-
-  /**
-   * ✅ Chargement automatique au montage SEULEMENT si autoLoad = true
-   */
+  // Chargement automatique
   useEffect(() => {
     if (autoLoad) {
       console.log('🚀 Chargement auto au montage');
       loadHistory();
     }
-  }, []); // ✅ Dépendance vide - ne charge qu'UNE SEULE FOIS
+  }, []);
 
-  // ✅ SUPPRIMÉ: Plus d'effet qui écoute les changements de filtres
-  // Cela évite les refresh automatiques non désirés
-
-  // ===== VALEURS CALCULÉES =====
-
+  // Valeurs calculées
   const hasMore = pagination.hasNextPage;
   const isEmpty = !isLoading && preparations.length === 0;
   const total = pagination.totalCount;
-
-  // ===== RETOUR DU HOOK =====
 
   return {
     // État des données
@@ -271,8 +246,8 @@ export const usePreparationHistory = (
     loadHistory,
     loadMore,
     refresh,
-    setFilters, // ✅ Ne charge pas automatiquement
-    applyFiltersAndLoad, // ✅ Nouvelle méthode pour appliquer + charger
+    setFilters,
+    applyFiltersAndLoad,
     setPage,
     clearError,
     
@@ -283,5 +258,4 @@ export const usePreparationHistory = (
   };
 };
 
-// ===== EXPORTS =====
 export default usePreparationHistory;

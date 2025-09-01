@@ -35,7 +35,7 @@ const PREPARATION_STEPS = [
   {
     step: 'fuel',
     label: 'Contrôle carburant',
-    description: 'Vérification du niveau de carburant',
+    description: 'Mise à niveau de carburant',
     icon: '⛽'
   },
   {
@@ -126,7 +126,7 @@ export function CheckboxWorkflow({ preparation, onStepComplete, onComplete }: Ch
   };
 
   // Vérifier si toutes les étapes sont complétées
-  const allStepsCompleted = completedStepsCount === totalSteps;
+  const allStepsCompleted = completedStepsCount > 0;
 
   return (
     <div className="space-y-6">
@@ -208,7 +208,6 @@ export function CheckboxWorkflow({ preparation, onStepComplete, onComplete }: Ch
                         id={stepDef.step}
                         checked={isCompleted}
                         onCheckedChange={(checked) => handleStepToggle(stepDef.step, isCompleted)}
-                        disabled={isCompleted || isCurrentlyCompleting}
                         className="w-5 h-5"
                       />
                     )}
@@ -256,17 +255,6 @@ export function CheckboxWorkflow({ preparation, onStepComplete, onComplete }: Ch
                         <strong>Notes :</strong> {step.notes}
                       </div>
                     )}
-
-                    {/* ✅ Zone de saisie de notes pour étapes non complétées */}
-                    {!isCompleted && (
-                      <Textarea
-                        placeholder={`Notes pour ${stepDef.label.toLowerCase()} (optionnel)`}
-                        value={stepNotes[stepDef.step] || ''}
-                        onChange={(e) => handleNotesChange(stepDef.step, e.target.value)}
-                        className="mt-2"
-                        rows={2}
-                      />
-                    )}
                   </div>
                 </div>
               </div>
@@ -282,9 +270,6 @@ export function CheckboxWorkflow({ preparation, onStepComplete, onComplete }: Ch
             <div className="text-center space-y-4">
               <div className="flex items-center justify-center space-x-2">
                 <CheckCircle2 className="h-8 w-8 text-green-600" />
-                <h3 className="text-xl font-semibold text-green-800">
-                  Toutes les étapes sont terminées !
-                </h3>
               </div>
               
               <p className="text-green-700">
