@@ -1,6 +1,6 @@
 // ========================================
 // FICHIER: admin-app/src/types/preparation.ts
-// ✅ TOUS LES TYPES DE PRÉPARATION POUR L'ADMIN - VERSION COMPLÈTE
+// ✅ TOUS LES TYPES DE PRÉPARATION POUR L'ADMIN - VERSION CORRIGÉE
 // ========================================
 
 // ===== TYPES DE BASE =====
@@ -103,7 +103,7 @@ export interface Preparation {
   progress: number;
   duration: number;
   totalTime?: number;
-  currentDuration?: number; // Ajouté pour corriger l'erreur
+  currentDuration?: number;
   isOnTime: boolean;
   startTime: Date | string;
   endTime?: Date | string;
@@ -115,7 +115,11 @@ export interface Preparation {
   updatedAt: Date | string;
 }
 
-// ===== INTERFACES PAGINATION =====
+// ===== INTERFACES PAGINATION - CORRECTION CRITIQUE =====
+
+/**
+ * ✅ Interface PaginationInfo - Version de base du backend
+ */
 export interface PaginationInfo {
   page: number;
   limit: number;
@@ -123,25 +127,20 @@ export interface PaginationInfo {
   pages: number;
   hasNext: boolean;
   hasPrev: boolean;
-  // Propriétés ajoutées pour corriger les erreurs TypeScript
-  totalPages?: number; // Alias pour 'pages'
-  totalCount?: number; // Alias pour 'total'
 }
 
-// Alias pour compatibilité avec les imports existants
-export interface Pagination {
-  page: number;
-  limit: number;
-  total: number;
-  pages: number;
-  hasNext: boolean;
-  hasPrev: boolean;
-  // Propriétés utilisées dans votre code
-  totalPages: number;
-  totalCount: number;
+/**
+ * ✅ Interface Pagination - Version étendue avec héritage
+ * RÉSOUT L'ERREUR: Type 'PaginationInfo | undefined' is not assignable to type 'Pagination | undefined'
+ */
+export interface Pagination extends PaginationInfo {
+  totalPages: number;  // Propriété critique manquante
+  totalCount: number;  // Propriété critique manquante
 }
 
-// ✅ NOUVEAU : Type union pour gérer les deux types de pagination
+/**
+ * ✅ Type union pour gérer toutes les variantes
+ */
 export type PaginationType = PaginationInfo | Pagination | undefined;
 
 // ===== INTERFACES COMPOSANTS =====
@@ -177,21 +176,32 @@ export interface PreparationFilters {
   hasIssues?: boolean;
   page?: number;
   limit?: number;
-  sort?: string; // Ajouté pour le tri
-  order?: 'asc' | 'desc'; // Ajouté pour l'ordre de tri
+  sort?: string;
+  order?: 'asc' | 'desc';
 }
 
-// ===== INTERFACES STATISTIQUES =====
+// ===== INTERFACES STATISTIQUES - CORRECTIONS APPLIQUÉES =====
+
+/**
+ * ✅ Interface PreparationStats avec toutes propriétés optionnelles
+ * RÉSOUT L'ERREUR: Type '{ stats: PreparationStats | { totalPreparations: number; ... }' not assignable
+ */
 export interface PreparationStats {
-  total: number;
-  pending: number;
-  inProgress: number;
-  completed: number;
-  cancelled: number;
+  // ✅ PROPRIÉTÉS DE BASE - TOUTES OPTIONNELLES
+  total?: number;
+  pending?: number;
+  inProgress?: number;
+  completed?: number;
+  cancelled?: number;
   averageTime?: number;
   onTimeRate?: number;
   totalTime?: number;
-  // Propriétés ajoutées pour corriger les erreurs TypeScript
+  
+  // ✅ PROPRIÉTÉS ÉTENDUES
+  totalPreparations?: number;  // Ajouté pour compatibilité avec PreparationStatsCards
+  completionRate?: number;     // Ajouté pour compatibilité avec PreparationStatsCards
+  
+  // ✅ STRUCTURES IMBRIQUÉES
   global?: {
     totalPreparations: number;
     averageTime?: number;
@@ -218,7 +228,7 @@ export interface PreparationStats {
 
 // Alias pour compatibilité avec les imports existants
 export interface PreparationGlobalStats {
-  totalPreparations: number;
+  totalPreparations?: number;
   averageTime?: number | undefined;
   onTimeRate?: number | undefined;
   completionRate?: number | undefined;
@@ -242,25 +252,29 @@ export interface PreparationGlobalStatsStrict {
   cancelled: number;
 }
 
+/**
+ * ✅ AJOUT: Interface pour statusStats utilisée dans PreparationStatsCards
+ * RÉSOUT L'ERREUR: Property 'statusStats' does not exist on type 'PreparationStatsCardsProps'
+ */
 export interface PreparationStatusStats {
   pending: number;
   inProgress: number;
   completed: number;
   cancelled: number;
-  total: number;
+  total?: number;
 }
 
 // ===== INTERFACES REQUÊTES =====
 export interface UpdateAgencyRequest {
-  newAgencyId?: string; // Pour compatibilité avec le hook
-  agencyId?: string; // Nom utilisé dans le hook
+  newAgencyId?: string;
+  agencyId?: string;
   reason?: string;
   notes?: string;
 }
 
 export interface UpdateStepsRequest {
   steps: Array<{
-    step: string; // Changé de StepType à string pour compatibilité
+    step: string;
     completed: boolean;
     notes?: string;
   }>;
@@ -301,12 +315,6 @@ export interface PreparationStatsResponse {
     };
   };
   message?: string;
-}
-
-// ✅ NOUVEAU : Interface pour le composant PreparationStatsCards
-export interface PreparationStatsCards {
-  stats: PreparationGlobalStats;
-  isLoading?: boolean;
 }
 
 export interface PreparationPhotosResponse {
@@ -373,9 +381,9 @@ export interface PreparationSearchForm {
   search: string;
   status: PreparationStatus | 'all' | '';
   agencyId: string;
-  agency: string; // Alias pour compatibilité
+  agency: string;
   userId: string;
-  user: string; // Alias pour compatibilité
+  user: string;
   startDate: string;
   endDate: string;
   isOnTime: boolean | null;
@@ -384,7 +392,7 @@ export interface PreparationSearchForm {
 
 export interface UpdateAgencyForm {
   newAgencyId: string;
-  agencyId: string; // Alias pour compatibilité
+  agencyId: string;
   reason: string;
   notes: string;
 }
@@ -464,7 +472,35 @@ export interface DeleteMultipleResponse {
   errors?: any[];
 }
 
-// ===== CONSTANTES =====
+// ===== INTERFACES POUR COMPOSANTS - AJOUTS POUR RÉSOUDRE ERREURS =====
+
+/**
+ * ✅ AJOUT: Props pour PreparationStatsCards
+ * RÉSOUT L'ERREUR: Property 'statusStats' does not exist
+ */
+export interface PreparationStatsCardsProps {
+  stats?: PreparationStats | null | undefined;
+  statusStats?: PreparationStatusStats | undefined;
+  isLoading?: boolean;
+}
+
+/**
+ * ✅ AJOUT: Props pour PreparationsTable
+ * RÉSOUT L'ERREUR: Types incompatibles pour pagination
+ */
+export interface PreparationsTableProps {
+  preparations: Preparation[];
+  pagination?: Pagination | undefined;
+  filters: PreparationFilters;
+  onFiltersChange: (filters: Partial<PreparationFilters>) => void;
+  onPreparationSelect: (preparationId: string) => void;
+  agencies: Agency[];
+  isLoading?: boolean;
+  selectedPreparations?: string[];
+  onSelectionChange?: (preparationIds: string[]) => void;
+}
+
+// ===== CONSTANTES - CORRECTION DES EXPORTS =====
 export const PREPARATION_STATUS_LABELS = {
   pending: 'En attente',
   in_progress: 'En cours',
@@ -542,7 +578,7 @@ export interface UsePreparationStatsOptions {
 
 /**
  * Formate une durée en minutes vers un string lisible
- * Gère les valeurs undefined/null
+ * CORRECTION: Gère les valeurs undefined/null de façon robuste
  */
 export function formatDuration(minutes: number | undefined | null): string {
   if (minutes == null || isNaN(minutes)) {
@@ -554,12 +590,11 @@ export function formatDuration(minutes: number | undefined | null): string {
   }
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  return remainingMinutes > 0 ? `${hours}h${remainingMinutes}` : `${hours}h`;
+  return remainingMinutes > 0 ? `${hours}h${remainingMinutes}min` : `${hours}h`;
 }
 
 /**
  * Fonction helper pour calculer un pourcentage sécurisé
- * Gère les valeurs undefined/null
  */
 export function safePercentage(value: number | undefined | null, total: number | undefined | null): number {
   if (value == null || total == null || total === 0) {
@@ -593,7 +628,7 @@ export function safeNumber(value: number | undefined | null, defaultValue: numbe
 }
 
 /**
- * Vérifie si une préparation est dans les temps (< 30 min par défaut)
+ * Vérifie si une préparation est dans les temps
  */
 export function isPreparationOnTime(currentDuration: number, timeLimit: number = 30): boolean {
   return currentDuration <= timeLimit;
@@ -651,4 +686,47 @@ export function getVehicleTypeLabel(vehicleType: VehicleType): string {
  */
 export function getStatusLabel(status: PreparationStatus): string {
   return PREPARATION_STATUS_LABELS[status] || status;
+}
+
+// ===== TYPE GUARDS ET HELPERS =====
+
+/**
+ * ✅ AJOUT: Vérifie si un objet est une pagination valide
+ */
+export function isPagination(obj: any): obj is Pagination {
+  return obj && 
+    typeof obj.page === 'number' && 
+    typeof obj.limit === 'number' && 
+    typeof obj.total === 'number' &&
+    (typeof obj.totalPages === 'number' || typeof obj.pages === 'number');
+}
+
+/**
+ * ✅ AJOUT: Normalise une pagination vers le format attendu
+ * RÉSOUT LES PROBLÈMES: Types incompatibles pour totalPages/totalCount
+ */
+export function normalizePagination(pagination: PaginationInfo | Pagination | undefined): Pagination {
+  if (!pagination) {
+    return {
+      page: 1,
+      limit: 20,
+      total: 0,
+      pages: 0,
+      totalPages: 0,
+      totalCount: 0,
+      hasNext: false,
+      hasPrev: false
+    };
+  }
+
+  return {
+    page: pagination.page || 1,
+    limit: pagination.limit || 20,
+    total: pagination.total || 0,
+    pages: pagination.pages || 0,
+    totalPages: (pagination as Pagination).totalPages || pagination.pages || 0,
+    totalCount: (pagination as Pagination).totalCount || pagination.total || 0,
+    hasNext: pagination.hasNext || false,
+    hasPrev: pagination.hasPrev || false
+  };
 }

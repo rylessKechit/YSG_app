@@ -1,3 +1,4 @@
+// admin-app/src/components/preparations/preparations-table.tsx
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -51,29 +52,76 @@ import { useUpdatePreparationAgency } from '@/hooks/api/usePreparations';
 import { DeletePreparationDialog } from './delete-preparation-dialog';
 import { ChangeAgencyDialog } from './change-agency-dialog';
 
+// Imports des types depuis le fichier preparation.ts
 import type { 
   Preparation, 
   PreparationFilters,
-  Pagination
+  Pagination,
+  PaginationInfo,
+  PreparationStatus
+} from '@/types/preparation';
+
+import { 
+  PREPARATION_STATUS_LABELS,
+  formatDuration
 } from '@/types/preparation';
 
 import type { Agency } from '@/types/agency';
 
-// ✅ INTERFACES CORRIGÉES
+// Interface des props du composant
 interface PreparationsTableProps {
   preparations: Preparation[];
-  pagination?: Pagination;
+  pagination?: PaginationInfo | Pagination | undefined;
   filters: PreparationFilters;
   onFiltersChange: (filters: Partial<PreparationFilters>) => void;
   onPreparationSelect: (preparationId: string) => void;
-  agencies: Agency[]; // ✅ CORRECTION: Utiliser PreparationAgency[] au lieu d'Agency[]
+  agencies: Agency[];
   isLoading?: boolean;
   selectedPreparations?: string[];
   onSelectionChange?: (preparationIds: string[]) => void;
 }
 
-// ✅ FONCTIONS UTILITAIRES CORRIGÉES
-const getStatusColor = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+// Type pour la pagination normalisée
+interface NormalizedPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  totalCount: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+// Fonction pour normaliser la pagination
+function createNormalizedPagination(pagination?: PaginationInfo | Pagination): NormalizedPagination {
+  if (!pagination) {
+    return {
+      page: 1,
+      limit: 20,
+      total: 0,
+      totalPages: 0,
+      totalCount: 0,
+      hasNext: false,
+      hasPrev: false
+    };
+  }
+
+  const totalPages = (pagination as Pagination).totalPages || pagination.pages || 0;
+  const totalCount = (pagination as Pagination).totalCount || pagination.total || 0;
+
+  return {
+    page: pagination.page || 1,
+    limit: pagination.limit || 20,
+    total: pagination.total || 0,
+    totalPages: totalPages,
+    totalCount: totalCount,
+    hasNext: pagination.hasNext || false,
+    hasPrev: pagination.hasPrev || false
+  };
+}
+
+// Fonctions utilitaires
+const getStatusColor = (status: PreparationStatus): "default" | "secondary" | "destructive" | "outline" => {
   switch (status) {
     case 'completed': return 'default';
     case 'in_progress': return 'secondary';
@@ -82,28 +130,11 @@ const getStatusColor = (status: string): "default" | "secondary" | "destructive"
   }
 };
 
-const getStatusLabel = (status: string): string => {
-  const labels: Record<string, string> = {
-    'pending': 'En attente',
-    'in_progress': 'En cours',
-    'completed': 'Terminé',
-    'cancelled': 'Annulé'
-  };
-  return labels[status] || status;
+const getStatusLabel = (status: PreparationStatus): string => {
+  return PREPARATION_STATUS_LABELS[status] || status;
 };
 
-const formatDuration = (minutes: number | null | undefined): string => {
-  if (!minutes || minutes === 0) return '0 min';
-  
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  
-  if (hours === 0) return `${mins} min`;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}min`;
-};
-
-// ✅ COMPOSANT PRINCIPAL CORRIGÉ
+// Composant principal
 export function PreparationsTable({
   preparations,
   pagination,
@@ -121,20 +152,24 @@ export function PreparationsTable({
   const selectAllCheckboxRef = useRef<any>(null);
   const { mutate: updateAgency, isPending: isUpdatingAgency } = useUpdatePreparationAgency();
 
-  // ✅ CALLBACKS CORRIGÉS
+  // Normalisation de la pagination
+  const normalizedPagination = createNormalizedPagination(pagination);
+  const totalPages = normalizedPagination.totalPages;
+  const currentPage = normalizedPagination.page;
+  const limit = normalizedPagination.limit;
+  const total = normalizedPagination.total;
+
+  // Callbacks
   const handleSort = useCallback((field: string) => {
     const newOrder: 'asc' | 'desc' = filters.sort === field && filters.order === 'asc' ? 'desc' : 'asc';
-    onFiltersChange({ sort: field as any, order: newOrder });
+    onFiltersChange({ sort: field, order: newOrder });
   }, [filters.sort, filters.order, onFiltersChange]);
 
   const handlePageChange = useCallback((newPage: number) => {
-    if (!pagination) return;
-    
-    const maxPage = pagination.totalPages || pagination.pages || 1;
-    if (newPage >= 1 && newPage <= maxPage) {
+    if (newPage >= 1 && newPage <= totalPages) {
       onFiltersChange({ page: newPage });
     }
-  }, [pagination, onFiltersChange]);
+  }, [totalPages, onFiltersChange]);
 
   const handleLimitChange = useCallback((newLimit: string) => {
     const limit = parseInt(newLimit, 10);
@@ -179,12 +214,7 @@ export function PreparationsTable({
     });
   }, [selectedPreparation, updateAgency]);
 
-  // ✅ CALCULS PAGINATION CORRIGÉS
-  const totalPages = pagination?.totalPages || pagination?.pages || 1;
-  const currentPage = pagination?.page || 1;
-  const limit = pagination?.limit || filters.limit || 20;
-  const total = pagination?.total || pagination?.totalCount || 0;
-
+  // Calculs pour la sélection
   const startItem = total === 0 ? 0 : ((currentPage - 1) * limit) + 1;
   const endItem = Math.min(currentPage * limit, total);
 
@@ -497,8 +527,8 @@ export function PreparationsTable({
         </Table>
       </div>
 
-      {/* Pagination */}
-      {pagination && total > 0 && (
+      {/* Pagination - TOUJOURS AFFICHÉE SI IL Y A DES PRÉPARATIONS */}
+      {preparations.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-4 border-t bg-gray-50/50">
           <div className="flex flex-col sm:flex-row items-center gap-4 text-sm text-muted-foreground">
             <span>
@@ -597,8 +627,8 @@ export function PreparationsTable({
         </div>
       )}
 
-      {/* Message vide */}
-      {pagination && total === 0 && (
+      {/* Message vide - SEULEMENT SI AUCUNE PRÉPARATION */}
+      {preparations.length === 0 && !isLoading && (
         <div className="flex items-center justify-center py-8 text-center">
           <div className="space-y-2">
             <Building2 className="h-12 w-12 text-muted-foreground mx-auto" />
